@@ -107,7 +107,7 @@ A unit can move AND attack in the same round if it has remaining range after mov
 
 Within a single round, orders resolve in this sequence:
 
-1. **Movement** — All units move simultaneously. If two units move to the same tile, the heavier unit type gets priority (Tank > Infantry > Ranger). The lower-priority unit stops one tile short along its path. If same unit type, both stop one tile short.
+1. **Movement** — All units move simultaneously. If two units move to the same tile, the heavier unit type gets priority (Tank > Infantry > Ranger). The heavier unit claims the tile; the lighter unit is pushed back one tile from the contested position. If same unit type, both stop one tile short.
 2. **Combat** — All attacks resolve simultaneously. Damage is dealt based on pre-combat HP (no kill-then-act advantage).
 3. **Deaths** — Units at 0 HP are removed.
 4. **Capture** — Infantry on buildings tick their capture counter.
