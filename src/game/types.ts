@@ -1,0 +1,20 @@
+export const GRID_SIZE = 20;
+export const TILE_PX = 32;
+
+export const TileType = {
+  Grass: 0,
+  Mountain: 1,
+  City: 2,
+  Factory: 3,
+  HQ: 4,
+} as const;
+
+export type TileType = (typeof TileType)[keyof typeof TileType];
+
+export const TILE_COLORS: Record<TileType, number> = {
+  [TileType.Grass]: 0x4a7c59,
+  [TileType.Mountain]: 0x8b7355,
+  [TileType.City]: 0x708090,
+  [TileType.Factory]: 0x696969,
+  [TileType.HQ]: 0xdaa520,
+};
