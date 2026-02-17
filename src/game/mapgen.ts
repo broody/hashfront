@@ -1,60 +1,54 @@
 import { GRID_SIZE, TileType } from "./types";
 
 /**
- * Generate a fixed symmetrical 20x20 tactics map.
- * Layout is mirrored vertically so both sides are fair.
+ * ASCII map format:
+ *   .  = Grass
+ *   M  = Mountain
+ *   C  = City
+ *   F  = Factory
+ *   H  = HQ
+ *   R  = Road
+ *
+ * Each row is one line, characters map 1:1 to grid columns.
+ * Must be exactly GRID_SIZE x GRID_SIZE.
  */
-export function generateMap(): Uint8Array {
+
+const CHAR_TO_TILE: Record<string, TileType> = {
+  ".": TileType.Grass,
+  M: TileType.Mountain,
+  C: TileType.City,
+  F: TileType.Factory,
+  H: TileType.HQ,
+  R: TileType.Road,
+};
+
+export function parseMap(ascii: string): Uint8Array {
+  const rows = ascii
+    .trim()
+    .split("\n")
+    .map((r) => r.trim());
+
+  if (rows.length !== GRID_SIZE) {
+    throw new Error(`Map must have ${GRID_SIZE} rows, got ${rows.length}`);
+  }
+
   const map = new Uint8Array(GRID_SIZE * GRID_SIZE);
 
-  // Fill with grass
-  for (let i = 0; i < map.length; i++) {
-    map[i] = TileType.Grass;
+  for (let y = 0; y < GRID_SIZE; y++) {
+    if (rows[y].length !== GRID_SIZE) {
+      throw new Error(
+        `Row ${y} must have ${GRID_SIZE} chars, got ${rows[y].length}`,
+      );
+    }
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const ch = rows[y][x];
+      const tile = CHAR_TO_TILE[ch];
+      if (tile === undefined) {
+        throw new Error(`Unknown tile char '${ch}' at (${x},${y})`);
+      }
+      map[y * GRID_SIZE + x] = tile;
+    }
   }
-
-  function set(x: number, y: number, tile: TileType) {
-    map[y * GRID_SIZE + x] = tile;
-  }
-
-  // --- Player A (top) ---
-  set(10, 0, TileType.HQ);
-  set(6, 1, TileType.Factory);
-  set(14, 1, TileType.Factory);
-
-  // --- Player B (bottom) — mirrored ---
-  set(9, 19, TileType.HQ);
-  set(5, 18, TileType.Factory);
-  set(13, 18, TileType.Factory);
-
-  // --- Neutral cities (symmetrical) ---
-  set(3, 4, TileType.City);
-  set(16, 4, TileType.City);
-  set(10, 6, TileType.City);
-  set(3, 15, TileType.City);
-  set(16, 15, TileType.City);
-  set(9, 13, TileType.City);
-
-  // --- Mountains (central chokepoints) ---
-  // Horizontal ridge across center
-  for (let x = 7; x <= 12; x++) {
-    set(x, 9, TileType.Mountain);
-    set(x, 10, TileType.Mountain);
-  }
-  // Gaps at x=9,10 for passage
-  set(9, 9, TileType.Grass);
-  set(10, 9, TileType.Grass);
-  set(9, 10, TileType.Grass);
-  set(10, 10, TileType.Grass);
-
-  // Side mountains
-  set(2, 8, TileType.Mountain);
-  set(2, 9, TileType.Mountain);
-  set(2, 10, TileType.Mountain);
-  set(2, 11, TileType.Mountain);
-  set(17, 8, TileType.Mountain);
-  set(17, 9, TileType.Mountain);
-  set(17, 10, TileType.Mountain);
-  set(17, 11, TileType.Mountain);
 
   return map;
 }
