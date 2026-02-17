@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
-import { Application, Graphics } from "pixi.js";
+import { Application, Assets, Graphics, Sprite, Spritesheet, Texture } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import { tileMap } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
+import { terrainAtlas } from "../game/spritesheets/terrain";
 
 const WORLD_SIZE = GRID_SIZE * TILE_PX;
 
@@ -51,36 +52,120 @@ export default function GameViewport() {
     vp.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
     vp.fitWorld();
 
+    // --- Load terrain spritesheet ---
+    const terrainTexture = await Assets.load({
+      src: "/tilesets/terrain.png",
+      data: { scaleMode: "nearest" },
+    });
+    const terrainSheet = new Spritesheet(terrainTexture, terrainAtlas);
+    await terrainSheet.parse();
+
     // --- Tile rendering ---
     const gridGfx = new Graphics();
     vp.addChild(gridGfx);
 
+    // Weighted grass variants: ~60% plain, ~25% dirt, ~15% weed
+    const grassVariants: [string, number][] = [
+      ["grass", 80],
+      ["grass_dirt_1", 2],
+      ["grass_dirt_2", 2],
+      ["grass_dirt_3", 2],
+      ["grass_dirt_4", 2],
+      ["grass_weed_1", 3],
+      ["grass_weed_2", 3],
+      ["grass_weed_3", 3],
+      ["grass_weed_4", 3],
+    ];
+    const totalWeight = grassVariants.reduce((sum, [, w]) => sum + w, 0);
+
+    function pickGrass(x: number, y: number): string {
+      const hash = ((x * 2654435761) ^ (y * 2246822519)) >>> 0;
+      let roll = hash % totalWeight;
+      for (const [name, weight] of grassVariants) {
+        roll -= weight;
+        if (roll < 0) return name;
+      }
+      return "grass";
+    }
+
+    function isTileType(x: number, y: number, type: TileType): boolean {
+      if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
+      return tileMap[y * GRID_SIZE + x] === type;
+    }
+
+    function pickAutotile(x: number, y: number, type: TileType, prefix: string): string {
+      const left = isTileType(x - 1, y, type);
+      const right = isTileType(x + 1, y, type);
+      const up = isTileType(x, y - 1, type);
+      const down = isTileType(x, y + 1, type);
+
+      const horizontal = left || right;
+      const vertical = up || down;
+
+      // Vertical chain
+      if (vertical && !horizontal) {
+        if (up && down) return `${prefix}_vertical_mid`;
+        if (!up && down) return `${prefix}_top`;
+        if (up && !down) return `${prefix}_bottom`;
+      }
+
+      // Horizontal chain
+      if (horizontal && !vertical) {
+        if (left && right) return `${prefix}_horizontal_mid`;
+        if (!left && right) return `${prefix}_left`;
+        if (left && !right) return `${prefix}_right`;
+      }
+
+      // Corners and edges
+      if (right && down && !left && !up) return `${prefix}_top_left`;
+      if (right && up && !left && !down) return `${prefix}_bottom_left`;
+      if (left && right && down && !up) return `${prefix}_top_mid`;
+      if (left && down && !right && !up) return `${prefix}_top_right`;
+      if (left && right && up && !down) return `${prefix}_bottom_mid`;
+      if (left && up && !right && !down) return `${prefix}_bottom_right`;
+      if (right && up && down && !left) return `${prefix}_mid_left`;
+      if (left && up && down && !right) return `${prefix}_mid_right`;
+      if (left && right && up && down) return `${prefix}_mid_center`;
+
+      return `${prefix}_single`;
+    }
+
+    function addTileSprite(frameName: string, x: number, y: number) {
+      const sprite = new Sprite(terrainSheet.textures[frameName]);
+      sprite.x = x * TILE_PX;
+      sprite.y = y * TILE_PX;
+      sprite.width = TILE_PX;
+      sprite.height = TILE_PX;
+      vp.addChild(sprite);
+    }
+
     for (let y = 0; y < GRID_SIZE; y++) {
       for (let x = 0; x < GRID_SIZE; x++) {
         const tile = tileMap[y * GRID_SIZE + x] as TileType;
-        const color = TILE_COLORS[tile];
-        gridGfx
-          .rect(x * TILE_PX, y * TILE_PX, TILE_PX, TILE_PX)
-          .fill(color);
+
+        if (tile === TileType.Grass) {
+          addTileSprite(pickGrass(x, y), x, y);
+        } else if (tile === TileType.Mountain) {
+          addTileSprite(pickGrass(x, y), x, y);
+          addTileSprite(pickAutotile(x, y, TileType.Mountain, "mountain"), x, y);
+        } else if (tile === TileType.Tree) {
+          addTileSprite(pickGrass(x, y), x, y);
+          addTileSprite(pickAutotile(x, y, TileType.Tree, "tree"), x, y);
+        } else if (tile === TileType.Road) {
+          addTileSprite(pickGrass(x, y), x, y);
+          addTileSprite(pickAutotile(x, y, TileType.Road, "road"), x, y);
+        } else if (tile === TileType.DirtRoad) {
+          addTileSprite(pickGrass(x, y), x, y);
+          addTileSprite(pickAutotile(x, y, TileType.DirtRoad, "dirtroad"), x, y);
+        } else {
+          const color = TILE_COLORS[tile];
+          gridGfx
+            .rect(x * TILE_PX, y * TILE_PX, TILE_PX, TILE_PX)
+            .fill(color);
+        }
       }
     }
 
-    // --- Grid lines ---
-    const lineGfx = new Graphics();
-    vp.addChild(lineGfx);
-
-    for (let x = 0; x <= GRID_SIZE; x++) {
-      lineGfx
-        .moveTo(x * TILE_PX, 0)
-        .lineTo(x * TILE_PX, WORLD_SIZE)
-        .stroke({ color: 0x000000, width: 1, alpha: 0.15 });
-    }
-    for (let y = 0; y <= GRID_SIZE; y++) {
-      lineGfx
-        .moveTo(0, y * TILE_PX)
-        .lineTo(WORLD_SIZE, y * TILE_PX)
-        .stroke({ color: 0x000000, width: 1, alpha: 0.15 });
-    }
 
     // --- Hover highlight ---
     const hoverGfx = new Graphics();
