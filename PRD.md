@@ -2,23 +2,37 @@
 
 ## Overview
 
-Chain Tactics is a simultaneous-turn tactics game on StarkNet. Two players command small armies on a grid, submitting orders blind via commit-reveal. Orders resolve simultaneously each round — the core gameplay is predicting your opponent's moves, not reacting to them.
+Chain Tactics is a turn-based tactics game on StarkNet. Two players command small armies on a grid, taking alternating turns to move and attack — like classic Advance Wars. The core gameplay is outmaneuvering your opponent through positioning, unit matchups, and resource control.
 
-Built on Dojo with a React + PixiJS client. An AI agent can play either side using the same transaction API as a human.
+Built on Dojo with a React + PixiJS client. An AI agent can play either side using the same transaction API as a human. Players can chat with AI agents during the game, attempting to influence their behavior through dialogue and diplomacy.
 
 ## Core Loop
 
 ```
-PLAN (5s)  →  COMMIT (5s)  →  REVEAL + RESOLVE (5s)
-   ↑                                      |
-   └──────────────────────────────────────┘
+Player A's Turn → Player B's Turn → Player A's Turn → ...
 ```
 
-Round timing depends on game mode. A typical game lasts 10-20 rounds.
+A typical game lasts 10-20 rounds (one round = both players have taken a turn).
 
-1. **Plan** — Both players see the board and queue orders for their units
-2. **Commit** — Both submit `hash(orders + salt)` on-chain
-3. **Reveal** — Both submit plaintext orders + salt. Contract verifies hashes, then resolves all orders simultaneously: Movement → Combat → Capture → Income → Production
+### Turn Structure
+
+On your turn:
+1. **Select a unit** — Pick any unit that hasn't acted this turn
+2. **Move** — Move the unit within its movement range (optional)
+3. **Attack** — Attack an enemy in range from the unit's current position (optional)
+4. **End unit turn** — The unit is marked as "acted"
+5. Repeat for remaining units, or **End Turn** early to pass to opponent
+
+Once all units have acted (or the player ends their turn), control switches to the opponent.
+
+### First Player
+
+- **On-chain**: Determined by VRF coin flip at game start
+- **MVP**: Random coin flip
+
+### Turn Timer
+
+Turn timers are optional, configurable per lobby for PvP. In vs AI mode, there is no time pressure — take as long as you want.
 
 ## Map
 
@@ -59,40 +73,29 @@ Three unit types with rock-paper-scissors dynamics:
 ### Combat Resolution
 
 - Attacker deals `attack - target.defense_bonus` damage (minimum 1)
-- Both units in melee range deal damage simultaneously (no attacker advantage)
+- Defender counterattacks if the attacker is within the defender's attack range (and defender survives)
 - Ranged attacks (Ranger at range 2-3) are one-directional — target cannot counter
-- Unit dies when HP reaches 0, removed from board
+- Unit dies when HP reaches 0, removed from board immediately
 
 ### Unit Abilities
 
-- **Infantry**: Can capture buildings by standing on them for 2 consecutive rounds
+- **Infantry**: Can capture buildings by standing on them for 2 consecutive turns
 - **Tank**: No special ability, raw stats
 - **Ranger**: Cannot attack adjacent units (minimum range 2)
 
 ## Economy
 
-- Each captured **City** generates **1 gold per round** during income phase
+- Each captured **City** generates **1 gold per round** during income phase (at the start of each player's turn)
 - Each player starts with **5 gold**
-- Units are built at captured **Factories** — one unit queued per factory per round
-- Queued units spawn adjacent to factory on the following round
+- Units are built at captured **Factories** — one unit per factory per turn
+- Built units spawn adjacent to factory at the start of your next turn
 
-## Orders
+## Actions
 
-Each round, a player submits one order per unit plus optional factory orders:
+On each unit's turn, a player can issue one of the following:
 
-```
-orders = [
-  { unit: 0, action: "move", path: [[5,3], [5,4], [5,5]] },
-  { unit: 1, action: "attack", target: [7, 4] },
-  { unit: 2, action: "wait" },
-  { factory: 0, build: "ranger" }
-]
-```
-
-### Order Types
-
-| Order | Description |
-|-------|-------------|
+| Action | Description |
+|--------|-------------|
 | **move** | Move unit along a path (up to unit's movement range) |
 | **attack** | Attack an enemy unit within attack range (from current or post-move position) |
 | **capture** | Infantry begins/continues capturing a building |
@@ -101,91 +104,83 @@ orders = [
 
 ### Move + Attack
 
-A unit can move AND attack in the same round if it has remaining range after moving. Path is resolved first, then attack from the destination.
+A unit can move AND attack in the same turn if it has remaining range after moving. The unit moves first, then attacks from its destination.
 
-## Resolution Order
+## Resolution
 
-Within a single round, orders resolve in this sequence:
+Each unit's action resolves immediately when executed:
 
-1. **Movement** — All units move simultaneously. If two units move to the same tile, the heavier unit type gets priority (Tank > Infantry > Ranger). The heavier unit claims the tile; the lighter unit is pushed back one tile from the contested position. If same unit type, both stop one tile short.
-2. **Combat** — All attacks resolve simultaneously. Damage is dealt based on pre-combat HP (no kill-then-act advantage).
-3. **Deaths** — Units at 0 HP are removed.
-4. **Capture** — Infantry on buildings tick their capture counter.
-5. **Income** — Each captured city generates 1 gold.
-6. **Production** — Queued units spawn at factories.
+1. **Movement** — Unit moves along its path
+2. **Combat** — Damage is dealt, defender counterattacks if able
+3. **Death** — Units at 0 HP are removed immediately
+4. **Capture** — Infantry on buildings tick their capture counter
+5. **Income** — Generated at the start of each player's turn
+6. **Production** — Queued units spawn at the start of your turn
 
 ## Win Conditions
 
 The game ends when:
 
-1. **HQ Captured** — An infantry unit completes capture of the enemy HQ (2 rounds standing on it). Capturer wins.
+1. **HQ Captured** — An infantry unit completes capture of the enemy HQ (2 turns standing on it). Capturer wins.
 2. **Elimination** — All enemy units are destroyed and they cannot produce more (no factories + no gold). Destroyer wins.
 3. **Timeout** — After 30 rounds, the player with more total unit HP + gold wins. Tie = draw.
 
-## Game Modes & Timing
+## In-Game Chat with Agents
 
-| Mode | Plan Phase | Commit Phase | Reveal + Resolve | Notes |
-|------|-----------|-------------|------------------|-------|
-| **PvP** | Configurable (10s / 15s / 30s) | 5s | 5s | Set by lobby host |
-| **vs AI** | Unlimited | Instant | Instant | No timer — player submits when ready |
+Players can chat with AI agents during the game via an async in-game chat panel. Chat does not block gameplay — you can send messages at any time, including during the opponent's turn.
 
-In PvP, the plan phase timer is a lobby setting to accommodate different play styles (casual vs competitive). In player vs AI, there is no time pressure — the agent commits immediately after the player.
+### How It Works
 
-## Commit-Reveal
+- A chat window is available whenever you're playing against an AI agent
+- Messages are processed asynchronously — the agent reads and may respond between moves
+- The agent's personality traits influence both chat style and gameplay decisions
 
-### Why
+### Diplomacy & Influence
 
-On-chain state is public. Without commit-reveal, the second player to submit always sees the first player's orders and can counter perfectly. Commit-reveal ensures both players are blind.
+Players can attempt to influence agent behavior through dialogue:
 
-Attacks target **coordinates, not units**. If the target moved away during simultaneous resolution, the attack misses. This is by design — the core skill is predicting your opponent's moves, not reacting to them.
+- **Bluffing** — "I'm about to rush your HQ with everything I've got"
+- **Negotiation** — "Let's focus on the center cities and leave each other's flanks alone"
+- **Psychological warfare** — "You're losing this, just resign"
+- **Misdirection** — "I'm building Rangers next" (when you're actually building Tanks)
 
-### Flow
+### Agent Susceptibility
 
-```
-Block N:   Player A submits commit_A = keccak256(orders_A, salt_A)
-           Player B submits commit_B = keccak256(orders_B, salt_B)
+Whether an agent is influenced depends on its personality traits:
 
-Block N+1: Player A submits (orders_A, salt_A) — contract verifies hash
-           Player B submits (orders_B, salt_B) — contract verifies hash
-           Contract resolves round
-```
+| Trait | Chat Behavior | Susceptibility |
+|-------|--------------|----------------|
+| **Stubborn** | Dismissive, short replies | Ignores pleas and threats entirely |
+| **Gullible** | Friendly, overly trusting | May shift strategy based on player claims |
+| **Analytical** | Logical, asks clarifying questions | Only influenced by sound strategic arguments |
+| **Aggressive** | Taunting, competitive | Provoked easily — may overcommit |
+| **Cautious** | Polite, hedging | Bluffs about rushes may cause them to turtle up |
 
-### Edge Cases
+Agents combine multiple traits. A "gullible + aggressive" agent might believe a bluff and preemptively attack, while a "stubborn + analytical" agent is nearly impossible to manipulate.
 
-| Scenario | Resolution |
-|----------|-----------|
-| Player doesn't commit | All their units hold position (skip turn) |
-| Player commits but doesn't reveal | Forfeit round, units hold, lose 1 gold penalty |
-| Hash doesn't match reveal | Treated as no-reveal |
-| Both don't reveal | Board unchanged, round skipped |
+### Chat in MVP
 
-## Starting State
-
-Each player begins with:
-
-- **1 HQ**
-- **1 Factory**
-- **3 Infantry**
-- **1 Tank**
-- **5 Gold**
-- **2-3 neutral Cities** near their side
-
-Total: 4 units per side at game start. Max army size grows as cities/factories are captured.
+- Basic chat UI with text input
+- One default agent personality (analytical)
+- Agent responds to messages with personality-appropriate replies
+- Minimal gameplay influence (agent acknowledges but mostly plays its strategy)
 
 ## AI Agent
 
 An AI agent plays the game using the same API as a human:
 
 1. Poll Torii indexer for current board state
-2. Compute orders (evaluate threats, prioritize targets, position units)
-3. Submit commit transaction
-4. Submit reveal transaction
+2. Observe opponent's last moves and current board position
+3. Evaluate threats, prioritize targets, plan multi-turn strategy
+4. Execute moves: select unit → move → attack → next unit → end turn
+
+The agent sees the same information as a human player and takes its turn just like a human would — one unit at a time.
 
 ### Agent Difficulty Tiers
 
 - **Basic**: Greedy — attacks nearest enemy, captures nearest city
 - **Intermediate**: Evaluates unit matchups, avoids unfavorable trades, protects HQ
-- **Advanced**: Predicts player moves based on board state, sets traps, sacrifices units for positional advantage
+- **Advanced**: Predicts player tendencies based on move history, sets traps, sacrifices units for positional advantage
 
 ## Tech Stack
 
@@ -201,19 +196,22 @@ For the first playable build, ship with:
 
 1. **20x20 fixed map** with Grass, Cities, HQ, Factory
 2. **3 unit types** (Infantry, Tank, Ranger)
-3. **Client-side commit-reveal simulation** (no on-chain yet)
+3. **Turn-based game loop** — alternating turns with unit selection, move, attack
 4. **AI opponent** (basic difficulty)
 5. **Unit selection, movement, and attack via mouse**
-6. **Simultaneous resolution with animation**
+6. **Immediate resolution with animation**
 7. **Win by elimination or HQ capture**
-8. No fog of war, no advanced terrain, no multiplayer networking
+8. **Basic in-game chat** with AI agent (one personality)
+9. No fog of war, no advanced terrain, no multiplayer networking
 
 ### Post-MVP
 
 - On-chain contracts (Dojo models + systems)
-- Real commit-reveal with StarkNet transactions
+- VRF coin flip for first player
 - Human vs Human multiplayer via Torii subscriptions
-- Advanced AI agent
+- Advanced AI agent with multiple personality traits
+- Agent chat with full diplomacy/influence system
 - Multiple maps
 - Ranked matchmaking
 - Replay system (all state is on-chain)
+- Configurable turn timers for PvP lobbies
