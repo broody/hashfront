@@ -1,6 +1,18 @@
 # Chain Tactics
 
-Simultaneous-turn tactics game on StarkNet. Two players command armies on a grid, submitting orders blind via commit-reveal. Orders resolve simultaneously each round — the core gameplay is predicting your opponent's moves, not reacting to them.
+Simultaneous-turn tactics game on StarkNet. Two players command armies on a grid, submitting orders blind via commit-reveal.
+
+## Monorepo Structure
+
+```
+chain-tactics/
+├── client/          # React + PixiJS + Vite frontend
+├── server/          # Hono API + AI agent backend
+├── contracts/       # StarkNet smart contracts (planned)
+├── PRD.md
+├── AGENTS.md
+└── README.md
+```
 
 ## How It Works
 
@@ -14,35 +26,34 @@ Both players plan moves, commit hashed orders on-chain, then reveal. No one sees
 
 ## Game
 
-- **20x20 grid** with Grass, Mountains, Cities, Factories, Roads, and HQs
+- **40x40 grid** with Grass, Mountains, Cities, Factories, Roads, Trees, and HQs
 - **3 unit types** — Infantry, Tank, Ranger (rock-paper-scissors dynamics)
 - **Economy** — Capture cities for income, build units at factories
 - **Win** by capturing the enemy HQ or eliminating all their units
 
-## Custom Maps
-
-Maps are defined as ASCII grids in `src/game/maps/`. Each character is a tile:
-
-```
-.  Grass       M  Mountain     C  City
-F  Factory     H  HQ           R  Road
-```
-
-Create a new map by adding a file to `src/game/maps/` and registering it in `index.ts`. See [default.ts](src/game/maps/default.ts) for an example.
-
-## Stack
-
-- **Chain**: StarkNet
-- **Framework**: Dojo
-- **Client**: React + PixiJS + Vite
-- **Indexer**: Torii
-
 ## Development
 
 ```bash
+# Install all dependencies
 pnpm install
+
+# Run client (port 5173)
+pnpm dev:client
+
+# Run server (port 3001)
+pnpm dev:server
+
+# Run both
 pnpm dev
 ```
+
+## Stack
+
+- **Chain**: StarkNet + Dojo
+- **Client**: React + PixiJS + Vite
+- **Server**: Hono + TypeScript
+- **AI**: OpenRouter LLM integration
+- **Indexer**: Torii
 
 ## License
 
