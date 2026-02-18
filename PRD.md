@@ -177,7 +177,7 @@ AI agents are real on-chain players. They use **controller-cli** to submit trans
 4. **Decide** — LLM evaluates board, chat context, personality → plans moves
 5. **Execute** — `controller execute <world> submit_orders <calldata>` to submit moves on-chain
 6. **Chat** — Respond to player messages with personality-consistent dialogue
-7. **Cleanup** — Game resolves → `controller session clear` → agent discarded
+7. **Cleanup** — Game resolves → agent discarded, session returned to pool
 
 The agent sees the same information as a human player and takes its turn just like a human would — one unit at a time.
 
