@@ -9,7 +9,7 @@ import {
   Texture,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { tileMap, units, addUnit } from "../data/gameStore";
+import { tileMap, units, buildings, addUnit } from "../data/gameStore";
 import type { Unit } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
@@ -57,7 +57,7 @@ export default function GameViewport() {
     app.stage.addChild(vp as any);
 
     vp.drag({ mouseButtons: "left" }).pinch().wheel().clampZoom({
-      minScale: 0.5,
+      minScale: 1,
       maxScale: 4,
     });
 
@@ -210,24 +210,21 @@ export default function GameViewport() {
       }
     }
 
-    // --- Test: render building variants (producing, idle, damaged) ---
-    // Row 1: factory
-    addTileSprite(pickGrass(19, 1), 19, 1);
-    addTileSprite("factory_idle", 19, 1);
-    addTileSprite(pickGrass(20, 1), 20, 1);
-    addTileSprite("factory_damaged", 20, 1);
-    // Row 2: barracks
-    addTileSprite(pickGrass(18, 2), 18, 2);
-    addTileAnim("barracks_producing", 18, 2);
-    addTileSprite(pickGrass(19, 2), 19, 2);
-    addTileSprite("barracks_idle", 19, 2);
-    addTileSprite(pickGrass(20, 2), 20, 2);
-    addTileSprite("barracks_damaged", 20, 2);
-    // HQ: stacked vertically next to barracks
-    addTileSprite(pickGrass(21, 1), 21, 1);
-    addTileSprite("hq_top", 21, 1);
-    addTileSprite(pickGrass(21, 2), 21, 2);
-    addTileSprite("hq_bottom", 21, 2);
+    // --- Render buildings from game state ---
+    for (const b of buildings) {
+      if (b.type === "hq") {
+        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
+        addTileSprite("hq_bottom", b.x, b.y);
+        addTileSprite(pickGrass(b.x, b.y - 1), b.x, b.y - 1);
+        addTileSprite("hq_top", b.x, b.y - 1);
+      } else if (b.type === "factory") {
+        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
+        addTileAnim("factory_producing", b.x, b.y);
+      } else if (b.type === "barracks") {
+        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
+        addTileAnim("barracks_producing", b.x, b.y);
+      }
+    }
 
     // --- Load unit spritesheets ---
     const [blueTexture, redTexture, greenTexture, yellowTexture] =
@@ -266,42 +263,29 @@ export default function GameViewport() {
       yellow: yellowSheet,
     };
 
-    // --- Spawn test units ---
-    const unitTypes = [
-      "civilian",
-      "rifle",
-      "rpg",
-      "mg",
-      "sidecar",
-      "bulldozer",
-      "transporter",
-      "buggy",
-      "jeep",
-      "artillery",
-      "tank",
-      "heavy_tank",
-    ];
-    const teams: Unit["team"][] = ["blue", "red", "green", "yellow"];
-    for (let i = 0; i < unitTypes.length; i++) {
-      for (let t = 0; t < teams.length; t++) {
-        addUnit(unitTypes[i], teams[t], 1 + t * 10, 12 + i);
-      }
-    }
-
+    // PRD unit types: Infantry (rifle), Tank (tank), Ranger (artillery)
     const UNIT_MOVE_RANGE: Record<string, number> = {
-      civilian: 5,
-      rifle: 5,
-      rpg: 4,
-      mg: 4,
-      sidecar: 6,
-      bulldozer: 4,
-      transporter: 6,
-      buggy: 7,
-      jeep: 7,
-      artillery: 3,
-      tank: 4,
-      heavy_tank: 3,
+      rifle: 3, // Infantry
+      tank: 2, // Tank
+      artillery: 2, // Ranger
     };
+
+    // --- Spawn starting units ---
+    // Blue team (west side, near HQ at 1,7)
+    addUnit("rifle", "blue", 2, 6);
+    addUnit("rifle", "blue", 2, 8);
+    addUnit("tank", "blue", 3, 7);
+    addUnit("artillery", "blue", 1, 5);
+
+    // Red team (east side, near HQ at 18,8)
+    const r1 = addUnit("rifle", "red", 17, 7);
+    r1.facing = "left";
+    const r2 = addUnit("rifle", "red", 17, 9);
+    r2.facing = "left";
+    const r3 = addUnit("tank", "red", 16, 8);
+    r3.facing = "left";
+    const r4 = addUnit("artillery", "red", 18, 10);
+    r4.facing = "left";
 
     // --- Render units ---
     const unitSprites = new Map<number, AnimatedSprite>();

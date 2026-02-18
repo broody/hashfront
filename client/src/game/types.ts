@@ -1,4 +1,4 @@
-export const GRID_SIZE = 40;
+export const GRID_SIZE = 20;
 export const TILE_PX = 32;
 
 export const TileType = {

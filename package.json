@@ -4,6 +4,6 @@
   "scripts": {
     "dev:client": "pnpm --filter @chain-tactics/client dev",
     "dev:server": "pnpm --filter @chain-tactics/server dev",
-    "dev": "pnpm run dev:client & pnpm run dev:server"
+    "dev": "pnpm run dev:client"
   }
 }
