@@ -2,128 +2,183 @@
 
 ## Overview
 
-Chain Tactics is a turn-based tactics game on StarkNet. Two players command small armies on a grid, taking alternating turns to move and attack — like classic Advance Wars. The core gameplay is outmaneuvering your opponent through positioning, unit matchups, and resource control.
+Chain Tactics is a turn-based tactics game on StarkNet. Two to four players command small armies on a grid, taking alternating turns to move and attack — like classic Advance Wars. The core gameplay is outmaneuvering your opponent through positioning, unit matchups, and resource control.
 
 Built on Dojo with a React + PixiJS client. An AI agent can play either side using the same transaction API as a human. Players can chat with AI agents during the game, attempting to influence their behavior through dialogue and diplomacy.
 
-## Core Loop
+## Game Flow
 
-```
-Player A's Turn → Player B's Turn → Player A's Turn → ...
-```
+### Map Registration
 
-A typical game lasts 10-20 rounds (one round = both players have taken a turn).
+Maps are reusable templates registered on-chain via `register_map`. A map defines three layers:
+
+- **Terrain** — sparse list of non-grass tiles (grass is the default)
+- **Buildings** — structures with explicit player slot ownership (HQs, Factories, Cities)
+- **Units** — starting army positions per player slot
+
+Player count is derived from the number of HQ buildings (2–4). All data is packed into `u32` arrays for compact calldata.
+
+### Lobby & Player Slots
+
+1. A player calls `create_game(map_id, player_id)` — picks their slot (1–4), copies the map template into per-game state
+2. Other players call `join_game(game_id, player_id)` — first come first served for remaining slots
+3. When all slots are filled, the game transitions to **Playing** — starting units spawn, buildings are counted, and Player 1's income/production runs
 
 ### Turn Structure
 
-On your turn:
-1. **Select a unit** — Pick any unit that hasn't acted this turn
-2. **Move** — Move the unit within its movement range (optional)
-3. **Attack** — Attack an enemy in range from the unit's current position (optional)
-4. **End unit turn** — The unit is marked as "acted"
-5. Repeat for remaining units, or **End Turn** early to pass to opponent
+```
+Player 1's Turn → Player 2's Turn → ... → Player N's Turn → Round increments → ...
+```
 
-Once all units have acted (or the player ends their turn), control switches to the opponent.
+On your turn, for each unit:
+1. **Move** — Move the unit within its movement range (optional)
+2. **Act** — Attack an enemy, capture a building, or wait (optional)
+3. The unit is marked as acted
+
+System actions **end_turn**:
+- Resets stale capture progress (infantry that moved off a building)
+- Advances to the next alive player
+- Increments round when wrapping back to Player 1
+- Runs income and production for the next player
 
 ### First Player
 
-- **On-chain**: Determined by VRF coin flip at game start
-- **MVP**: Random coin flip
-
-### Turn Timer
-
-Turn timers are optional, configurable per lobby for PvP. In vs AI mode, there is no time pressure — take as long as you want.
+Player 1 always goes first. The first player to create the game picks their slot.
 
 ## Map
 
-- **20x20 grid**, each tile is one of: Grass, City, Factory, Mountain, HQ
+- **Configurable grid size** (e.g. 20x20), stored per game
 - Fixed symmetrical layouts (no procedural generation) to ensure balance
-- Tile pixel size: 32-40px for clear tactical readability
 
-### Terrain Effects
+### Terrain Types
 
-| Terrain | Movement Cost | Defense Bonus | Notes |
-|---------|--------------|---------------|-------|
-| **Grass** | 1 | 0 | Default |
-| **Mountain** | 2 | +2 | Infantry only |
-| **City** | 1 | +1 | Capturable, generates 1 gold/round |
-| **Factory** | 1 | +1 | Capturable, produces units |
-| **HQ** | 1 | +2 | Lose if captured |
+| Terrain | Char | Movement Cost | Defense Bonus | Notes |
+|---------|------|--------------|---------------|-------|
+| **Grass** | `.` | 1 | 0 | Default (not stored) |
+| **Mountain** | `M` | 2 | +2 | Infantry only |
+| **City** | `C` | 1 | +1 | Building: capturable, generates income |
+| **Factory** | `F` | 1 | +1 | Building: capturable, produces units |
+| **HQ** | `H` | 1 | +2 | Building: lose if captured |
+| **Road** | `R` | 1 | 0 | |
+| **Tree** | `T` | 1 | +1 | |
+| **DirtRoad** | `D` | 1 | 0 | |
 
-### Example Layout (20x20 symmetrical)
+### Buildings
 
-```
-  Player A's HQ + Factory at top
-  3-4 Cities scattered in top half
-  Mountains/chokepoints in center
-  3-4 Cities scattered in bottom half
-  Player B's HQ + Factory at bottom
-```
+Buildings are a separate layer from terrain. Each building has:
+- **Type**: City, Factory, or HQ
+- **Owner**: player slot (1–4) or 0 (neutral)
+- **Capture state**: which player is capturing and progress toward threshold
+- **Production queue**: unit type being built (Factory only)
+
+Building ownership is defined in the map template and copied into each game instance.
 
 ## Units
 
 Three unit types with rock-paper-scissors dynamics:
 
-| Unit | Move | Attack Range | HP | Attack | Strong vs | Weak vs | Cost |
-|------|------|--------------|----|--------|-----------|---------|------|
-| **Infantry** | 3 | 1 | 3 | 2 | Captures buildings, cheap fodder | Tank, Ranger | 1 |
-| **Tank** | 2 | 1 | 5 | 4 | Infantry, other Tanks | Ranger (at range) | 3 |
-| **Ranger** | 2 | 2-3 | 2 | 3 | Tank (from distance) | Infantry (up close) | 2 |
+| Unit | HP | Attack | Move | Range | Cost | Special |
+|------|-----|--------|------|-------|------|---------|
+| **Infantry** | 3 | 2 | 3 | 1 | 1 | Captures buildings, traverses mountains |
+| **Tank** | 5 | 4 | 2 | 1 | 3 | Raw combat power |
+| **Ranger** | 2 | 3 | 2 | 2–3 | 2 | Cannot attack adjacent (min range 2) |
 
 ### Combat Resolution
 
-- Attacker deals `attack - target.defense_bonus` damage (minimum 1)
-- Defender counterattacks if the attacker is within the defender's attack range (and defender survives)
-- Ranged attacks (Ranger at range 2-3) are one-directional — target cannot counter
-- Unit dies when HP reaches 0, removed from board immediately
+- Attacker deals `attack_power - defender_terrain_defense` damage (minimum 1)
+- If defender survives **and** attacker is within defender's attack range, defender counterattacks at full attack power (no terrain defense applied to attacker)
+- Ranger attacks at range 2–3 are one-directional — melee units cannot counter
+- Unit dies at 0 HP, removed immediately
+- After a kill, the system checks for player elimination
 
-### Unit Abilities
+### Movement
 
-- **Infantry**: Can capture buildings by standing on them for 2 consecutive turns
-- **Tank**: No special ability, raw stats
-- **Ranger**: Cannot attack adjacent units (minimum range 2)
+- Units move along a client-computed path validated step-by-step on-chain
+- Each step must be adjacent (no diagonals), in bounds, and on traversable terrain
+- Total movement cost must not exceed the unit's move range
+- Path tiles (except destination) must be unoccupied
+- Mountains cost 2 movement and are infantry-only
+
+### Unit Flags
+
+Each unit tracks `has_moved` and `has_acted` per turn. A unit can:
+- Move then act (attack/capture/wait)
+- Act without moving
+- Wait (sets both flags)
+
+Flags reset at the start of the owning player's next turn.
 
 ## Economy
 
-- Each captured **City** generates **1 gold per round** during income phase (at the start of each player's turn)
-- Each player starts with **5 gold**
-- Units are built at captured **Factories** — one unit per factory per turn
-- Built units spawn adjacent to factory at the start of your next turn
+| Constant | Value |
+|----------|-------|
+| Starting gold | 5 |
+| Income per city | 1 gold/turn |
+| Capture threshold | 2 turns |
+
+- **Income** runs at the start of each player's turn: `cities_owned × 1 gold`
+- **Production** runs at the start of each player's turn: queued units spawn at their factory if the tile is unoccupied
+- Produced units spawn with `has_moved = true, has_acted = true` (cannot act on the turn they spawn)
+- Units are queued at Factories via `build_unit` — gold is deducted immediately
 
 ## Actions
 
-On each unit's turn, a player can issue one of the following:
+| Action | System Call | Description |
+|--------|-----------|-------------|
+| **Move** | `move_unit(game_id, unit_id, path)` | Move unit along validated path |
+| **Attack** | `attack(game_id, unit_id, target_id)` | Attack enemy unit in range |
+| **Capture** | `capture(game_id, unit_id)` | Infantry captures building at current position |
+| **Wait** | `wait_unit(game_id, unit_id)` | End unit's turn without acting |
+| **Build** | `build_unit(game_id, factory_x, factory_y, unit_type)` | Queue production at owned factory |
+| **End Turn** | `end_turn(game_id)` | Pass control to next player |
 
-| Action | Description |
-|--------|-------------|
-| **move** | Move unit along a path (up to unit's movement range) |
-| **attack** | Attack an enemy unit within attack range (from current or post-move position) |
-| **capture** | Infantry begins/continues capturing a building |
-| **wait** | Unit holds position |
-| **build** | Queue a unit at a factory (costs gold) |
+### Capture Mechanics
 
-### Move + Attack
-
-A unit can move AND attack in the same turn if it has remaining range after moving. The unit moves first, then attacks from its destination.
-
-## Resolution
-
-Each unit's action resolves immediately when executed:
-
-1. **Movement** — Unit moves along its path
-2. **Combat** — Damage is dealt, defender counterattacks if able
-3. **Death** — Units at 0 HP are removed immediately
-4. **Capture** — Infantry on buildings tick their capture counter
-5. **Income** — Generated at the start of each player's turn
-6. **Production** — Queued units spawn at the start of your turn
+- Only **Infantry** can capture
+- Standing on an enemy/neutral building increments capture progress
+- If a different player starts capturing, progress resets to 1 for the new player
+- At threshold (2), ownership transfers — old owner loses building counts, new owner gains them
+- Capturing an **HQ** immediately ends the game (capturer wins)
+- If infantry moves off a building before capture completes, progress resets on the owner's next turn
 
 ## Win Conditions
 
-The game ends when:
+1. **HQ Captured** — An infantry completes capture of an enemy HQ. Capturer wins instantly.
+2. **Elimination** — A player loses their HQ, or has 0 units + 0 factories + 0 gold. They are eliminated. Last player standing wins.
+3. **Timeout** — After 30 rounds, the alive player with the highest score (total unit HP + gold) wins.
 
-1. **HQ Captured** — An infantry unit completes capture of the enemy HQ (2 turns standing on it). Capturer wins.
-2. **Elimination** — All enemy units are destroyed and they cannot produce more (no factories + no gold). Destroyer wins.
-3. **Timeout** — After 30 rounds, the player with more total unit HP + gold wins. Tie = draw.
+## On-Chain Architecture
+
+### Models (Dojo ECS)
+
+| Model | Keys | Description |
+|-------|------|-------------|
+| `GameCounter` | `id` | Global counter for game/map IDs |
+| `Game` | `game_id` | Game state, dimensions, current player, round |
+| `PlayerState` | `game_id, player_id` | Address, gold, unit/building counts, alive status |
+| `Tile` | `game_id, x, y` | Per-game terrain type |
+| `Building` | `game_id, x, y` | Per-game building with ownership and capture state |
+| `Unit` | `game_id, unit_id` | Position, HP, type, movement/action flags |
+| `MapInfo` | `map_id` | Template metadata (dimensions, counts) |
+| `MapTile` | `map_id, seq` | Template terrain (sparse, non-grass only) |
+| `MapBuilding` | `map_id, seq` | Template building with player slot ownership |
+| `MapUnit` | `map_id, seq` | Template starting unit placement |
+
+### Data Encoding
+
+Map data uses packed `u32` values for compact calldata:
+
+- **Tiles**: `(grid_index << 8) | tile_type` — only non-grass tiles
+- **Buildings**: `(player_id << 24) | (building_type << 16) | (x << 8) | y`
+- **Units**: `(player_id << 24) | (unit_type << 16) | (x << 8) | y`
+
+### View Functions (Debug)
+
+- `get_terrain(map_id)` → `(width, height, Array<u32>)` — sparse terrain tiles
+- `get_buildings(map_id)` → `(width, height, Array<u32>)` — buildings with ownership
+- `get_units(map_id)` → `(width, height, Array<u32>)` — starting unit placements
+
+The client uses the **Torii indexer** for real-time game state via gRPC subscriptions. View functions are for debugging only.
 
 ## In-Game Chat with Agents
 
@@ -158,13 +213,6 @@ Whether an agent is influenced depends on its personality traits:
 
 Agents combine multiple traits. A "gullible + aggressive" agent might believe a bluff and preemptively attack, while a "stubborn + analytical" agent is nearly impossible to manipulate.
 
-### Chat in MVP
-
-- Basic chat UI with text input
-- One default agent personality (analytical)
-- Agent responds to messages with personality-appropriate replies
-- Minimal gameplay influence (agent acknowledges but mostly plays its strategy)
-
 ## AI Agent
 
 AI agents are real on-chain players. They use **controller-cli** to submit transactions through Cartridge Controller sessions — the same interface as human players. No backdoors, no separate API.
@@ -172,14 +220,12 @@ AI agents are real on-chain players. They use **controller-cli** to submit trans
 ### Agent Lifecycle
 
 1. **Spawn** — Game server creates agent with personality traits + strategy tier
-2. **Auth** — Agents use pre-authorized credentials (preset session keys) so they can play instantly with no browser auth flow. The game server holds a pool of pre-provisioned Controller sessions scoped to the game contract.
-3. **Observe** — `controller call <world> get_board_state <game_id>` via RPC to read current state
+2. **Auth** — Agents use pre-authorized credentials (preset session keys) so they can play instantly with no browser auth flow
+3. **Observe** — Read current game state via Torii indexer
 4. **Decide** — LLM evaluates board, chat context, personality → plans moves
-5. **Execute** — `controller execute <world> submit_orders <calldata>` to submit moves on-chain
+5. **Execute** — Submit transactions on-chain (move, attack, capture, end_turn)
 6. **Chat** — Respond to player messages with personality-consistent dialogue
 7. **Cleanup** — Game resolves → agent discarded, session returned to pool
-
-The agent sees the same information as a human player and takes its turn just like a human would — one unit at a time.
 
 ### Agent Difficulty Tiers
 
@@ -193,30 +239,28 @@ The agent sees the same information as a human player and takes its turn just li
 - **Framework**: Dojo (models for units, buildings, game state)
 - **Indexer**: Torii (gRPC subscriptions for real-time state)
 - **Client**: React + PixiJS + Vite
+- **Wallet**: Cartridge Controller (session keys for gasless play)
 - **Agent**: TypeScript, controller-cli for on-chain txs, OpenRouter for LLM
 
-## MVP Scope (Prototype)
+## MVP Scope
 
-For the first playable build, ship with:
-
-1. **20x20 fixed map** with Grass, Cities, HQ, Factory
+1. **Configurable map** with all 8 terrain types + buildings + starting units
 2. **3 unit types** (Infantry, Tank, Ranger)
-3. **Turn-based game loop** — alternating turns with unit selection, move, attack
-4. **AI opponent** (basic difficulty)
-5. **Unit selection, movement, and attack via mouse**
-6. **Immediate resolution with animation**
-7. **Win by elimination or HQ capture**
-8. **Basic in-game chat** with AI agent (one personality)
-9. No fog of war, no advanced terrain, no multiplayer networking
+3. **Full turn-based game loop** — move, attack, capture, build, end turn
+4. **Economy** — income from cities, unit production at factories
+5. **Win conditions** — HQ capture, elimination, timeout
+6. **AI opponent** (basic difficulty)
+7. **Basic in-game chat** with AI agent (one personality)
+8. No fog of war, no advanced terrain effects beyond what's implemented
 
 ### Post-MVP
 
-- On-chain contracts (Dojo models + systems)
 - VRF coin flip for first player
 - Human vs Human multiplayer via Torii subscriptions
 - Advanced AI agent with multiple personality traits
 - Agent chat with full diplomacy/influence system
-- Multiple maps
+- Multiple maps with map selection in lobby
+- 3–4 player support
 - Ranked matchmaking
 - Replay system (all state is on-chain)
 - Configurable turn timers for PvP lobbies
