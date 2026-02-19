@@ -6,7 +6,6 @@ import {
   Graphics,
   Sprite,
   Spritesheet,
-  Texture,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import { tileMap, units, addUnit } from "../data/gameStore";
@@ -149,7 +148,9 @@ export default function GameViewport() {
     }
 
     function addTileSprite(frameName: string, x: number, y: number) {
-      const sprite = new Sprite(terrainSheet.textures[frameName]);
+      const sprite = new Sprite(
+        terrainSheet.textures[frameName as keyof typeof terrainSheet.textures],
+      );
       sprite.x = x * TILE_PX;
       sprite.y = y * TILE_PX;
       sprite.width = TILE_PX;
@@ -158,7 +159,10 @@ export default function GameViewport() {
     }
 
     function addTileAnim(animName: string, x: number, y: number) {
-      const frames = terrainSheet.animations[animName];
+      const frames =
+        terrainSheet.animations[
+          animName as keyof typeof terrainSheet.animations
+        ];
       const anim = new AnimatedSprite(frames);
       anim.animationSpeed = 0.05;
       anim.play();

@@ -10,6 +10,7 @@ const TILE_COST: Record<TileType, number> = {
   [TileType.HQ]: 1,
   [TileType.Mountain]: 2,
   [TileType.Tree]: -1, // impassable
+  [TileType.Barracks]: 1,
 };
 
 interface Node {
