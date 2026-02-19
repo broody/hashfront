@@ -1,4 +1,3 @@
-pub const GRID_SIZE: u8 = 20;
 pub const MAX_ROUNDS: u8 = 30;
 pub const STARTING_GOLD: u8 = 5;
 pub const CAPTURE_THRESHOLD: u8 = 2;

@@ -22,6 +22,7 @@ const CHAR_TO_TILE: Record<string, TileType> = {
   R: TileType.Road,
   T: TileType.Tree,
   D: TileType.DirtRoad,
+  B: TileType.Barracks,
 };
 
 export function parseMap(ascii: string): Uint8Array {

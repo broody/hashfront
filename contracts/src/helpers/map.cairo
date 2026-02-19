@@ -13,3 +13,15 @@ pub fn xy_to_index(x: u8, y: u8, width: u8) -> u16 {
     let xi: u16 = x.into();
     yi * w + xi
 }
+
+pub fn is_adjacent(x1: u8, y1: u8, x2: u8, y2: u8) -> bool {
+    let dx = if x1 > x2 { x1 - x2 } else { x2 - x1 };
+    let dy = if y1 > y2 { y1 - y2 } else { y2 - y1 };
+    (dx + dy) == 1
+}
+
+pub fn manhattan_distance(x1: u8, y1: u8, x2: u8, y2: u8) -> u8 {
+    let dx = if x1 > x2 { x1 - x2 } else { x2 - x1 };
+    let dy = if y1 > y2 { y1 - y2 } else { y2 - y1 };
+    dx + dy
+}

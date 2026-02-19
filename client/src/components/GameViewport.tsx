@@ -9,7 +9,7 @@ import {
   Texture,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { tileMap, units, buildings, addUnit } from "../data/gameStore";
+import { tileMap, units, addUnit } from "../data/gameStore";
 import type { Unit } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
@@ -201,28 +201,17 @@ export default function GameViewport() {
         } else if (tile === TileType.HQ) {
           addTileSprite(pickGrass(x, y), x, y);
           addTileSprite("hq_bottom", x, y);
-          addTileSprite(pickGrass(x, y - 1), x, y - 1);
-          addTileSprite("hq_top", x, y - 1);
+          if (y > 0) {
+            addTileSprite(pickGrass(x, y - 1), x, y - 1);
+            addTileSprite("hq_top", x, y - 1);
+          }
+        } else if (tile === TileType.Barracks) {
+          addTileSprite(pickGrass(x, y), x, y);
+          addTileAnim("barracks_producing", x, y);
         } else {
           const color = TILE_COLORS[tile];
           gridGfx.rect(x * TILE_PX, y * TILE_PX, TILE_PX, TILE_PX).fill(color);
         }
-      }
-    }
-
-    // --- Render buildings from game state ---
-    for (const b of buildings) {
-      if (b.type === "hq") {
-        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
-        addTileSprite("hq_bottom", b.x, b.y);
-        addTileSprite(pickGrass(b.x, b.y - 1), b.x, b.y - 1);
-        addTileSprite("hq_top", b.x, b.y - 1);
-      } else if (b.type === "factory") {
-        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
-        addTileAnim("factory_producing", b.x, b.y);
-      } else if (b.type === "barracks") {
-        addTileSprite(pickGrass(b.x, b.y), b.x, b.y);
-        addTileAnim("barracks_producing", b.x, b.y);
       }
     }
 

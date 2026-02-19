@@ -21,4 +21,6 @@ pub struct Game {
     pub round: u8,
     pub next_unit_id: u8,
     pub winner: u8,
+    pub width: u8,
+    pub height: u8,
 }

@@ -1,0 +1,3626 @@
+{
+  "world": {
+    "class_hash": "0x613551abceb2b37073b1149bb862ea70cf029981ce1ca47e9dd7c7ab97cb65d",
+    "address": "0x685d0550dbc9d81f1ba73a45d5c60c1712fc8c8f579feadbf8d964f94fafab0",
+    "seed": "chain_tactics",
+    "name": "Chain Tactics",
+    "entrypoints": [
+      "uuid",
+      "set_metadata",
+      "register_namespace",
+      "register_event",
+      "register_model",
+      "register_contract",
+      "register_external_contract",
+      "register_library",
+      "init_contract",
+      "upgrade_event",
+      "upgrade_model",
+      "upgrade_contract",
+      "upgrade_external_contract",
+      "emit_event",
+      "emit_events",
+      "set_entity",
+      "set_entities",
+      "delete_entity",
+      "delete_entities",
+      "grant_owner",
+      "revoke_owner",
+      "grant_writer",
+      "revoke_writer",
+      "upgrade"
+    ]
+  },
+  "contracts": [
+    {
+      "address": "0x527bdfa1db488491572576b9fa3119f315e1c3d2e2ba95168b573fb5bb36820",
+      "class_hash": "0x7419ff82c9707592306cf7c1ec49b23b5d4e4d1e017586e56b65d4f64ea8d16",
+      "init_calldata": [],
+      "tag": "chain_tactics-actions",
+      "selector": "0x10d95ab7e962c6637491dc1551130b8ada3cc9f2c3421c79d75623ca922466c",
+      "systems": [
+        "register_map",
+        "create_game",
+        "join_game",
+        "move_unit",
+        "attack",
+        "capture",
+        "wait_unit",
+        "build_unit",
+        "end_turn",
+        "upgrade"
+      ]
+    }
+  ],
+  "libraries": [],
+  "models": [
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType",
+          "key": false
+        },
+        {
+          "name": "owner",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "capture_player",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "capture_progress",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "queued_unit",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x1c39df6c4ff205cf1f10788a9067139920703fe433b0b50b3c4839c0f147f43",
+      "tag": "chain_tactics-Building",
+      "selector": "0x4ecf43b372aa0394176c21985100b004ac1b18679eeb95c0f2914caee89cd7c"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "state",
+          "type": "chain_tactics::types::GameState",
+          "key": false
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "num_players",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "current_player",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "next_unit_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x2da41544fc6ec959a72f4913f1cc42bcf223f88708ec028618b527e18b395d4",
+      "tag": "chain_tactics-Game",
+      "selector": "0x2be78c5ae6b0c742cd7ba5ec45363e60f831c26cc9e0ea446ba482a4e204484"
+    },
+    {
+      "members": [
+        {
+          "name": "id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32",
+          "key": false
+        }
+      ],
+      "class_hash": "0x69fa2a68b64cda5198c8581197dbfdf0d43044319e30ba28bc0e2e710b6af1b",
+      "tag": "chain_tactics-GameCounter",
+      "selector": "0x322841f49335c0df79641e2b97a2a86f5f7b514fe9caebf03bd464f94d8420e"
+    },
+    {
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "tile_count",
+          "type": "core::integer::u16",
+          "key": false
+        }
+      ],
+      "class_hash": "0x3611699cd33becee7c7a5fae74237980b3916b16b14b7f6c85d5cef8b28ae9e",
+      "tag": "chain_tactics-MapInfo",
+      "selector": "0x6bbbbf7c95e6ac498db0be731189a5f420852612aa558065bfeab09b5952225"
+    },
+    {
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u16",
+          "key": true
+        },
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType",
+          "key": false
+        }
+      ],
+      "class_hash": "0x481cf3546d986a873c6c8da8e96af1447f6d8521142824de20cb4aa387e3199",
+      "tag": "chain_tactics-MapTile",
+      "selector": "0x6f29437299071183095d64ca6ac3a0379a150dd6692afed76b4040db00682df"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "key": false
+        },
+        {
+          "name": "gold",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "factory_count",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "city_count",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool",
+          "key": false
+        }
+      ],
+      "class_hash": "0x2fcc574bbcc05a4117c3359ef7ada93bc45f0d846da0da6beee203f01c20e21",
+      "tag": "chain_tactics-PlayerState",
+      "selector": "0x24cb685db879872a1f4ba7ce535c11e9f94d12213506ab073bf74737a69bac0"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType",
+          "key": false
+        }
+      ],
+      "class_hash": "0x229de9ccb23c18f7946f93b88bcac17417f74aec0a4961a791239e5c3fd8d95",
+      "tag": "chain_tactics-Tile",
+      "selector": "0x4f4446b29928375e095539f4355dcbf0f4e96b423a669711e78c2c73d4349d1"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType",
+          "key": false
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "hp",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "has_moved",
+          "type": "core::bool",
+          "key": false
+        },
+        {
+          "name": "has_acted",
+          "type": "core::bool",
+          "key": false
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool",
+          "key": false
+        }
+      ],
+      "class_hash": "0x2cbe52e1f808b6aca44343590b65c2fb9da65ae137199905a5762ba9be74ec8",
+      "tag": "chain_tactics-Unit",
+      "selector": "0x7d97b4eeac0257748dd5b8c659493ab7ac45d6850c7eeb659e92457daf095f"
+    }
+  ],
+  "events": [
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x5d39f86de5ecc41103b15e639fa3df8122d41371d5bde795261068bc3c1e070",
+      "tag": "chain_tactics-BuildingCaptured",
+      "selector": "0x1511a36332d08800c50a7512aa6e17a53855a92a15edb8f6bf49f19d3beada"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x5aca55b1efafe09c1b5bbb9bb6228f3b08811be2e2407a69dd7d4887ae34cf2",
+      "tag": "chain_tactics-GameCreated",
+      "selector": "0x4cc43058221a44ad5db1ce977ef8c273cf77a420245022577a581292fe0f934"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x3308ab23988bc5603dd6a597ce21ff5048c87dd397f39d04e66f006d04871ea",
+      "tag": "chain_tactics-GameOver",
+      "selector": "0x6835f6c616a047990f383867e4c56bfd9f696acaa09c067e4c6131a4924dab9"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x401cc571b9f1a1d60751862084a7456fe102d41619c87b7502d8e5d49b065b8",
+      "tag": "chain_tactics-GameStarted",
+      "selector": "0x2f7f4cdaef2f698e0631822428f3f5da7ee282df95e86afe965e97b808f15bf"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x3afdb76e00bb2c0cf2844c25cf09d8899d8e2a9c7e46b0c0b69bb81b5b7a52d",
+      "tag": "chain_tactics-PlayerJoined",
+      "selector": "0x4f7c023b57664636a37ea8d68416b48856c1e7e6903729513796d77e05742eb"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "next_player",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x66461c26a50018a375d93a45e0ab2dbf8005dc922c6facad1ec999e126f2ffe",
+      "tag": "chain_tactics-TurnEnded",
+      "selector": "0x6c4e576167579cb860e0b22854c485571c28013150cf062a48ec66ff0cc060e"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "attacker_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "target_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "damage_to_defender",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "damage_to_attacker",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x675206b81f381b3f1e841998ad92b3c20a27e86ed1ef9805bad60f81dee968e",
+      "tag": "chain_tactics-UnitAttacked",
+      "selector": "0x1ccf66b1b7153baf1d15bc20b252d542f0f6ee9ccdefb31375f96dff6a1ff05"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType",
+          "key": false
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x546455a02086f62720b2789256f802f7cee4d060b4146cedb1de8cee818b3b4",
+      "tag": "chain_tactics-UnitBuilt",
+      "selector": "0x1226370148482c07ff97d68eddfdbc20690dd5cdb9bdcc9e35646cf81d772"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x6a8a4e4dc0eb7d52d8c41117d3aa0b34435d525991a490bf128816f6695270a",
+      "tag": "chain_tactics-UnitDied",
+      "selector": "0xd6ff2482c61592012b1d686c8c82dd179b6f046fbe4b31a069627a13387de1"
+    },
+    {
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x3934db7f6d782f29e26ea782085c8f4262e5843c30fb1398078268c93ac0568",
+      "tag": "chain_tactics-UnitMoved",
+      "selector": "0x4f9c767c42c24b2b8dfe826a6945e0d9162018dc430587c616a1071047c1acf"
+    }
+  ],
+  "external_contracts": [],
+  "abis": [
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::BuildingCaptured",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::BuildingCapturedValue",
+      "members": [
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameCreated",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameCreatedValue",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameOver",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameOverValue",
+      "members": [
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameStarted",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::GameStartedValue",
+      "members": [
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::PlayerJoined",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::PlayerJoinedValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::TurnEnded",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "next_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::TurnEndedValue",
+      "members": [
+        {
+          "name": "next_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitAttacked",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "attacker_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "target_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_defender",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_attacker",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitAttackedValue",
+      "members": [
+        {
+          "name": "attacker_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "target_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_defender",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_attacker",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitBuilt",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitBuiltValue",
+      "members": [
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitDied",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitDiedValue",
+      "members": [
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitMoved",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::events::UnitMovedValue",
+      "members": [
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_BuildingCaptured::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_GameCreated::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_GameOver::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_GameStarted::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_PlayerJoined::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_TurnEnded::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_UnitAttacked::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_UnitBuilt::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_UnitDied::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::events::e_UnitMoved::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::building::Building",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType"
+        },
+        {
+          "name": "owner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_progress",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "queued_unit",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::building::BuildingValue",
+      "members": [
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType"
+        },
+        {
+          "name": "owner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_progress",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "queued_unit",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::building::m_Building::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::game::Game",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "state",
+          "type": "chain_tactics::types::GameState"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "num_players",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "current_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "next_unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::game::GameCounter",
+      "members": [
+        {
+          "name": "id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::game::GameCounterValue",
+      "members": [
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::game::GameValue",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "state",
+          "type": "chain_tactics::types::GameState"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "num_players",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "current_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "next_unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::game::m_Game::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::game::m_GameCounter::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapInfo",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_count",
+          "type": "core::integer::u16"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapInfoValue",
+      "members": [
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_count",
+          "type": "core::integer::u16"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapTile",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapTileValue",
+      "members": [
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::map::m_MapInfo::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::map::m_MapTile::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::player::PlayerState",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "gold",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "factory_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "city_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::player::PlayerStateValue",
+      "members": [
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "gold",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "factory_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "city_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::player::m_PlayerState::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::tile::Tile",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::tile::TileValue",
+      "members": [
+        {
+          "name": "tile_type",
+          "type": "chain_tactics::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::tile::m_Tile::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::unit::Unit",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "hp",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "has_moved",
+          "type": "core::bool"
+        },
+        {
+          "name": "has_acted",
+          "type": "core::bool"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::unit::UnitValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "hp",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "has_moved",
+          "type": "core::bool"
+        },
+        {
+          "name": "has_acted",
+          "type": "core::bool"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::unit::m_Unit::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "interface",
+      "name": "chain_tactics::systems::actions::IActions",
+      "items": [
+        {
+          "type": "function",
+          "name": "register_map",
+          "inputs": [
+            {
+              "name": "player_count",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "width",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "height",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "tiles",
+              "type": "core::array::Array::<core::integer::u8>"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u8"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "create_game",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u32"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "join_game",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "move_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "path",
+              "type": "core::array::Array::<chain_tactics::types::Vec2>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "attack",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "target_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "capture",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "wait_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "build_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "factory_x",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "factory_y",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "unit_type",
+              "type": "chain_tactics::types::UnitType"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "end_turn",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::systems::actions::actions::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "UpgradeableEvent",
+          "type": "dojo::contract::components::upgradeable::upgradeable_cpt::Event",
+          "kind": "nested"
+        },
+        {
+          "name": "WorldProviderEvent",
+          "type": "dojo::contract::components::world_provider::world_provider_cpt::Event",
+          "kind": "nested"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chain_tactics::types::BuildingType",
+      "variants": [
+        {
+          "name": "None",
+          "type": "()"
+        },
+        {
+          "name": "City",
+          "type": "()"
+        },
+        {
+          "name": "Factory",
+          "type": "()"
+        },
+        {
+          "name": "HQ",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chain_tactics::types::GameState",
+      "variants": [
+        {
+          "name": "Lobby",
+          "type": "()"
+        },
+        {
+          "name": "Playing",
+          "type": "()"
+        },
+        {
+          "name": "Finished",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chain_tactics::types::TileType",
+      "variants": [
+        {
+          "name": "Grass",
+          "type": "()"
+        },
+        {
+          "name": "Mountain",
+          "type": "()"
+        },
+        {
+          "name": "City",
+          "type": "()"
+        },
+        {
+          "name": "Factory",
+          "type": "()"
+        },
+        {
+          "name": "HQ",
+          "type": "()"
+        },
+        {
+          "name": "Road",
+          "type": "()"
+        },
+        {
+          "name": "Tree",
+          "type": "()"
+        },
+        {
+          "name": "DirtRoad",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "chain_tactics::types::UnitType",
+      "variants": [
+        {
+          "name": "None",
+          "type": "()"
+        },
+        {
+          "name": "Infantry",
+          "type": "()"
+        },
+        {
+          "name": "Tank",
+          "type": "()"
+        },
+        {
+          "name": "Ranger",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::types::Vec2",
+      "members": [
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "constructor",
+      "name": "constructor",
+      "inputs": []
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<(core::felt252, dojo::meta::introspect::Ty)>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<core::array::Span::<core::felt252>>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<core::array::Span::<core::felt252>>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<core::felt252>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<core::felt252>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<core::integer::u8>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<core::integer::u8>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<dojo::meta::introspect::Member>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<dojo::meta::introspect::Member>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<dojo::meta::introspect::Ty>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<dojo::meta::introspect::Ty>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<dojo::meta::layout::FieldLayout>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<dojo::meta::layout::FieldLayout>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<dojo::meta::layout::Layout>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<dojo::meta::layout::Layout>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::array::Span::<dojo::model::definition::ModelIndex>",
+      "members": [
+        {
+          "name": "snapshot",
+          "type": "@core::array::Array::<dojo::model::definition::ModelIndex>"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "core::bool",
+      "variants": [
+        {
+          "name": "False",
+          "type": "()"
+        },
+        {
+          "name": "True",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "core::byte_array::ByteArray",
+      "members": [
+        {
+          "name": "data",
+          "type": "core::array::Array::<core::bytes_31::bytes31>"
+        },
+        {
+          "name": "pending_word",
+          "type": "core::felt252"
+        },
+        {
+          "name": "pending_word_len",
+          "type": "core::internal::bounded_int::BoundedInt::<0, 30>"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "core::option::Option::<core::integer::u32>",
+      "variants": [
+        {
+          "name": "Some",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "None",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::contract::components::upgradeable::IUpgradeable",
+      "items": [
+        {
+          "type": "function",
+          "name": "upgrade",
+          "inputs": [
+            {
+              "name": "new_class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::contract::components::upgradeable::upgradeable_cpt::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "Upgraded",
+          "type": "dojo::contract::components::upgradeable::upgradeable_cpt::Upgraded",
+          "kind": "nested"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::contract::components::upgradeable::upgradeable_cpt::Upgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::contract::components::world_provider::IWorldProvider",
+      "items": [
+        {
+          "type": "function",
+          "name": "world_dispatcher",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "dojo::world::iworld::IWorldDispatcher"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::contract::components::world_provider::world_provider_cpt::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "interface",
+      "name": "dojo::contract::interface::IContract",
+      "items": []
+    },
+    {
+      "type": "struct",
+      "name": "dojo::event::event::EventDef",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray"
+        },
+        {
+          "name": "layout",
+          "type": "dojo::meta::layout::Layout"
+        },
+        {
+          "name": "schema",
+          "type": "dojo::meta::introspect::Struct"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::event::interface::IEvent",
+      "items": [
+        {
+          "type": "function",
+          "name": "definition",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "dojo::event::event::EventDef"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::meta::interface::IDeployedResource",
+      "items": [
+        {
+          "type": "function",
+          "name": "dojo_name",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::byte_array::ByteArray"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::meta::interface::IStoredResource",
+      "items": [
+        {
+          "type": "function",
+          "name": "layout",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "schema",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "dojo::meta::introspect::Struct"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::meta::introspect::Enum",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::felt252"
+        },
+        {
+          "name": "attrs",
+          "type": "core::array::Span::<core::felt252>"
+        },
+        {
+          "name": "children",
+          "type": "core::array::Span::<(core::felt252, dojo::meta::introspect::Ty)>"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::meta::introspect::Member",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::felt252"
+        },
+        {
+          "name": "attrs",
+          "type": "core::array::Span::<core::felt252>"
+        },
+        {
+          "name": "ty",
+          "type": "dojo::meta::introspect::Ty"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::meta::introspect::Struct",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::felt252"
+        },
+        {
+          "name": "attrs",
+          "type": "core::array::Span::<core::felt252>"
+        },
+        {
+          "name": "children",
+          "type": "core::array::Span::<dojo::meta::introspect::Member>"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "dojo::meta::introspect::Ty",
+      "variants": [
+        {
+          "name": "Primitive",
+          "type": "core::felt252"
+        },
+        {
+          "name": "Struct",
+          "type": "dojo::meta::introspect::Struct"
+        },
+        {
+          "name": "Enum",
+          "type": "dojo::meta::introspect::Enum"
+        },
+        {
+          "name": "Tuple",
+          "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+        },
+        {
+          "name": "Array",
+          "type": "core::array::Span::<dojo::meta::introspect::Ty>"
+        },
+        {
+          "name": "ByteArray",
+          "type": "()"
+        },
+        {
+          "name": "FixedArray",
+          "type": "(core::array::Span::<dojo::meta::introspect::Ty>, core::integer::u32)"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::meta::layout::FieldLayout",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252"
+        },
+        {
+          "name": "layout",
+          "type": "dojo::meta::layout::Layout"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "dojo::meta::layout::Layout",
+      "variants": [
+        {
+          "name": "Fixed",
+          "type": "core::array::Span::<core::integer::u8>"
+        },
+        {
+          "name": "Struct",
+          "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+        },
+        {
+          "name": "Tuple",
+          "type": "core::array::Span::<dojo::meta::layout::Layout>"
+        },
+        {
+          "name": "Array",
+          "type": "core::array::Span::<dojo::meta::layout::Layout>"
+        },
+        {
+          "name": "ByteArray",
+          "type": "()"
+        },
+        {
+          "name": "Enum",
+          "type": "core::array::Span::<dojo::meta::layout::FieldLayout>"
+        },
+        {
+          "name": "FixedArray",
+          "type": "(core::array::Span::<dojo::meta::layout::Layout>, core::integer::u32)"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::model::definition::ModelDef",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray"
+        },
+        {
+          "name": "layout",
+          "type": "dojo::meta::layout::Layout"
+        },
+        {
+          "name": "schema",
+          "type": "dojo::meta::introspect::Struct"
+        },
+        {
+          "name": "packed_size",
+          "type": "core::option::Option::<core::integer::u32>"
+        },
+        {
+          "name": "unpacked_size",
+          "type": "core::option::Option::<core::integer::u32>"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "dojo::model::definition::ModelIndex",
+      "variants": [
+        {
+          "name": "Keys",
+          "type": "core::array::Span::<core::felt252>"
+        },
+        {
+          "name": "Id",
+          "type": "core::felt252"
+        },
+        {
+          "name": "MemberId",
+          "type": "(core::felt252, core::felt252)"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::model::interface::IModel",
+      "items": [
+        {
+          "type": "function",
+          "name": "unpacked_size",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "packed_size",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::option::Option::<core::integer::u32>"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "definition",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "dojo::model::definition::ModelDef"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "use_legacy_storage",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::model::metadata::ResourceMetadata",
+      "members": [
+        {
+          "name": "resource_id",
+          "type": "core::felt252"
+        },
+        {
+          "name": "metadata_uri",
+          "type": "core::byte_array::ByteArray"
+        },
+        {
+          "name": "metadata_hash",
+          "type": "core::felt252"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::world::iworld::IUpgradeableWorld",
+      "items": [
+        {
+          "type": "function",
+          "name": "upgrade",
+          "inputs": [
+            {
+              "name": "new_class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "dojo::world::iworld::IWorld",
+      "items": [
+        {
+          "type": "function",
+          "name": "resource",
+          "inputs": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "dojo::world::resource::Resource"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "world_version",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::felt252"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "uuid",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u32"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "metadata",
+          "inputs": [
+            {
+              "name": "resource_selector",
+              "type": "core::felt252"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "dojo::model::metadata::ResourceMetadata"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "set_metadata",
+          "inputs": [
+            {
+              "name": "metadata",
+              "type": "dojo::model::metadata::ResourceMetadata"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_namespace",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_event",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_model",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_contract",
+          "inputs": [
+            {
+              "name": "salt",
+              "type": "core::felt252"
+            },
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_external_contract",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "contract_name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "instance_name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "block_number",
+              "type": "core::integer::u64"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "register_library",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            },
+            {
+              "name": "name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "version",
+              "type": "core::byte_array::ByteArray"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "init_contract",
+          "inputs": [
+            {
+              "name": "selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "init_calldata",
+              "type": "core::array::Span::<core::felt252>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "upgrade_event",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "upgrade_model",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "upgrade_contract",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "class_hash",
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::starknet::class_hash::ClassHash"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "upgrade_external_contract",
+          "inputs": [
+            {
+              "name": "namespace",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "instance_name",
+              "type": "core::byte_array::ByteArray"
+            },
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "block_number",
+              "type": "core::integer::u64"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "emit_event",
+          "inputs": [
+            {
+              "name": "event_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "keys",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "values",
+              "type": "core::array::Span::<core::felt252>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "emit_events",
+          "inputs": [
+            {
+              "name": "event_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "keys",
+              "type": "core::array::Span::<core::array::Span::<core::felt252>>"
+            },
+            {
+              "name": "values",
+              "type": "core::array::Span::<core::array::Span::<core::felt252>>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "entity",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "index",
+              "type": "dojo::model::definition::ModelIndex"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::array::Span::<core::felt252>"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "entities",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "indexes",
+              "type": "core::array::Span::<dojo::model::definition::ModelIndex>"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::array::Span::<core::array::Span::<core::felt252>>"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "set_entity",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "index",
+              "type": "dojo::model::definition::ModelIndex"
+            },
+            {
+              "name": "values",
+              "type": "core::array::Span::<core::felt252>"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "set_entities",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "indexes",
+              "type": "core::array::Span::<dojo::model::definition::ModelIndex>"
+            },
+            {
+              "name": "values",
+              "type": "core::array::Span::<core::array::Span::<core::felt252>>"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "delete_entity",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "index",
+              "type": "dojo::model::definition::ModelIndex"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "delete_entities",
+          "inputs": [
+            {
+              "name": "model_selector",
+              "type": "core::felt252"
+            },
+            {
+              "name": "indexes",
+              "type": "core::array::Span::<dojo::model::definition::ModelIndex>"
+            },
+            {
+              "name": "layout",
+              "type": "dojo::meta::layout::Layout"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_owner",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "grant_owner",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "revoke_owner",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "owners_count",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "is_writer",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "contract",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "grant_writer",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "contract",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "revoke_writer",
+          "inputs": [
+            {
+              "name": "resource",
+              "type": "core::felt252"
+            },
+            {
+              "name": "contract",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "dojo::world::iworld::IWorldDispatcher",
+      "members": [
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "dojo::world::resource::Resource",
+      "variants": [
+        {
+          "name": "Model",
+          "type": "(core::starknet::contract_address::ContractAddress, core::felt252)"
+        },
+        {
+          "name": "Event",
+          "type": "(core::starknet::contract_address::ContractAddress, core::felt252)"
+        },
+        {
+          "name": "Contract",
+          "type": "(core::starknet::contract_address::ContractAddress, core::felt252)"
+        },
+        {
+          "name": "Namespace",
+          "type": "core::byte_array::ByteArray"
+        },
+        {
+          "name": "World",
+          "type": "()"
+        },
+        {
+          "name": "Unregistered",
+          "type": "()"
+        },
+        {
+          "name": "Library",
+          "type": "(core::starknet::class_hash::ClassHash, core::felt252)"
+        },
+        {
+          "name": "ExternalContract",
+          "type": "(core::starknet::contract_address::ContractAddress, core::felt252)"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ContractInitialized",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "init_calldata",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ContractRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "salt",
+          "type": "core::felt252",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ContractUpgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "WorldSpawned",
+          "type": "dojo::world::world_contract::world::WorldSpawned",
+          "kind": "nested"
+        },
+        {
+          "name": "WorldUpgraded",
+          "type": "dojo::world::world_contract::world::WorldUpgraded",
+          "kind": "nested"
+        },
+        {
+          "name": "NamespaceRegistered",
+          "type": "dojo::world::world_contract::world::NamespaceRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "ModelRegistered",
+          "type": "dojo::world::world_contract::world::ModelRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "EventRegistered",
+          "type": "dojo::world::world_contract::world::EventRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractRegistered",
+          "type": "dojo::world::world_contract::world::ContractRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "ExternalContractRegistered",
+          "type": "dojo::world::world_contract::world::ExternalContractRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "ExternalContractUpgraded",
+          "type": "dojo::world::world_contract::world::ExternalContractUpgraded",
+          "kind": "nested"
+        },
+        {
+          "name": "ModelUpgraded",
+          "type": "dojo::world::world_contract::world::ModelUpgraded",
+          "kind": "nested"
+        },
+        {
+          "name": "EventUpgraded",
+          "type": "dojo::world::world_contract::world::EventUpgraded",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractUpgraded",
+          "type": "dojo::world::world_contract::world::ContractUpgraded",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractInitialized",
+          "type": "dojo::world::world_contract::world::ContractInitialized",
+          "kind": "nested"
+        },
+        {
+          "name": "LibraryRegistered",
+          "type": "dojo::world::world_contract::world::LibraryRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "EventEmitted",
+          "type": "dojo::world::world_contract::world::EventEmitted",
+          "kind": "nested"
+        },
+        {
+          "name": "MetadataUpdate",
+          "type": "dojo::world::world_contract::world::MetadataUpdate",
+          "kind": "nested"
+        },
+        {
+          "name": "StoreSetRecord",
+          "type": "dojo::world::world_contract::world::StoreSetRecord",
+          "kind": "nested"
+        },
+        {
+          "name": "StoreUpdateRecord",
+          "type": "dojo::world::world_contract::world::StoreUpdateRecord",
+          "kind": "nested"
+        },
+        {
+          "name": "StoreUpdateMember",
+          "type": "dojo::world::world_contract::world::StoreUpdateMember",
+          "kind": "nested"
+        },
+        {
+          "name": "StoreDelRecord",
+          "type": "dojo::world::world_contract::world::StoreDelRecord",
+          "kind": "nested"
+        },
+        {
+          "name": "WriterUpdated",
+          "type": "dojo::world::world_contract::world::WriterUpdated",
+          "kind": "nested"
+        },
+        {
+          "name": "OwnerUpdated",
+          "type": "dojo::world::world_contract::world::OwnerUpdated",
+          "kind": "nested"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::EventEmitted",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "system_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "keys",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        },
+        {
+          "name": "values",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::EventRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::EventUpgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "prev_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ExternalContractRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "contract_name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "instance_name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "contract_selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "block_number",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ExternalContractUpgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "instance_name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "contract_selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "block_number",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::LibraryRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::MetadataUpdate",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "resource",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "uri",
+          "type": "core::byte_array::ByteArray",
+          "kind": "data"
+        },
+        {
+          "name": "hash",
+          "type": "core::felt252",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ModelRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "name",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::ModelUpgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "prev_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::NamespaceRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "namespace",
+          "type": "core::byte_array::ByteArray",
+          "kind": "key"
+        },
+        {
+          "name": "hash",
+          "type": "core::felt252",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::OwnerUpdated",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "resource",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "contract",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "value",
+          "type": "core::bool",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::StoreDelRecord",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "entity_id",
+          "type": "core::felt252",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::StoreSetRecord",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "entity_id",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "keys",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        },
+        {
+          "name": "values",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::StoreUpdateMember",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "entity_id",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "member_selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "values",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::StoreUpdateRecord",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "selector",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "entity_id",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "values",
+          "type": "core::array::Span::<core::felt252>",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::WorldSpawned",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "creator",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::WorldUpgraded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "class_hash",
+          "type": "core::starknet::class_hash::ClassHash",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "dojo::world::world_contract::world::WriterUpdated",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "resource",
+          "type": "core::felt252",
+          "kind": "key"
+        },
+        {
+          "name": "contract",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "value",
+          "type": "core::bool",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "dojo_init",
+      "inputs": [],
+      "outputs": [],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "ensure_abi",
+      "inputs": [
+        {
+          "name": "event",
+          "type": "chain_tactics::events::UnitMoved"
+        }
+      ],
+      "outputs": [],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "ensure_unique",
+      "inputs": [],
+      "outputs": [],
+      "state_mutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "ensure_values",
+      "inputs": [
+        {
+          "name": "value",
+          "type": "chain_tactics::events::UnitMovedValue"
+        }
+      ],
+      "outputs": [],
+      "state_mutability": "view"
+    }
+  ]
+}

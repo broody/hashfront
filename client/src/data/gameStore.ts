@@ -7,18 +7,6 @@ export const tileMap = parseMap(maps[0].data);
 // --- Teams ---
 export type TeamId = "blue" | "red" | "green" | "yellow";
 
-export interface Building {
-  type: "hq" | "factory" | "barracks";
-  team: TeamId;
-  x: number;
-  y: number;
-}
-
-export const buildings: Building[] = [
-  { type: "hq", team: "blue", x: 1, y: 7 },
-  { type: "hq", team: "red", x: 18, y: 8 },
-];
-
 // --- Units ---
 export interface Unit {
   id: number;

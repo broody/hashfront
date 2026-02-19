@@ -10,6 +10,7 @@ export const TileType = {
   Road: 5,
   Tree: 6,
   DirtRoad: 7,
+  Barracks: 8,
 } as const;
 
 export type TileType = (typeof TileType)[keyof typeof TileType];
@@ -23,4 +24,5 @@ export const TILE_COLORS: Record<TileType, number> = {
   [TileType.Road]: 0x9e9e9e,
   [TileType.Tree]: 0x2d5a1e,
   [TileType.DirtRoad]: 0x8b7355,
+  [TileType.Barracks]: 0x556b2f,
 };
