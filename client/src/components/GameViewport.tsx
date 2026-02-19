@@ -35,6 +35,7 @@ export default function GameViewport() {
       resizeTo: containerRef.current,
       backgroundColor: 0x001a33,
       antialias: false,
+      roundPixels: true,
     });
 
     // Guard against strict mode double-mount race
@@ -60,9 +61,11 @@ export default function GameViewport() {
       maxScale: 4,
     });
 
-    // Center on the map
+    // Initial zoom and center on the map
+    vp.scale.set(2);
     vp.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
-    vp.fitWorld();
+    vp.x = Math.round(vp.x);
+    vp.y = Math.round(vp.y);
 
     // --- Draw Background Grid ---
     const bgGrid = new Graphics();
