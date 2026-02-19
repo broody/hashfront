@@ -7,7 +7,9 @@ use chain_tactics::systems::actions::IActionsDispatcherTrait;
 use chain_tactics::types::{BuildingType, GameState, UnitType};
 use dojo::model::ModelStorage;
 use starknet::testing::{set_account_contract_address, set_contract_address};
-use super::common::{PLAYER1, PLAYER2, build_test_tiles, setup};
+use super::common::{
+    PLAYER1, PLAYER2, build_test_buildings, build_test_tiles, build_test_units, setup,
+};
 
 /// Helper: register map + create game as PLAYER1, return (map_id, game_id).
 fn create_test_game() -> (
@@ -18,8 +20,9 @@ fn create_test_game() -> (
     set_account_contract_address(caller);
 
     let (actions_dispatcher, world) = setup();
-    let map_id = actions_dispatcher.register_map(2, 20, 20, build_test_tiles());
-    let game_id = actions_dispatcher.create_game(map_id);
+    let map_id = actions_dispatcher
+        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
+    let game_id = actions_dispatcher.create_game(map_id, 1);
     (actions_dispatcher, world, game_id)
 }
 
@@ -31,7 +34,7 @@ fn test_join_game() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // Game should transition to Playing (2-player map is now full)
     let game: Game = world.read_model(game_id);
@@ -52,7 +55,7 @@ fn test_join_game_spawns_units() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // Game should have spawned 2 infantry (one per player)
     let game: Game = world.read_model(game_id);
@@ -85,7 +88,7 @@ fn test_join_game_assigns_hqs() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // HQs should be assigned to players
     let hq1: Building = world.read_model((game_id, 0_u8, 0_u8));
@@ -104,7 +107,7 @@ fn test_join_game_runs_p1_income() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // P1 should have starting gold (no cities on test map, so income = 0)
     let ps1: PlayerState = world.read_model((game_id, 1_u8));
@@ -120,7 +123,7 @@ fn test_join_game_already_joined() {
     let p1 = PLAYER1();
     set_contract_address(p1);
     set_account_contract_address(p1);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 }
 
 #[test]
@@ -132,13 +135,13 @@ fn test_join_game_full() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // Player 3 tries to join a full game
     let p3: starknet::ContractAddress = 'PLAYER3'.try_into().unwrap();
     set_contract_address(p3);
     set_account_contract_address(p3);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 }
 
 #[test]
@@ -150,11 +153,11 @@ fn test_join_game_already_playing() {
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     // Try joining a game that's already Playing
     let p3: starknet::ContractAddress = 'PLAYER3'.try_into().unwrap();
     set_contract_address(p3);
     set_account_contract_address(p3);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 }

@@ -9,7 +9,7 @@ fi
 MAP_ID="$1"
 
 # Call the view function — output is hex values like 0x0x00...0a wrapped in [ ]
-RAW=$(sozo call chain_tactics-actions get_map "$MAP_ID" 2>&1)
+RAW=$(sozo call chain_tactics-actions get_terrain "$MAP_ID" 2>&1)
 
 # Strip brackets, parse hex to decimal
 VALUES=()
@@ -39,13 +39,27 @@ fi
 
 LOOKUP=('.' 'M' 'C' 'F' 'H' 'R' 'T' 'D')
 
-i=0
+# Build full grid initialized to grass
+TOTAL=$(( WIDTH * HEIGHT ))
+declare -a GRID
+for (( i=0; i<TOTAL; i++ )); do
+  GRID[$i]='.'
+done
+
+# Unpack each u32: (grid_index << 8) | tile_type
+for (( t=0; t<TILE_COUNT; t++ )); do
+  PACKED=${TILES[$t]}
+  IDX=$(( PACKED / 256 ))
+  TYPE=$(( PACKED % 256 ))
+  GRID[$IDX]="${LOOKUP[$TYPE]}"
+done
+
+# Print grid
 for (( y=0; y<HEIGHT; y++ )); do
   ROW=""
   for (( x=0; x<WIDTH; x++ )); do
-    V=${TILES[$i]}
-    ROW+="${LOOKUP[$V]}"
-    (( i++ )) || true
+    IDX=$(( y * WIDTH + x ))
+    ROW+=$(printf '%-2s' "${GRID[$IDX]}")
   done
   echo "$ROW"
 done

@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x613551abceb2b37073b1149bb862ea70cf029981ce1ca47e9dd7c7ab97cb65d",
-    "address": "0x685d0550dbc9d81f1ba73a45d5c60c1712fc8c8f579feadbf8d964f94fafab0",
-    "seed": "chain_tactics",
+    "address": "0x436666648b351b1d2e6370c800fbcc2b84cddf2b9f9d901db39050b323940f",
+    "seed": "chain_tactics_1",
     "name": "Chain Tactics",
     "entrypoints": [
       "uuid",
@@ -33,8 +33,8 @@
   },
   "contracts": [
     {
-      "address": "0x527bdfa1db488491572576b9fa3119f315e1c3d2e2ba95168b573fb5bb36820",
-      "class_hash": "0x2506ec4f9ca67eeb0a248d4d990145bc219c39a7e7baacfda57574559e616d2",
+      "address": "0x39f2b3b53ba3630b74171173698699b02434337e5538943574dc1080150ad83",
+      "class_hash": "0x248418811193c6929a1727aa7655dcb835932d8b1de447e517aac66be76930a",
       "init_calldata": [],
       "tag": "chain_tactics-actions",
       "selector": "0x10d95ab7e962c6637491dc1551130b8ada3cc9f2c3421c79d75623ca922466c",
@@ -188,6 +188,43 @@
           "key": true
         },
         {
+          "name": "seq",
+          "type": "core::integer::u16",
+          "key": true
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType",
+          "key": false
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x44a02d50d5746742c82d9a41ed6355346d918e6ecb86018fdbe05f5560d90bc",
+      "tag": "chain_tactics-MapBuilding",
+      "selector": "0x123326471d7febb3960a76b2e1f1c9d57dd7cc604337bee776847af4957643b"
+    },
+    {
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
           "name": "player_count",
           "type": "core::integer::u8",
           "key": false
@@ -206,9 +243,19 @@
           "name": "tile_count",
           "type": "core::integer::u16",
           "key": false
+        },
+        {
+          "name": "building_count",
+          "type": "core::integer::u16",
+          "key": false
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u16",
+          "key": false
         }
       ],
-      "class_hash": "0x3611699cd33becee7c7a5fae74237980b3916b16b14b7f6c85d5cef8b28ae9e",
+      "class_hash": "0x18274e968b52194cb990eec6e4fa436718f73959b6f6c07a23a481842752280",
       "tag": "chain_tactics-MapInfo",
       "selector": "0x6bbbbf7c95e6ac498db0be731189a5f420852612aa558065bfeab09b5952225"
     },
@@ -220,9 +267,14 @@
           "key": true
         },
         {
-          "name": "index",
+          "name": "seq",
           "type": "core::integer::u16",
           "key": true
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u16",
+          "key": false
         },
         {
           "name": "tile_type",
@@ -230,9 +282,46 @@
           "key": false
         }
       ],
-      "class_hash": "0x481cf3546d986a873c6c8da8e96af1447f6d8521142824de20cb4aa387e3199",
+      "class_hash": "0x57a01bdb53109f7c60facbdeba29a2a10f4f19d6df713d497ff4628c0e6def2",
       "tag": "chain_tactics-MapTile",
       "selector": "0x6f29437299071183095d64ca6ac3a0379a150dd6692afed76b4040db00682df"
+    },
+    {
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8",
+          "key": true
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16",
+          "key": true
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType",
+          "key": false
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8",
+          "key": false
+        }
+      ],
+      "class_hash": "0x5ca1ba514efe5c00d256e4b708a7608bf1b172b9ee8a09f8f81c8dadaea1d3a",
+      "tag": "chain_tactics-MapUnit",
+      "selector": "0x3ff9624e321fc641d91ac3b8574bbec07bd5af451abee7d94661df1945e8b99"
     },
     {
       "members": [
@@ -1187,6 +1276,58 @@
     },
     {
       "type": "struct",
+      "name": "chain_tactics::models::map::MapBuilding",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapBuildingValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "chain_tactics::types::BuildingType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
       "name": "chain_tactics::models::map::MapInfo",
       "members": [
         {
@@ -1207,6 +1348,14 @@
         },
         {
           "name": "tile_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "building_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "unit_count",
           "type": "core::integer::u16"
         }
       ]
@@ -1230,6 +1379,14 @@
         {
           "name": "tile_count",
           "type": "core::integer::u16"
+        },
+        {
+          "name": "building_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u16"
         }
       ]
     },
@@ -1240,6 +1397,10 @@
         {
           "name": "map_id",
           "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
         },
         {
           "name": "index",
@@ -1256,10 +1417,72 @@
       "name": "chain_tactics::models::map::MapTileValue",
       "members": [
         {
+          "name": "index",
+          "type": "core::integer::u16"
+        },
+        {
           "name": "tile_type",
           "type": "chain_tactics::types::TileType"
         }
       ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapUnit",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "chain_tactics::models::map::MapUnitValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "chain_tactics::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::map::m_MapBuilding::Event",
+      "kind": "enum",
+      "variants": []
     },
     {
       "type": "event",
@@ -1270,6 +1493,12 @@
     {
       "type": "event",
       "name": "chain_tactics::models::map::m_MapTile::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "chain_tactics::models::map::m_MapUnit::Event",
       "kind": "enum",
       "variants": []
     },
@@ -1493,7 +1722,15 @@
             },
             {
               "name": "tiles",
-              "type": "core::array::Array::<core::integer::u8>"
+              "type": "core::array::Array::<core::integer::u32>"
+            },
+            {
+              "name": "buildings",
+              "type": "core::array::Array::<core::integer::u32>"
+            },
+            {
+              "name": "units",
+              "type": "core::array::Array::<core::integer::u32>"
             }
           ],
           "outputs": [
@@ -1509,6 +1746,10 @@
           "inputs": [
             {
               "name": "map_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "player_id",
               "type": "core::integer::u8"
             }
           ],
@@ -1526,6 +1767,10 @@
             {
               "name": "game_id",
               "type": "core::integer::u32"
+            },
+            {
+              "name": "player_id",
+              "type": "core::integer::u8"
             }
           ],
           "outputs": [],
@@ -1641,7 +1886,7 @@
         },
         {
           "type": "function",
-          "name": "get_map",
+          "name": "get_terrain",
           "inputs": [
             {
               "name": "map_id",
@@ -1650,7 +1895,39 @@
           ],
           "outputs": [
             {
-              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u8>)"
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_buildings",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_units",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
             }
           ],
           "state_mutability": "view"

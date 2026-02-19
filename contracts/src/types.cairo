@@ -112,3 +112,26 @@ pub impl TileTypeIntoBuildingType of Into<TileType, BuildingType> {
         }
     }
 }
+
+pub impl U8IntoBuildingType of Into<u8, BuildingType> {
+    fn into(self: u8) -> BuildingType {
+        match self {
+            0 => BuildingType::None,
+            1 => BuildingType::City,
+            2 => BuildingType::Factory,
+            3 => BuildingType::HQ,
+            _ => panic!("Invalid building type"),
+        }
+    }
+}
+
+pub impl BuildingTypeIntoU8 of Into<BuildingType, u8> {
+    fn into(self: BuildingType) -> u8 {
+        match self {
+            BuildingType::None => 0,
+            BuildingType::City => 1,
+            BuildingType::Factory => 2,
+            BuildingType::HQ => 3,
+        }
+    }
+}

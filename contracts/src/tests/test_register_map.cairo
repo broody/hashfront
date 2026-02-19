@@ -1,9 +1,9 @@
-use chain_tactics::models::map::{MapInfo, MapTile};
+use chain_tactics::models::map::{MapInfo, MapTile, MapUnit};
 use chain_tactics::systems::actions::IActionsDispatcherTrait;
-use chain_tactics::types::TileType;
+use chain_tactics::types::{TileType, UnitType};
 use dojo::model::ModelStorage;
 use starknet::testing::{set_account_contract_address, set_contract_address};
-use super::common::{PLAYER1, build_test_tiles, setup};
+use super::common::{PLAYER1, build_test_buildings, build_test_tiles, build_test_units, setup};
 
 #[test]
 fn test_register_map() {
@@ -13,7 +13,8 @@ fn test_register_map() {
 
     let (actions_dispatcher, mut world) = setup();
 
-    let map_id = actions_dispatcher.register_map(2, 20, 20, build_test_tiles());
+    let map_id = actions_dispatcher
+        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
     assert(map_id == 1, 'map_id should be 1');
 
     // Verify MapInfo
@@ -21,20 +22,31 @@ fn test_register_map() {
     assert(info.player_count == 2, 'wrong player_count');
     assert(info.width == 20, 'wrong width');
     assert(info.height == 20, 'wrong height');
-    let expected: u16 = 20 * 20;
-    assert(info.tile_count == expected, 'wrong tile_count');
+    assert(info.tile_count == 2, 'wrong tile_count');
+    assert(info.building_count == 2, 'wrong building_count');
+    assert(info.unit_count == 2, 'wrong unit_count');
 
-    // Verify HQ tiles were written
-    let hq_tile: MapTile = world.read_model((map_id, 0_u16)); // index 0 = (0,0)
+    // Verify HQ tiles were written (keyed by seq)
+    let hq_tile: MapTile = world.read_model((map_id, 0_u16));
+    assert(hq_tile.index == 0, 'first tile index should be 0');
     assert(hq_tile.tile_type == TileType::HQ, 'first tile should be HQ');
 
-    let last_index: u16 = expected - 1;
-    let hq_tile2: MapTile = world.read_model((map_id, last_index)); // index 399 = (19,19)
-    assert(hq_tile2.tile_type == TileType::HQ, 'last tile should be HQ');
+    let hq_tile2: MapTile = world.read_model((map_id, 1_u16));
+    assert(hq_tile2.index == 399, 'second tile index should be 399');
+    assert(hq_tile2.tile_type == TileType::HQ, 'second tile should be HQ');
 
-    // Verify grass tiles were NOT written (default to Grass)
-    let grass_tile: MapTile = world.read_model((map_id, 1_u16));
-    assert(grass_tile.tile_type == TileType::Grass, 'should default to Grass');
+    // Verify units were written
+    let u0: MapUnit = world.read_model((map_id, 0_u16));
+    assert(u0.player_id == 1, 'u0 player_id');
+    assert(u0.unit_type == UnitType::Infantry, 'u0 unit_type');
+    assert(u0.x == 1, 'u0 x');
+    assert(u0.y == 0, 'u0 y');
+
+    let u1: MapUnit = world.read_model((map_id, 1_u16));
+    assert(u1.player_id == 2, 'u1 player_id');
+    assert(u1.unit_type == UnitType::Infantry, 'u1 unit_type');
+    assert(u1.x == 18, 'u1 x');
+    assert(u1.y == 19, 'u1 y');
 }
 
 #[test]
@@ -45,109 +57,120 @@ fn test_register_map_with_mixed_tiles() {
 
     let (actions_dispatcher, mut world) = setup();
 
-    // Build a map with various tile types
-    let size: u32 = 20 * 20;
-    let mut tiles: Array<u8> = array![];
-    let mut i: u32 = 0;
-    while i < size {
-        if i == 0 {
-            tiles.append(4); // HQ
-        } else if i == size - 1 {
-            tiles.append(4); // HQ
-        } else if i == 1 {
-            tiles.append(1); // Mountain
-        } else if i == 2 {
-            tiles.append(3); // Factory
-        } else if i == 3 {
-            tiles.append(2); // City
-        } else if i == 4 {
-            tiles.append(5); // Road
-        } else if i == 5 {
-            tiles.append(6); // Tree
-        } else {
-            tiles.append(0); // Grass
-        }
-        i += 1;
-    }
+    // Sparse tiles: only non-grass
+    let tiles: Array<u32> = array![
+        0 * 256 + 4, // HQ at index 0
+        1 * 256 + 1, // Mountain at index 1
+        2 * 256 + 3, // Factory at index 2
+        3 * 256 + 2, // City at index 3
+        4 * 256 + 5, // Road at index 4
+        5 * 256 + 6, // Tree at index 5
+        399 * 256 + 4 // HQ at index 399
+    ];
 
-    let map_id = actions_dispatcher.register_map(2, 20, 20, tiles);
+    let units: Array<u32> = array![
+        1 * 16777216 + 1 * 65536 + 1 * 256 + 0, // P1 Infantry @ (1,0)
+        2 * 16777216 + 2 * 65536 + 18 * 256 + 19 // P2 Tank @ (18,19)
+    ];
 
-    // Verify non-grass tiles were stored
-    let mountain: MapTile = world.read_model((map_id, 1_u16));
-    assert(mountain.tile_type == TileType::Mountain, 'should be Mountain');
+    let map_id = actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), units);
 
-    let factory: MapTile = world.read_model((map_id, 2_u16));
-    assert(factory.tile_type == TileType::Factory, 'should be Factory');
+    // Verify stored tiles by seq
+    let t0: MapTile = world.read_model((map_id, 0_u16));
+    assert(t0.index == 0, 'idx 0');
+    assert(t0.tile_type == TileType::HQ, 'should be HQ');
 
-    let city: MapTile = world.read_model((map_id, 3_u16));
-    assert(city.tile_type == TileType::City, 'should be City');
+    let t1: MapTile = world.read_model((map_id, 1_u16));
+    assert(t1.index == 1, 'idx 1');
+    assert(t1.tile_type == TileType::Mountain, 'should be Mountain');
 
-    let road: MapTile = world.read_model((map_id, 4_u16));
-    assert(road.tile_type == TileType::Road, 'should be Road');
+    let t2: MapTile = world.read_model((map_id, 2_u16));
+    assert(t2.index == 2, 'idx 2');
+    assert(t2.tile_type == TileType::Factory, 'should be Factory');
 
-    let tree: MapTile = world.read_model((map_id, 5_u16));
-    assert(tree.tile_type == TileType::Tree, 'should be Tree');
+    let t3: MapTile = world.read_model((map_id, 3_u16));
+    assert(t3.index == 3, 'idx 3');
+    assert(t3.tile_type == TileType::City, 'should be City');
 
-    // Grass tile at index 6 should default
-    let grass: MapTile = world.read_model((map_id, 6_u16));
-    assert(grass.tile_type == TileType::Grass, 'should default Grass');
+    let t4: MapTile = world.read_model((map_id, 4_u16));
+    assert(t4.index == 4, 'idx 4');
+    assert(t4.tile_type == TileType::Road, 'should be Road');
+
+    let t5: MapTile = world.read_model((map_id, 5_u16));
+    assert(t5.index == 5, 'idx 5');
+    assert(t5.tile_type == TileType::Tree, 'should be Tree');
+
+    // Verify units
+    let u1: MapUnit = world.read_model((map_id, 1_u16));
+    assert(u1.player_id == 2, 'u1 player_id');
+    assert(u1.unit_type == UnitType::Tank, 'u1 should be Tank');
+    assert(u1.x == 18, 'u1 x');
+    assert(u1.y == 19, 'u1 y');
 }
 
 #[test]
 #[should_panic]
-fn test_register_map_invalid_player_count_low() {
+fn test_register_map_too_few_hqs() {
     let caller = PLAYER1();
     set_contract_address(caller);
     set_account_contract_address(caller);
 
     let (actions_dispatcher, _) = setup();
-    actions_dispatcher.register_map(1, 20, 20, build_test_tiles());
+    let tiles: Array<u32> = array![0 * 256 + 4]; // 1 HQ tile
+    let buildings: Array<u32> = array![1 * 16777216 + 3 * 65536 + 0 * 256 + 0]; // 1 HQ building
+    actions_dispatcher.register_map(20, 20, tiles, buildings, array![]);
 }
 
 #[test]
 #[should_panic]
-fn test_register_map_invalid_player_count_high() {
+fn test_register_map_too_many_hqs() {
     let caller = PLAYER1();
     set_contract_address(caller);
     set_account_contract_address(caller);
 
     let (actions_dispatcher, _) = setup();
-    actions_dispatcher.register_map(5, 20, 20, build_test_tiles());
+    let tiles: Array<u32> = array![0 * 256 + 4, 1 * 256 + 4, 2 * 256 + 4, 3 * 256 + 4, 4 * 256 + 4];
+    let buildings: Array<u32> = array![
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 1 * 256 + 0,
+        3 * 16777216 + 3 * 65536 + 2 * 256 + 0, 4 * 16777216 + 3 * 65536 + 3 * 256 + 0,
+        5 * 16777216 + 3 * 65536 + 4 * 256 + 0,
+    ];
+    actions_dispatcher.register_map(20, 20, tiles, buildings, array![]);
 }
 
 #[test]
 #[should_panic]
-fn test_register_map_wrong_tile_count() {
+fn test_register_map_out_of_bounds() {
     let caller = PLAYER1();
     set_contract_address(caller);
     set_account_contract_address(caller);
 
     let (actions_dispatcher, _) = setup();
-    // Only 10 tiles instead of 400
-    let tiles: Array<u8> = array![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    actions_dispatcher.register_map(2, 20, 20, tiles);
+    let tiles: Array<u32> = array![0 * 256 + 4, 399 * 256 + 4, 400 * 256 + 1];
+    actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), array![]);
 }
 
 #[test]
 #[should_panic]
-fn test_register_map_hq_mismatch() {
+fn test_register_map_grass_not_allowed() {
     let caller = PLAYER1();
     set_contract_address(caller);
     set_account_contract_address(caller);
 
     let (actions_dispatcher, _) = setup();
+    let tiles: Array<u32> = array![0 * 256 + 4, 1 * 256 + 0, 399 * 256 + 4];
+    actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), array![]);
+}
 
-    // Build map with only 1 HQ but request 2 players
-    let size: u32 = 20 * 20;
-    let mut tiles: Array<u8> = array![];
-    let mut i: u32 = 0;
-    while i < size {
-        if i == 0 {
-            tiles.append(4); // Only one HQ
-        } else {
-            tiles.append(0);
-        }
-        i += 1;
-    }
-    actions_dispatcher.register_map(2, 20, 20, tiles);
+#[test]
+#[should_panic]
+fn test_register_map_unit_invalid_player() {
+    let caller = PLAYER1();
+    set_contract_address(caller);
+    set_account_contract_address(caller);
+
+    let (actions_dispatcher, _) = setup();
+    // player_id 3 invalid for a 2-HQ map
+    let units: Array<u32> = array![3 * 16777216 + 1 * 65536 + 1 * 256 + 0];
+    actions_dispatcher.register_map(20, 20, build_test_tiles(), build_test_buildings(), units);
 }

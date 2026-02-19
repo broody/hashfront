@@ -3,84 +3,46 @@ use chain_tactics::events::GameOver;
 use chain_tactics::helpers::unit_stats;
 use chain_tactics::models::building::Building;
 use chain_tactics::models::game::Game;
+use chain_tactics::models::map::{MapInfo, MapUnit};
 use chain_tactics::models::player::PlayerState;
 use chain_tactics::models::unit::{Unit, UnitImpl};
-use chain_tactics::types::{BuildingType, GameState, UnitType, Vec2};
+use chain_tactics::types::{BuildingType, GameState, UnitType};
 use dojo::event::EventStorage;
 use dojo::model::ModelStorage;
 
 pub fn spawn_starting_units(
-    ref world: dojo::world::WorldStorage, game_id: u32, player_count: u8, ref game: Game,
+    ref world: dojo::world::WorldStorage, game_id: u32, ref game: Game, map_id: u8,
 ) {
-    let mut hq_index: u8 = 0;
+    // Spawn units from map template
+    let map_info: MapInfo = world.read_model(map_id);
+    let mut i: u16 = 0;
+    while i < map_info.unit_count {
+        let map_unit: MapUnit = world.read_model((map_id, i));
+        game.next_unit_id += 1;
+        let unit_id = game.next_unit_id;
 
-    let mut y: u8 = 0;
-    while y < game.height {
-        let mut x: u8 = 0;
-        while x < game.width {
-            let building: Building = world.read_model((game_id, x, y));
-            if building.building_type == BuildingType::HQ && building.owner == 0 {
-                hq_index += 1;
-                if hq_index <= player_count {
-                    let mut b = building;
-                    b.owner = hq_index;
-                    world.write_model(@b);
+        world
+            .write_model(
+                @Unit {
+                    game_id,
+                    unit_id,
+                    player_id: map_unit.player_id,
+                    unit_type: map_unit.unit_type,
+                    x: map_unit.x,
+                    y: map_unit.y,
+                    hp: unit_stats::max_hp(map_unit.unit_type),
+                    has_moved: false,
+                    has_acted: false,
+                    is_alive: true,
+                },
+            );
 
-                    let spawn_pos = find_spawn_adjacent(
-                        ref world, game_id, x, y, game.next_unit_id, game.width, game.height,
-                    );
-                    game.next_unit_id += 1;
-                    let unit_id = game.next_unit_id;
+        let mut ps: PlayerState = world.read_model((game_id, map_unit.player_id));
+        ps.unit_count += 1;
+        world.write_model(@ps);
 
-                    world
-                        .write_model(
-                            @Unit {
-                                game_id,
-                                unit_id,
-                                player_id: hq_index,
-                                unit_type: UnitType::Infantry,
-                                x: spawn_pos.x,
-                                y: spawn_pos.y,
-                                hp: unit_stats::max_hp(UnitType::Infantry),
-                                has_moved: false,
-                                has_acted: false,
-                                is_alive: true,
-                            },
-                        );
-
-                    let mut ps: PlayerState = world.read_model((game_id, hq_index));
-                    ps.unit_count += 1;
-                    world.write_model(@ps);
-                }
-            }
-            x += 1;
-        }
-        y += 1;
+        i += 1;
     };
-}
-
-pub fn find_spawn_adjacent(
-    ref world: dojo::world::WorldStorage,
-    game_id: u32,
-    x: u8,
-    y: u8,
-    next_unit_id: u8,
-    width: u8,
-    height: u8,
-) -> Vec2 {
-    if x + 1 < width && !UnitImpl::exists_at(ref world, game_id, x + 1, y, next_unit_id) {
-        return Vec2 { x: x + 1, y };
-    }
-    if y + 1 < height && !UnitImpl::exists_at(ref world, game_id, x, y + 1, next_unit_id) {
-        return Vec2 { x, y: y + 1 };
-    }
-    if x > 0 && !UnitImpl::exists_at(ref world, game_id, x - 1, y, next_unit_id) {
-        return Vec2 { x: x - 1, y };
-    }
-    if y > 0 && !UnitImpl::exists_at(ref world, game_id, x, y - 1, next_unit_id) {
-        return Vec2 { x, y: y - 1 };
-    }
-    panic!("No spawn position")
 }
 
 pub fn count_player_buildings(

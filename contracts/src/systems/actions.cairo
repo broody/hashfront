@@ -2,16 +2,25 @@ use chain_tactics::types::{UnitType, Vec2};
 
 #[starknet::interface]
 pub trait IActions<T> {
-    fn register_map(ref self: T, width: u8, height: u8, tiles: Array<u8>) -> u8;
-    fn create_game(ref self: T, map_id: u8) -> u32;
-    fn join_game(ref self: T, game_id: u32);
+    fn register_map(
+        ref self: T,
+        width: u8,
+        height: u8,
+        tiles: Array<u32>,
+        buildings: Array<u32>,
+        units: Array<u32>,
+    ) -> u8;
+    fn create_game(ref self: T, map_id: u8, player_id: u8) -> u32;
+    fn join_game(ref self: T, game_id: u32, player_id: u8);
     fn move_unit(ref self: T, game_id: u32, unit_id: u8, path: Array<Vec2>);
     fn attack(ref self: T, game_id: u32, unit_id: u8, target_id: u8);
     fn capture(ref self: T, game_id: u32, unit_id: u8);
     fn wait_unit(ref self: T, game_id: u32, unit_id: u8);
     fn build_unit(ref self: T, game_id: u32, factory_x: u8, factory_y: u8, unit_type: UnitType);
     fn end_turn(ref self: T, game_id: u32);
-    fn get_map(self: @T, map_id: u8) -> (u8, u8, Array<u8>);
+    fn get_terrain(self: @T, map_id: u8) -> (u8, u8, Array<u32>);
+    fn get_buildings(self: @T, map_id: u8) -> (u8, u8, Array<u32>);
+    fn get_units(self: @T, map_id: u8) -> (u8, u8, Array<u32>);
 }
 
 #[dojo::contract]
@@ -24,7 +33,7 @@ pub mod actions {
     use chain_tactics::helpers::{combat, game as game_helpers, map as map_helpers, unit_stats};
     use chain_tactics::models::building::Building;
     use chain_tactics::models::game::{Game, GameCounter};
-    use chain_tactics::models::map::{MapInfo, MapTile};
+    use chain_tactics::models::map::{MapBuilding, MapInfo, MapTile, MapUnit};
     use chain_tactics::models::player::{PlayerState, PlayerStateImpl};
     use chain_tactics::models::tile::Tile;
     use chain_tactics::models::unit::{Unit, UnitImpl};
@@ -36,35 +45,109 @@ pub mod actions {
 
     #[abi(embed_v0)]
     impl ActionsImpl of IActions<ContractState> {
-        /// Register a reusable map template. Tiles is a flat row-major array of TileType
-        /// ordinals (width x height). Player count is derived from the number of HQ tiles.
-        /// Returns the new map_id.
-        fn register_map(ref self: ContractState, width: u8, height: u8, tiles: Array<u8>) -> u8 {
+        /// Register a reusable map template.
+        /// `tiles`: sparse packed u32 for non-grass tiles: (grid_index << 8) | tile_type.
+        /// `buildings`: packed u32: (player_id << 24) | (building_type << 16) | (x << 8) | y.
+        /// `units`: packed u32: (player_id << 24) | (unit_type << 16) | (x << 8) | y.
+        /// Player count is derived from the number of HQ buildings. Returns the new map_id.
+        fn register_map(
+            ref self: ContractState,
+            width: u8,
+            height: u8,
+            tiles: Array<u32>,
+            buildings: Array<u32>,
+            units: Array<u32>,
+        ) -> u8 {
             assert(width > 0 && height > 0, 'Invalid dimensions');
 
-            let expected: u32 = width.into() * height.into();
-            assert(tiles.len() == expected, 'Tiles length mismatch');
+            let total: u32 = width.into() * height.into();
+            let tile_span = tiles.span();
+            let tile_count: u16 = tile_span.len().try_into().unwrap();
+            let building_span = buildings.span();
+            let building_count: u16 = building_span.len().try_into().unwrap();
+            let unit_span = units.span();
+            let unit_count: u16 = unit_span.len().try_into().unwrap();
 
             let mut world = self.world_default();
-
-            let mut i: u32 = 0;
-            let mut hq_count: u8 = 0;
-            let tile_span = tiles.span();
-            while i < expected {
-                let tile_val: u8 = *tile_span.at(i);
-                let tile_type: TileType = tile_val.into();
-                if tile_type == TileType::HQ {
-                    hq_count += 1;
-                }
-                i += 1;
-            }
-
-            assert(hq_count >= 2 && hq_count <= 4, 'Invalid HQ count');
 
             let mut counter: GameCounter = world.read_model(1_u32);
             let map_id: u8 = (counter.count + 1).try_into().unwrap();
             counter.count += 1;
             world.write_model(@counter);
+
+            // Store tiles
+            let mut i: u32 = 0;
+            while i < tile_span.len() {
+                let packed: u32 = *tile_span.at(i);
+                let grid_index: u16 = (packed / 256).try_into().unwrap();
+                let tile_val: u8 = (packed % 256).try_into().unwrap();
+
+                assert(grid_index.into() < total, 'Index out of bounds');
+                let tile_type: TileType = tile_val.into();
+                assert(tile_type != TileType::Grass, 'Grass tiles not allowed');
+
+                world
+                    .write_model(
+                        @MapTile {
+                            map_id, seq: i.try_into().unwrap(), index: grid_index, tile_type,
+                        },
+                    );
+
+                i += 1;
+            }
+
+            // Store buildings and count HQs for player_count
+            let mut j: u32 = 0;
+            let mut hq_count: u8 = 0;
+            while j < building_span.len() {
+                let packed: u32 = *building_span.at(j);
+                let player_id: u8 = (packed / 16777216).try_into().unwrap();
+                let building_type_val: u8 = ((packed / 65536) % 256).try_into().unwrap();
+                let x: u8 = ((packed / 256) % 256).try_into().unwrap();
+                let y: u8 = (packed % 256).try_into().unwrap();
+
+                let building_type: BuildingType = building_type_val.into();
+                assert(building_type != BuildingType::None, 'Invalid building type');
+                assert(x < width && y < height, 'Building out of bounds');
+
+                if building_type == BuildingType::HQ {
+                    hq_count += 1;
+                    assert(player_id >= 1, 'HQ must have owner');
+                }
+
+                world
+                    .write_model(
+                        @MapBuilding {
+                            map_id, seq: j.try_into().unwrap(), player_id, building_type, x, y,
+                        },
+                    );
+
+                j += 1;
+            }
+
+            assert(hq_count >= 2 && hq_count <= 4, 'Invalid HQ count');
+
+            // Store units
+            let mut k: u32 = 0;
+            while k < unit_span.len() {
+                let packed: u32 = *unit_span.at(k);
+                let player_id: u8 = (packed / 16777216).try_into().unwrap();
+                let unit_type_val: u8 = ((packed / 65536) % 256).try_into().unwrap();
+                let x: u8 = ((packed / 256) % 256).try_into().unwrap();
+                let y: u8 = (packed % 256).try_into().unwrap();
+
+                assert(player_id >= 1 && player_id <= hq_count, 'Invalid player_id');
+                let unit_type: UnitType = unit_type_val.into();
+                assert(unit_type != UnitType::None, 'Invalid unit type');
+                assert(x < width && y < height, 'Unit out of bounds');
+
+                world
+                    .write_model(
+                        @MapUnit { map_id, seq: k.try_into().unwrap(), player_id, unit_type, x, y },
+                    );
+
+                k += 1;
+            }
 
             world
                 .write_model(
@@ -73,31 +156,24 @@ pub mod actions {
                         player_count: hq_count,
                         width,
                         height,
-                        tile_count: expected.try_into().unwrap(),
+                        tile_count,
+                        building_count,
+                        unit_count,
                     },
                 );
-
-            let mut j: u32 = 0;
-            while j < expected {
-                let tile_val: u8 = *tile_span.at(j);
-                let tile_type: TileType = tile_val.into();
-                if tile_type != TileType::Grass {
-                    world.write_model(@MapTile { map_id, index: j.try_into().unwrap(), tile_type });
-                }
-                j += 1;
-            }
 
             map_id
         }
 
-        /// Create a new game from a registered map. Copies map tiles into per-game state,
-        /// initializes buildings, and registers the caller as player 1. Returns game_id.
-        fn create_game(ref self: ContractState, map_id: u8) -> u32 {
+        /// Create a new game from a registered map. Copies tiles and buildings into per-game
+        /// state and registers the caller as the chosen player_id. Returns game_id.
+        fn create_game(ref self: ContractState, map_id: u8, player_id: u8) -> u32 {
             let mut world = self.world_default();
             let caller = get_caller_address();
 
             let map_info: MapInfo = world.read_model(map_id);
             assert(map_info.tile_count > 0, 'Map not registered');
+            assert(player_id >= 1 && player_id <= map_info.player_count, 'Invalid player_id');
 
             let mut counter: GameCounter = world.read_model(0_u32);
             counter.count += 1;
@@ -121,41 +197,41 @@ pub mod actions {
                     },
                 );
 
+            // Copy tiles
             let width = map_info.width;
             let mut i: u16 = 0;
             while i < map_info.tile_count {
                 let map_tile: MapTile = world.read_model((map_id, i));
-                let (x, y) = map_helpers::index_to_xy(i, width);
-
-                if map_tile.tile_type != TileType::Grass {
-                    world.write_model(@Tile { game_id, x, y, tile_type: map_tile.tile_type });
-
-                    let building_type: BuildingType = map_tile.tile_type.into();
-                    if building_type != BuildingType::None {
-                        world
-                            .write_model(
-                                @Building {
-                                    game_id,
-                                    x,
-                                    y,
-                                    building_type,
-                                    owner: 0,
-                                    capture_player: 0,
-                                    capture_progress: 0,
-                                    queued_unit: 0,
-                                },
-                            );
-                    }
-                }
-
+                let (x, y) = map_helpers::index_to_xy(map_tile.index, width);
+                world.write_model(@Tile { game_id, x, y, tile_type: map_tile.tile_type });
                 i += 1;
+            }
+
+            // Copy buildings with ownership from template
+            let mut j: u16 = 0;
+            while j < map_info.building_count {
+                let mb: MapBuilding = world.read_model((map_id, j));
+                world
+                    .write_model(
+                        @Building {
+                            game_id,
+                            x: mb.x,
+                            y: mb.y,
+                            building_type: mb.building_type,
+                            owner: mb.player_id,
+                            capture_player: 0,
+                            capture_progress: 0,
+                            queued_unit: 0,
+                        },
+                    );
+                j += 1;
             }
 
             world
                 .write_model(
                     @PlayerState {
                         game_id,
-                        player_id: 1,
+                        player_id,
                         address: caller,
                         gold: STARTING_GOLD,
                         unit_count: 0,
@@ -170,26 +246,33 @@ pub mod actions {
             game_id
         }
 
-        /// Join an existing game in the lobby. When the last player joins, transitions
-        /// to Playing state — spawns starting units, counts buildings, and runs P1
-        /// income/production.
-        fn join_game(ref self: ContractState, game_id: u32) {
+        /// Join an existing game in the lobby. The caller picks their player slot
+        /// (first come first serve). When the last player joins, transitions to Playing
+        /// state — spawns starting units, counts buildings, and runs P1 income/production.
+        fn join_game(ref self: ContractState, game_id: u32, player_id: u8) {
             let mut world = self.world_default();
             let caller = get_caller_address();
 
             let mut game: Game = world.read_model(game_id);
             assert(game.state == GameState::Lobby, 'Game not in lobby');
             assert(game.num_players < game.player_count, 'Game is full');
+            assert(player_id >= 1 && player_id <= game.player_count, 'Invalid player_id');
 
+            // Check slot is available and caller hasn't already joined
+            let zero_addr: starknet::ContractAddress = 0.try_into().unwrap();
             let mut i: u8 = 1;
-            while i <= game.num_players {
+            while i <= game.player_count {
                 let ps: PlayerState = world.read_model((game_id, i));
-                assert(ps.address != caller, 'Already joined');
+                if ps.address != zero_addr {
+                    assert(ps.address != caller, 'Already joined');
+                }
                 i += 1;
             }
 
+            let slot: PlayerState = world.read_model((game_id, player_id));
+            assert(slot.address == zero_addr, 'Slot taken');
+
             game.num_players += 1;
-            let player_id = game.num_players;
 
             world
                 .write_model(
@@ -209,7 +292,7 @@ pub mod actions {
 
             if game.num_players == game.player_count {
                 game.state = GameState::Playing;
-                game_helpers::spawn_starting_units(ref world, game_id, game.player_count, ref game);
+                game_helpers::spawn_starting_units(ref world, game_id, ref game, game.map_id);
                 game_helpers::count_player_buildings(
                     ref world, game_id, game.player_count, game.width, game.height,
                 );
@@ -587,21 +670,64 @@ pub mod actions {
             world.emit_event(@TurnEnded { game_id, next_player: next, round: new_round });
         }
 
-        fn get_map(self: @ContractState, map_id: u8) -> (u8, u8, Array<u8>) {
+        fn get_terrain(self: @ContractState, map_id: u8) -> (u8, u8, Array<u32>) {
             let world = self.world_default();
             let map_info: MapInfo = world.read_model(map_id);
             assert(map_info.tile_count > 0, 'Map not registered');
 
-            let mut tiles: Array<u8> = array![];
+            let mut tiles: Array<u32> = array![];
             let mut i: u16 = 0;
             while i < map_info.tile_count {
                 let map_tile: MapTile = world.read_model((map_id, i));
                 let tile_val: u8 = map_tile.tile_type.into();
-                tiles.append(tile_val);
+                let packed: u32 = map_tile.index.into() * 256 + tile_val.into();
+                tiles.append(packed);
                 i += 1;
             }
 
             (map_info.width, map_info.height, tiles)
+        }
+
+        fn get_buildings(self: @ContractState, map_id: u8) -> (u8, u8, Array<u32>) {
+            let world = self.world_default();
+            let map_info: MapInfo = world.read_model(map_id);
+            assert(map_info.tile_count > 0, 'Map not registered');
+
+            let mut result: Array<u32> = array![];
+            let mut i: u16 = 0;
+            while i < map_info.building_count {
+                let mb: MapBuilding = world.read_model((map_id, i));
+                let bt_val: u8 = mb.building_type.into();
+                let packed: u32 = mb.player_id.into() * 16777216
+                    + bt_val.into() * 65536
+                    + mb.x.into() * 256
+                    + mb.y.into();
+                result.append(packed);
+                i += 1;
+            }
+
+            (map_info.width, map_info.height, result)
+        }
+
+        fn get_units(self: @ContractState, map_id: u8) -> (u8, u8, Array<u32>) {
+            let world = self.world_default();
+            let map_info: MapInfo = world.read_model(map_id);
+            assert(map_info.tile_count > 0, 'Map not registered');
+
+            let mut result: Array<u32> = array![];
+            let mut i: u16 = 0;
+            while i < map_info.unit_count {
+                let mu: MapUnit = world.read_model((map_id, i));
+                let ut_val: u8 = mu.unit_type.into();
+                let packed: u32 = mu.player_id.into() * 16777216
+                    + ut_val.into() * 65536
+                    + mu.x.into() * 256
+                    + mu.y.into();
+                result.append(packed);
+                i += 1;
+            }
+
+            (map_info.width, map_info.height, result)
         }
     }
 

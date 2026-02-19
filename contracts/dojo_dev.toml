@@ -1,7 +1,7 @@
 [world]
 name = "Chain Tactics"
 description = "Turn-based tactics game on StarkNet"
-seed = "chain_tactics"
+seed = "chain_tactics_1"
 
 [env]
 rpc_url = "http://localhost:5050/"

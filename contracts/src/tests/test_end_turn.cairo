@@ -7,7 +7,9 @@ use chain_tactics::systems::actions::{IActionsDispatcher, IActionsDispatcherTrai
 use chain_tactics::types::{BuildingType, GameState, UnitType};
 use dojo::model::{ModelStorage, ModelStorageTest};
 use starknet::testing::{set_account_contract_address, set_contract_address};
-use super::common::{PLAYER1, PLAYER2, build_test_tiles, setup};
+use super::common::{
+    PLAYER1, PLAYER2, build_test_buildings, build_test_tiles, build_test_units, setup,
+};
 
 fn setup_playing_game() -> (IActionsDispatcher, dojo::world::WorldStorage, u32) {
     let p1 = PLAYER1();
@@ -15,13 +17,14 @@ fn setup_playing_game() -> (IActionsDispatcher, dojo::world::WorldStorage, u32) 
     set_account_contract_address(p1);
 
     let (actions_dispatcher, world) = setup();
-    let map_id = actions_dispatcher.register_map(2, 20, 20, build_test_tiles());
-    let game_id = actions_dispatcher.create_game(map_id);
+    let map_id = actions_dispatcher
+        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
+    let game_id = actions_dispatcher.create_game(map_id, 1);
 
     let p2 = PLAYER2();
     set_contract_address(p2);
     set_account_contract_address(p2);
-    actions_dispatcher.join_game(game_id);
+    actions_dispatcher.join_game(game_id, 2);
 
     set_contract_address(p1);
     set_account_contract_address(p1);

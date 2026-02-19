@@ -1,7 +1,7 @@
 use chain_tactics::events as events;
 use chain_tactics::models::building::m_Building;
 use chain_tactics::models::game::{m_Game, m_GameCounter};
-use chain_tactics::models::map::{m_MapInfo, m_MapTile};
+use chain_tactics::models::map::{m_MapBuilding, m_MapInfo, m_MapTile, m_MapUnit};
 use chain_tactics::models::player::m_PlayerState;
 use chain_tactics::models::tile::m_Tile;
 use chain_tactics::models::unit::m_Unit;
@@ -29,6 +29,8 @@ fn namespace_def() -> NamespaceDef {
             TestResource::Model(m_Game::TEST_CLASS_HASH),
             TestResource::Model(m_MapInfo::TEST_CLASS_HASH),
             TestResource::Model(m_MapTile::TEST_CLASS_HASH),
+            TestResource::Model(m_MapBuilding::TEST_CLASS_HASH),
+            TestResource::Model(m_MapUnit::TEST_CLASS_HASH),
             TestResource::Model(m_PlayerState::TEST_CLASS_HASH),
             TestResource::Model(m_Tile::TEST_CLASS_HASH),
             TestResource::Model(m_Building::TEST_CLASS_HASH),
@@ -69,20 +71,32 @@ pub fn setup() -> (IActionsDispatcher, WorldStorage) {
     (actions_dispatcher, world)
 }
 
-/// Build a minimal 20x20 tile array: all grass except two HQ tiles at (0,0) and (19,19).
-pub fn build_test_tiles() -> Array<u8> {
-    let size: u32 = 20 * 20;
-    let mut tiles: Array<u8> = array![];
-    let mut i: u32 = 0;
-    let hq: u8 = 4; // TileType::HQ ordinal
-    let last: u32 = size - 1;
-    while i < size {
-        if i == 0 || i == last {
-            tiles.append(hq);
-        } else {
-            tiles.append(0); // Grass
-        }
-        i += 1;
-    }
-    tiles
+/// Build a minimal 20x20 sparse tile array: only HQ tiles at (0,0) and (19,19).
+/// Each entry is packed as (grid_index << 8) | tile_type_ordinal.
+pub fn build_test_tiles() -> Array<u32> {
+    let hq: u32 = 4; // TileType::HQ ordinal
+    array![0 * 256 + hq, // HQ at index 0 = (0,0)
+    399 * 256 + hq // HQ at index 399 = (19,19)
+    ]
+}
+
+/// Build buildings for the test map.
+/// Each entry is packed as (player_id << 24) | (building_type << 16) | (x << 8) | y.
+/// BuildingType::HQ = 3.
+pub fn build_test_buildings() -> Array<u32> {
+    let hq: u32 = 3; // BuildingType::HQ ordinal
+    array![
+        1 * 16777216 + hq * 65536 + 0 * 256 + 0, // P1 HQ @ (0,0)
+        2 * 16777216 + hq * 65536 + 19 * 256 + 19 // P2 HQ @ (19,19)
+    ]
+}
+
+/// Build starting units for the test map.
+/// Each entry is packed as (player_id << 24) | (unit_type << 16) | (x << 8) | y.
+pub fn build_test_units() -> Array<u32> {
+    // P1 Infantry at (1,0), P2 Infantry at (18,19)
+    array![
+        1 * 16777216 + 1 * 65536 + 1 * 256 + 0, // P1 Infantry @ (1,0)
+        2 * 16777216 + 1 * 65536 + 18 * 256 + 19 // P2 Infantry @ (18,19)
+    ]
 }
