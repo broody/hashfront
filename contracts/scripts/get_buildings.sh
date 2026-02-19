@@ -1,15 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <map_id>" >&2
+PROFILE=""
+MAP_ID=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$MAP_ID" ]; then
+        MAP_ID="$1"
+      else
+        echo "Usage: $0 [--profile <profile>] <map_id>" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$MAP_ID" ]; then
+  echo "Usage: $0 [--profile <profile>] <map_id>" >&2
   exit 1
 fi
 
-MAP_ID="$1"
+PROFILE_ARGS=()
+if [ -n "$PROFILE" ]; then
+  PROFILE_ARGS=(--profile "$PROFILE")
+fi
 
 # Call the view function
-RAW=$(sozo call chain_tactics-actions get_buildings "$MAP_ID" 2>&1)
+RAW=$(sozo call ${PROFILE_ARGS[@]:+"${PROFILE_ARGS[@]}"} chain_tactics-actions get_buildings "$MAP_ID" 2>&1)
 
 # Strip brackets, parse hex to decimal
 VALUES=()

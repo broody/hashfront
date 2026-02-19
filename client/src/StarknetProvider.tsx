@@ -6,8 +6,8 @@ import type { SessionPolicies } from "@cartridge/presets";
 import { shortString } from "starknet";
 
 // TODO: set to deployed contract address
-const ACTIONS_ADDRESS =
-  "0x011871ac703eb3f02ca5c435d7d60832aff24c3a40c302de489d39c483119f56";
+export const ACTIONS_ADDRESS =
+  "0x0605d3a4a0e4f42898b22e250ba126ce7359b3a823b1ce8e6c2e4c9925458f5b";
 
 const policies: SessionPolicies = {
   contracts: {

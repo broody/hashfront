@@ -2,7 +2,11 @@ import { parseMap } from "../game/mapgen";
 import { maps } from "../game/maps";
 
 // --- Terrain ---
-export const tileMap = parseMap(maps[0].data);
+export let tileMap = parseMap(maps[0].data);
+
+export function setTileMap(newTileMap: Uint8Array | number[]) {
+  tileMap = new Uint8Array(newTileMap);
+}
 
 // --- Teams ---
 export type TeamId = "blue" | "red" | "green" | "yellow";
@@ -26,7 +30,30 @@ export interface Unit {
 }
 
 let nextId = 1;
-export const units: Unit[] = [];
+export let units: Unit[] = [];
+
+export function clearUnits() {
+  units.length = 0;
+  nextId = 1;
+}
+
+export function initTestGame() {
+  tileMap = parseMap(maps[0].data);
+  clearUnits();
+  addUnit("rifle", "blue", 2, 6);
+  addUnit("rifle", "blue", 2, 8);
+  addUnit("tank", "blue", 3, 7);
+  addUnit("artillery", "blue", 1, 5);
+
+  const r1 = addUnit("rifle", "red", 17, 7);
+  r1.facing = "left";
+  const r2 = addUnit("rifle", "red", 17, 9);
+  r2.facing = "left";
+  const r3 = addUnit("tank", "red", 16, 8);
+  r3.facing = "left";
+  const r4 = addUnit("artillery", "red", 18, 10);
+  r4.facing = "left";
+}
 
 export function addUnit(
   type: string,

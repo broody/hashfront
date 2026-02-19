@@ -1,22 +1,24 @@
 import { Link } from "react-router-dom";
-import { useAccount, useConnect, useDisconnect } from "@starknet-react/core";
+import { useAccount, useConnect } from "@starknet-react/core";
 import { ControllerConnector } from "@cartridge/connector";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PixelButton } from "../components/PixelButton";
 import { PixelPanel } from "../components/PixelPanel";
 import { BlueprintContainer } from "../components/BlueprintContainer";
 
 export default function Lobby() {
   const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
   const { address } = useAccount();
-  const controller = connectors[0] as ControllerConnector;
+  const controllerConnector = useMemo(
+    () => ControllerConnector.fromConnectors(connectors),
+    [connectors],
+  );
   const [username, setUsername] = useState<string>();
 
   useEffect(() => {
     if (!address) return;
-    controller.username()?.then(setUsername);
-  }, [address, controller]);
+    controllerConnector.username()?.then(setUsername);
+  }, [address, controllerConnector]);
 
   return (
     <BlueprintContainer>
@@ -33,7 +35,7 @@ export default function Lobby() {
           {address ? (
             <PixelButton
               variant="gray"
-              onClick={() => controller.openProfile()}
+              onClick={() => controllerConnector.controller.openProfile()}
               className="!py-3 !px-8 text-lg"
             >
               COMMANDER:{" "}
@@ -42,7 +44,7 @@ export default function Lobby() {
           ) : (
             <PixelButton
               variant="blue"
-              onClick={() => connect({ connector: controller })}
+              onClick={() => connect({ connector: controllerConnector })}
               className="!py-3 !px-10 text-lg"
             >
               CONNECT_SYSTEM

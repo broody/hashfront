@@ -8,7 +8,7 @@ import {
   Spritesheet,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { tileMap, units, addUnit } from "../data/gameStore";
+import { tileMap, units } from "../data/gameStore";
 import type { Unit } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
@@ -63,6 +63,33 @@ export default function GameViewport() {
     // Center on the map
     vp.moveCenter(WORLD_SIZE / 2, WORLD_SIZE / 2);
     vp.fitWorld();
+
+    // --- Draw Background Grid ---
+    const bgGrid = new Graphics();
+    vp.addChild(bgGrid);
+
+    // Grid lines color (faint blueprint style)
+    const GRID_COLOR = 0x224466;
+    const GRID_ALPHA = 0.5;
+
+    bgGrid.setStrokeStyle({ color: GRID_COLOR, alpha: GRID_ALPHA, width: 1 });
+
+    // Draw an infinitely expanding grid (practically large enough to never see the edge)
+    const EXTENT = TILE_PX * 200;
+    const START_X = -EXTENT;
+    const END_X = WORLD_SIZE + EXTENT;
+    const START_Y = -EXTENT;
+    const END_Y = WORLD_SIZE + EXTENT;
+
+    // Draw vertical lines
+    for (let x = START_X; x <= END_X; x += TILE_PX) {
+      bgGrid.moveTo(x, START_Y).lineTo(x, END_Y);
+    }
+    // Draw horizontal lines
+    for (let y = START_Y; y <= END_Y; y += TILE_PX) {
+      bgGrid.moveTo(START_X, y).lineTo(END_X, y);
+    }
+    bgGrid.stroke();
 
     // --- Load terrain spritesheet ---
     const terrainTexture = await Assets.load({
@@ -262,23 +289,6 @@ export default function GameViewport() {
       tank: 2, // Tank
       artillery: 2, // Ranger
     };
-
-    // --- Spawn starting units ---
-    // Blue team (west side, near HQ at 1,7)
-    addUnit("rifle", "blue", 2, 6);
-    addUnit("rifle", "blue", 2, 8);
-    addUnit("tank", "blue", 3, 7);
-    addUnit("artillery", "blue", 1, 5);
-
-    // Red team (east side, near HQ at 18,8)
-    const r1 = addUnit("rifle", "red", 17, 7);
-    r1.facing = "left";
-    const r2 = addUnit("rifle", "red", 17, 9);
-    r2.facing = "left";
-    const r3 = addUnit("tank", "red", 16, 8);
-    r3.facing = "left";
-    const r4 = addUnit("artillery", "red", 18, 10);
-    r4.facing = "left";
 
     // --- Render units ---
     const unitSprites = new Map<number, AnimatedSprite>();

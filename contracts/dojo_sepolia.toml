@@ -1,7 +1,7 @@
 [world]
 name = "Chain Tactics"
 description = "Turn-based tactics game on StarkNet"
-seed = "chain_tactics_1"
+seed = "chain_tactics_2"
 
 [env]
 rpc_url = "https://api.cartridge.gg/x/starknet/sepolia"

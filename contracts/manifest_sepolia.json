@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x613551abceb2b37073b1149bb862ea70cf029981ce1ca47e9dd7c7ab97cb65d",
-    "address": "0x436666648b351b1d2e6370c800fbcc2b84cddf2b9f9d901db39050b323940f",
-    "seed": "chain_tactics_1",
+    "address": "0x2bfd3aa00e8239fcbaedb4113c357bf8954719f679a512d0477979efdc84940",
+    "seed": "chain_tactics_2",
     "name": "Chain Tactics",
     "entrypoints": [
       "uuid",
@@ -33,8 +33,8 @@
   },
   "contracts": [
     {
-      "address": "0x11871ac703eb3f02ca5c435d7d60832aff24c3a40c302de489d39c483119f56",
-      "class_hash": "0x248418811193c6929a1727aa7655dcb835932d8b1de447e517aac66be76930a",
+      "address": "0x605d3a4a0e4f42898b22e250ba126ce7359b3a823b1ce8e6c2e4c9925458f5b",
+      "class_hash": "0x7b0ec4d89320263ccbce10e8309254a1d29928f5c1d2482d4377845703d0933",
       "init_calldata": [],
       "tag": "chain_tactics-actions",
       "selector": "0x10d95ab7e962c6637491dc1551130b8ada3cc9f2c3421c79d75623ca922466c",
@@ -157,9 +157,14 @@
           "name": "height",
           "type": "core::integer::u8",
           "key": false
+        },
+        {
+          "name": "is_test_mode",
+          "type": "core::bool",
+          "key": false
         }
       ],
-      "class_hash": "0x2da41544fc6ec959a72f4913f1cc42bcf223f88708ec028618b527e18b395d4",
+      "class_hash": "0x442855bc448de3810ab973e17c178fcb060828e6321dd0bf068ede3279fe9b2",
       "tag": "chain_tactics-Game",
       "selector": "0x2be78c5ae6b0c742cd7ba5ec45363e60f831c26cc9e0ea446ba482a4e204484"
     },
@@ -1189,6 +1194,10 @@
         {
           "name": "height",
           "type": "core::integer::u8"
+        },
+        {
+          "name": "is_test_mode",
+          "type": "core::bool"
         }
       ]
     },
@@ -1259,6 +1268,10 @@
         {
           "name": "height",
           "type": "core::integer::u8"
+        },
+        {
+          "name": "is_test_mode",
+          "type": "core::bool"
         }
       ]
     },
@@ -1751,6 +1764,10 @@
             {
               "name": "player_id",
               "type": "core::integer::u8"
+            },
+            {
+              "name": "is_test_mode",
+              "type": "core::bool"
             }
           ],
           "outputs": [

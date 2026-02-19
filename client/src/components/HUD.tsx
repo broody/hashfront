@@ -1,8 +1,16 @@
-import { useAccount, useConnect, useDisconnect } from "@starknet-react/core";
+import {
+  useAccount,
+  useConnect,
+  useProvider,
+  useSendTransaction,
+} from "@starknet-react/core";
 import { ControllerConnector } from "@cartridge/connector";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { PixelButton } from "./PixelButton";
 import { PixelPanel } from "./PixelPanel";
+import { useToast } from "./Toast";
+import { ACTIONS_ADDRESS } from "../StarknetProvider";
 
 const LEGEND: { label: string; color: string }[] = [
   { label: "Grass", color: "#4a7c59" },
@@ -14,16 +22,79 @@ const LEGEND: { label: string; color: string }[] = [
 ];
 
 const HUD = () => {
+  const { id } = useParams<{ id: string }>();
+  const gameId = parseInt(id || "1", 10) || 1;
+  const { provider } = useProvider();
+
   const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
   const { address } = useAccount();
-  const controller = connectors[0] as ControllerConnector;
   const [username, setUsername] = useState<string>();
+  const { toast } = useToast();
+  const controllerConnector = useMemo(
+    () => ControllerConnector.fromConnectors(connectors),
+    [connectors],
+  );
+
+  const [isJoining, setIsJoining] = useState(false);
+  const { sendAsync: sendJoin } = useSendTransaction({
+    calls: [
+      {
+        contractAddress: ACTIONS_ADDRESS,
+        entrypoint: "join_game",
+        calldata: [gameId.toString(), "2"],
+      },
+    ],
+  });
+
+  const handleJoin = async () => {
+    try {
+      setIsJoining(true);
+      const res = await sendJoin();
+      if (res && res.transaction_hash) {
+        toast("Joining game... please wait", "info");
+        await provider.waitForTransaction(res.transaction_hash);
+        toast("You joined the game!", "success");
+      }
+    } catch (e) {
+      toast("Failed to join game.", "error");
+      console.error(e);
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const [isEnding, setIsEnding] = useState(false);
+  const { sendAsync: sendEndTurn } = useSendTransaction({
+    calls: [
+      {
+        contractAddress: ACTIONS_ADDRESS,
+        entrypoint: "end_turn",
+        calldata: [gameId.toString()],
+      },
+    ],
+  });
+
+  const handleEndTurn = async () => {
+    try {
+      setIsEnding(true);
+      const res = await sendEndTurn();
+      if (res && res.transaction_hash) {
+        toast("Ending turn... please wait", "info");
+        await provider.waitForTransaction(res.transaction_hash);
+        toast("You ended your turn.", "warning");
+      }
+    } catch (e) {
+      toast("Failed to end turn.", "error");
+      console.error(e);
+    } finally {
+      setIsEnding(false);
+    }
+  };
 
   useEffect(() => {
     if (!address) return;
-    controller.username()?.then(setUsername);
-  }, [address, controller]);
+    controllerConnector.username()?.then(setUsername);
+  }, [address, controllerConnector]);
 
   return (
     <>
@@ -36,7 +107,7 @@ const HUD = () => {
           <div className="flex items-center gap-6">
             <PixelButton
               variant="gray"
-              onClick={() => controller.openProfile()}
+              onClick={() => controllerConnector.controller.openProfile()}
               className="!py-1 !px-4"
             >
               COMMANDER:{" "}
@@ -46,7 +117,7 @@ const HUD = () => {
         ) : (
           <PixelButton
             variant="blue"
-            onClick={() => connect({ connector: controller })}
+            onClick={() => connect({ connector: controllerConnector })}
             className="!py-1 !px-4"
           >
             CONNECT_SYSTEM
@@ -54,7 +125,7 @@ const HUD = () => {
         )}
       </div>
 
-      <div className="absolute top-24 right-8 z-10">
+      <div className="absolute top-24 left-8 z-10">
         <PixelPanel title="TERRAIN_INTEL" className="!p-4 min-w-[200px]">
           <div className="flex flex-col gap-3 mt-2">
             {LEGEND.map((item) => (
@@ -68,6 +139,35 @@ const HUD = () => {
                 </span>
               </div>
             ))}
+          </div>
+        </PixelPanel>
+      </div>
+
+      <div className="absolute top-24 right-8 z-10">
+        <PixelPanel title="TEST_MODE" className="!p-4 min-w-[200px]">
+          <div className="flex flex-col gap-4 mt-2">
+            <PixelButton
+              variant="blue"
+              onClick={handleJoin}
+              disabled={isJoining}
+              className="w-full justify-center flex items-center gap-2"
+            >
+              {isJoining && (
+                <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              )}
+              {isJoining ? "JOINING..." : "JOIN GAME"}
+            </PixelButton>
+            <PixelButton
+              variant="gray"
+              onClick={handleEndTurn}
+              disabled={isEnding}
+              className="w-full justify-center flex items-center gap-2"
+            >
+              {isEnding && (
+                <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              )}
+              {isEnding ? "ENDING..." : "END TURN"}
+            </PixelButton>
           </div>
         </PixelPanel>
       </div>

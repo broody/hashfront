@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-  echo "Usage: $0 <terrain.txt>" >&2
+PROFILE=""
+MAP_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$MAP_FILE" ]; then
+        MAP_FILE="$1"
+      else
+        echo "Usage: $0 [--profile <profile>] <terrain.txt>" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$MAP_FILE" ]; then
+  echo "Usage: $0 [--profile <profile>] <terrain.txt>" >&2
   exit 1
 fi
-
-MAP_FILE="$1"
 
 if [ ! -f "$MAP_FILE" ]; then
   echo "Error: file not found: $MAP_FILE" >&2
@@ -81,8 +100,14 @@ UNITS="$U1 $U2"
 
 echo "Map: ${WIDTH}x${HEIGHT}, ${TILE_COUNT} tiles, ${BUILDING_COUNT} buildings, ${UNIT_COUNT} units"
 
-sozo execute chain_tactics-actions register_map \
+PROFILE_ARGS=()
+if [ -n "$PROFILE" ]; then
+  PROFILE_ARGS=(--profile "$PROFILE")
+fi
+
+sozo execute ${PROFILE_ARGS[@]:+"${PROFILE_ARGS[@]}"} chain_tactics-actions register_map \
   $WIDTH $HEIGHT \
   $TILE_COUNT $TILES \
   $BUILDING_COUNT $BUILDINGS \
-  $UNIT_COUNT $UNITS
+  $UNIT_COUNT $UNITS \
+  1

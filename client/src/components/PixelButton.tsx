@@ -20,7 +20,11 @@ export const PixelButton: React.FC<PixelButtonProps> = ({
         : "blueprint-btn";
 
   return (
-    <button className={`${variantClass} ${className}`} {...props}>
+    <button
+      className={`${variantClass} ${className} disabled:opacity-50 disabled:cursor-not-allowed`}
+      disabled={props.disabled}
+      {...props}
+    >
       {children}
     </button>
   );

@@ -159,6 +159,7 @@ The game employs a **"Tactical Blueprint"** aesthetic, inspired by retro militar
 - **Color Palette**: Deep navy backgrounds (`#001a33`), blueprint blue highlights (`#003366`), and stark white lines.
 - **Typography**: Rigorous use of **Roboto Mono** for all UI elements, emphasizing the feeling of a real-time data terminal.
 - **Layout**: All screens (Lobby, Leaderboard, Profile) use a boxed container with **corner markers** and a background **grid system** (30px size).
+- **Infinite Game Grid**: The game map itself (`GameViewport`) renders an infinitely expanding blueprint grid (`#224466`, 50% opacity) that aligns perfectly with the tactical game board, extending into the void to reinforce the feeling of a massive, ongoing military operation.
 - **Interactive Elements**: Buttons and panels feature a "blueprint" style with thin borders, subtle glows, and high-visibility hover states.
 
 ### CRT Simulation Effects
