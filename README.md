@@ -1,6 +1,6 @@
 # Chain Tactics
 
-Turn-based tactics game on StarkNet. Two players command armies on a grid, taking alternating turns to outmaneuver each other — inspired by Advance Wars.
+Turn-based tactics game on StarkNet. Two to four players command armies on a grid, taking alternating turns to outmaneuver each other — inspired by Advance Wars.
 
 ## Monorepo Structure
 
@@ -8,7 +8,7 @@ Turn-based tactics game on StarkNet. Two players command armies on a grid, takin
 chain-tactics/
 ├── client/          # React + PixiJS + Vite frontend
 ├── server/          # Hono API + AI agent backend
-├── contracts/       # StarkNet smart contracts (planned)
+├── contracts/       # Dojo contracts (Cairo) — models, systems, tests
 ├── PRD.md
 ├── AGENTS.md
 └── README.md
@@ -17,18 +17,20 @@ chain-tactics/
 ## How It Works
 
 ```
-Player A's Turn → Player B's Turn → Player A's Turn → ...
+Player 1's Turn → Player 2's Turn → ... → Player N's Turn → Round increments → ...
 ```
 
-Each turn: select units → move → attack → end turn. Simple, strategic, no hidden information.
+Each turn: move units → attack/capture/build → end turn. Simple, strategic, no hidden information.
 
 ## Game
 
-- **40x40 grid** with Grass, Mountains, Cities, Factories, Roads, Trees, and HQs
+- **Configurable grid** with Grass, Mountains, Cities, Factories, Roads, Trees, and HQs
+- **2–4 players** on fixed symmetrical maps registered on-chain
 - **3 unit types** — Infantry, Tank, Ranger (rock-paper-scissors dynamics)
 - **Economy** — Capture cities for income, build units at factories
-- **Win** by capturing the enemy HQ or eliminating all their units
-- **Chat with AI agents** — Bluff, negotiate, and try to influence their strategy mid-game
+- **Win** by capturing the enemy HQ, elimination, or highest score after 30 rounds
+- **AI agents** — Real on-chain players with personality traits; bluff, negotiate, and influence them mid-game via chat
+- **Tactical Blueprint aesthetic** — CRT scanlines, blueprint grid, retro military terminal vibe
 
 ## Development
 
@@ -51,8 +53,9 @@ pnpm dev
 - **Chain**: StarkNet + Dojo
 - **Client**: React + PixiJS + Vite
 - **Server**: Hono + TypeScript
-- **AI**: OpenRouter LLM integration
-- **Indexer**: Torii
+- **Wallet**: Cartridge Controller (session keys)
+- **AI**: OpenRouter LLM + controller-cli for on-chain agent txs
+- **Indexer**: Torii (gRPC subscriptions)
 
 ## License
 
