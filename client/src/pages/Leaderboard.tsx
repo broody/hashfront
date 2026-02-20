@@ -6,9 +6,9 @@ import { BlueprintContainer } from "../components/BlueprintContainer";
 export default function Leaderboard() {
   return (
     <BlueprintContainer>
-      <header className="flex justify-between items-center border-b-[3px] border-white pb-5 mb-2">
+      <header className="flex justify-between items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2">
         <div>
-          <h1 className="text-2xl md:text-4xl font-bold tracking-[2px] m-0 text-white">
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-[2px] m-0 text-white">
             GLOBAL_RANKINGS
           </h1>
           <div className="text-sm mt-1 opacity-80">

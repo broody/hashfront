@@ -33,7 +33,7 @@ const LogoVariant = ({
 export default function LogoGallery() {
   return (
     <BlueprintContainer>
-      <header className="flex justify-between items-center border-b-[3px] border-white pb-5 mb-8">
+      <header className="flex justify-between items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-[4px] m-0 flicker-text">
             LOGO_R&D_LAB

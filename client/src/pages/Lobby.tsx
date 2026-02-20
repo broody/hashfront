@@ -641,7 +641,7 @@ export default function Lobby() {
 
   return (
     <BlueprintContainer>
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-5 mb-2 relative overflow-hidden">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden">
         {/* Decorative Background SVG for Header */}
         <div className="absolute right-0 top-0 h-full w-1/2 opacity-10 pointer-events-none">
           <svg
@@ -672,11 +672,11 @@ export default function Lobby() {
           </svg>
         </div>
 
-        <div className="relative z-10 flex items-center gap-4">
+        <div className="relative z-10 flex items-center gap-3 lg:gap-4">
           <div className="hidden md:block">
             <svg
-              width="60"
-              height="60"
+              width="48"
+              height="48"
               viewBox="0 0 40 40"
               className="flicker-text"
             >
@@ -706,7 +706,7 @@ export default function Lobby() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl md:text-4xl font-bold tracking-[4px] m-0 flex items-center gap-2 flicker-text">
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-[3px] lg:tracking-[4px] m-0 flex items-center gap-2 flicker-text">
               HASHFRONT{" "}
               <span className="text-xs font-normal border border-white px-1 animate-pulse">
                 LIVE
@@ -722,7 +722,7 @@ export default function Lobby() {
             <PixelButton
               variant="gray"
               onClick={() => controllerConnector.controller.openProfile()}
-              className="!py-3 !px-8 text-lg"
+              className="!py-1.5 !px-5 lg:!py-2 lg:!px-8 text-base lg:text-lg"
             >
               COMMANDER:{" "}
               {username ?? `${address.slice(0, 6)}...${address.slice(-4)}`}
@@ -731,7 +731,7 @@ export default function Lobby() {
             <PixelButton
               variant="blue"
               onClick={() => connect({ connector: controllerConnector })}
-              className="!py-3 !px-10 text-lg"
+              className="!py-1.5 !px-6 lg:!py-2 lg:!px-10 text-base lg:text-lg"
             >
               CONNECT_SYSTEM
             </PixelButton>
@@ -739,7 +739,7 @@ export default function Lobby() {
         </div>
       </header>
 
-      <div className="grid md:grid-cols-[2.5fr_1fr] gap-8 flex-1 min-h-0 overflow-hidden">
+      <div className="grid md:grid-cols-[2.5fr_1fr] gap-4 lg:gap-8 flex-1 min-h-0 overflow-hidden">
         <PixelPanel
           title="DEPLOYMENTS"
           className="flex flex-col gap-0 min-h-0 overflow-hidden"
