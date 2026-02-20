@@ -69,7 +69,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     });
 
     // Guard against strict mode double-mount race
-    if (!containerRef.current || appRef.current) {
+    if (!containerRef.current || appRef.current || !app.canvas) {
       app.destroy();
       return;
     }

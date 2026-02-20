@@ -5,6 +5,7 @@ use hashfront::types::{BuildingType, TileType, UnitType};
 pub struct MapInfo {
     #[key]
     pub map_id: u8,
+    pub name: ByteArray,
     pub player_count: u8,
     pub width: u8,
     pub height: u8,

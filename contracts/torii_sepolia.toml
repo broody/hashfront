@@ -1,4 +1,4 @@
-world_address = "0x06c4cd8095fb36334ca65d135bff7361fd19f13f67ee45dbecdd27eb1d0a5a08"
+world_address = "0x07f87b22d97fcd790a1d784252128540a3f73be8d505558d4de27054da8a4db6"
 rpc = "https://api.cartridge.gg/x/starknet/sepolia"
 
 [server]
@@ -9,7 +9,6 @@ optimistic = true
 
 [indexing]
 world_block = 0
-controllers = true
 pending = true
 pre_confirmed = true
 polling_interval = 250

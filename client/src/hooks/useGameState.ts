@@ -9,6 +9,7 @@ interface GraphEdge<T> {
 }
 
 interface GameModelNode {
+  map_id: string | number;
   height: string | number;
   width: string | number;
   current_player: string | number;
@@ -54,7 +55,7 @@ interface GameStateQueryResult {
 }
 
 interface TilePageQueryResult {
-  hashfrontTileModels: {
+  hashfrontMapTileModels: {
     totalCount: string | number;
     pageInfo: {
       hasNextPage: boolean;
@@ -146,6 +147,7 @@ function buildGameStateQuery(gameId: number): string {
       hashfrontGameModels(where: {game_idEQ: ${gameId}}) {
         edges {
           node {
+            map_id
             height
             width
             winner
@@ -181,8 +183,8 @@ function buildGameStateQuery(gameId: number): string {
             hp
             x
             y
-            has_moved
-            has_acted
+            last_moved_round
+            last_acted_round
             is_alive
           }
         }
@@ -205,15 +207,15 @@ function buildGameStateQuery(gameId: number): string {
 }
 
 function buildTilePageQuery(
-  gameId: number,
+  mapId: number,
   afterCursor: string | null,
 ): string {
   const afterArg =
     afterCursor !== null ? `, after: ${JSON.stringify(afterCursor)}` : "";
   return `
     query {
-      hashfrontTileModels(
-        where: {game_idEQ: ${gameId}}
+      hashfrontMapTileModels(
+        where: {map_idEQ: ${mapId}}
         first: ${TILE_PAGE_SIZE}${afterArg}
       ) {
         totalCount
@@ -304,6 +306,9 @@ export function useGameState(id: string | undefined): {
           return;
         }
 
+        const gameNode = gameStateData.hashfrontGameModels.edges[0]?.node;
+        const mapId = toNumber(gameNode?.map_id);
+
         const allTileEdges: GraphEdge<TileModelNode>[] = [];
         let afterCursor: string | null = null;
         let hasNextPage = true;
@@ -317,7 +322,7 @@ export function useGameState(id: string | undefined): {
 
           const tilePageResult = (await graphqlClient
             .query<TilePageQueryResult>(
-              buildTilePageQuery(gameIdNum, afterCursor),
+              buildTilePageQuery(mapId, afterCursor),
               undefined,
               { requestPolicy: "network-only" },
             )
@@ -332,8 +337,8 @@ export function useGameState(id: string | undefined): {
             throw new Error("Failed to fetch tile page.");
           }
 
-          const tileConnection: TilePageQueryResult["hashfrontTileModels"] =
-            tilePageResult.data.hashfrontTileModels;
+          const tileConnection: TilePageQueryResult["hashfrontMapTileModels"] =
+            tilePageResult.data.hashfrontMapTileModels;
           allTileEdges.push(...tileConnection.edges);
 
           const totalCount = toNumber(tileConnection.totalCount);
@@ -349,7 +354,6 @@ export function useGameState(id: string | undefined): {
           }
         }
 
-        const gameNode = gameStateData.hashfrontGameModels.edges[0]?.node;
         const nextCurrentPlayer = toNumber(gameNode?.current_player);
         setCurrentPlayerId(nextCurrentPlayer > 0 ? nextCurrentPlayer : null);
 

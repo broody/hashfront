@@ -7,20 +7,21 @@ import {
 } from "@starknet-react/core";
 import { ControllerConnector } from "@cartridge/connector";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useClient } from "urql";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
 import { useToast } from "./Toast";
 import { PixelButton } from "./PixelButton";
 import { PixelPanel } from "./PixelPanel";
 
-const LEGEND: { label: string; color: string }[] = [
-  { label: "Grass", color: "#4a7c59" },
-  { label: "Mountain", color: "#8b7355" },
-  { label: "City", color: "#708090" },
-  { label: "Factory", color: "#696969" },
-  { label: "HQ", color: "#daa520" },
-  { label: "Road", color: "#9e9e9e" },
+const TILE_PX = 24;
+const TERRAIN_IMAGE = "/tilesets/terrain.png";
+
+const LEGEND: { label: string; x: number; y: number }[] = [
+  { label: "Grass", x: 0, y: TILE_PX * 4 },
+  { label: "Mountain", x: TILE_PX * 6, y: 0 },
+  { label: "Road", x: TILE_PX * 6, y: TILE_PX * 8 },
+  { label: "Tree", x: TILE_PX * 6, y: TILE_PX * 4 },
 ];
 
 interface GraphEdge<T> {
@@ -29,7 +30,7 @@ interface GraphEdge<T> {
 
 interface TurnStatusQueryResult {
   hashfrontGameModels: {
-    edges: GraphEdge<{ current_player: string | number }>[];
+    edges: GraphEdge<{ name: string; current_player: string | number; is_test_mode: boolean }>[];
   };
   hashfrontPlayerStateModels: {
     edges: GraphEdge<{ player_id: string | number; address: string }>[];
@@ -71,17 +72,18 @@ export default function HUD() {
   const { connect, connectors } = useConnect();
   const { address } = useAccount();
   const [username, setUsername] = useState<string>();
+  const [gameName, setGameName] = useState<string>("");
   const [currentPlayer, setCurrentPlayer] = useState<number | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<number | null>(null);
+  const [isTestMode, setIsTestMode] = useState(false);
   const [isEndingTurn, setIsEndingTurn] = useState(false);
   const controllerConnector = useMemo(
     () => ControllerConnector.fromConnectors(connectors),
     [connectors],
   );
   const canEndTurn =
-    myPlayerId !== null &&
     currentPlayer !== null &&
-    myPlayerId === currentPlayer;
+    (isTestMode || (myPlayerId !== null && myPlayerId === currentPlayer));
 
   useEffect(() => {
     if (!address) return;
@@ -98,7 +100,9 @@ export default function HUD() {
             hashfrontGameModels(where: {game_idEQ: ${gameId}}) {
               edges {
                 node {
+                  name
                   current_player
+                  is_test_mode
                 }
               }
             }
@@ -121,10 +125,11 @@ export default function HUD() {
 
         if (!active || result.error || !result.data) return;
 
-        const nextCurrentPlayer = toNumber(
-          result.data.hashfrontGameModels.edges[0]?.node.current_player,
-        );
+        const gameNode = result.data.hashfrontGameModels.edges[0]?.node;
+        setGameName(gameNode?.name ?? "");
+        const nextCurrentPlayer = toNumber(gameNode?.current_player);
         setCurrentPlayer(nextCurrentPlayer > 0 ? nextCurrentPlayer : null);
+        setIsTestMode(gameNode?.is_test_mode ?? false);
 
         if (!address) {
           setMyPlayerId(null);
@@ -192,34 +197,39 @@ export default function HUD() {
     <>
       <div className="absolute top-0 left-0 right-0 h-16 bg-blueprint-blue/60 flex items-center justify-between px-8 z-10 border-b-2 border-white backdrop-blur-sm">
         <div className="flex items-center gap-4">
-          <div className="flicker-text scale-75">
-            <svg width="40" height="40" viewBox="0 0 40 40">
-              <g
-                transform="skewX(-15) skewY(5) scale(0.9)"
-                transform-origin="center"
-              >
-                <g stroke="white" fill="none" strokeWidth="2">
-                  <path d="M15 6 V34 M25 6 V34 M6 15 H34 M6 25 H34" />
-                </g>
+          <Link to="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity">
+            <div className="flicker-text scale-75">
+              <svg width="40" height="40" viewBox="0 0 40 40">
                 <g
-                  stroke="white"
-                  fill="none"
-                  strokeWidth="0.5"
-                  opacity="0.3"
-                  transform="translate(4,4)"
+                  transform="skewX(-15) skewY(5) scale(0.9)"
+                  transform-origin="center"
                 >
-                  <path d="M15 6 V34 M25 6 V34 M6 15 H34 M6 25 H34" />
+                  <g stroke="white" fill="none" strokeWidth="2">
+                    <path d="M15 6 V34 M25 6 V34 M6 15 H34 M6 25 H34" />
+                  </g>
+                  <g
+                    stroke="white"
+                    fill="none"
+                    strokeWidth="0.5"
+                    opacity="0.3"
+                    transform="translate(4,4)"
+                  >
+                    <path d="M15 6 V34 M25 6 V34 M6 15 H34 M6 25 H34" />
+                  </g>
                 </g>
-              </g>
-              <path
-                d="M2 2 H8 M2 2 V8 M32 2 H38 M38 2 V8 M2 38 H8 M2 38 V32 M32 38 H38 M38 38 V32"
-                stroke="white"
-                strokeWidth="0.5"
-              />
-            </svg>
-          </div>
+                <path
+                  d="M2 2 H8 M2 2 V8 M32 2 H38 M38 2 V8 M2 38 H8 M2 38 V32 M32 38 H38 M38 38 V32"
+                  stroke="white"
+                  strokeWidth="0.5"
+                />
+              </svg>
+            </div>
+            <span className="text-base font-bold tracking-[2px] uppercase">
+              HASHFRONT
+            </span>
+          </Link>
           <span className="text-base font-bold tracking-[2px] uppercase">
-            TACTICAL_DISPLAY
+            // {gameName || `OPERATION_${gameId}`}
           </span>
         </div>
 
@@ -251,10 +261,17 @@ export default function HUD() {
             {LEGEND.map((item) => (
               <div key={item.label} className="flex items-center gap-4">
                 <span
-                  className="w-4 h-4 border border-white"
-                  style={{ background: item.color }}
+                  className="inline-block"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    backgroundImage: `url(${TERRAIN_IMAGE})`,
+                    backgroundPosition: `-${item.x * (32 / TILE_PX)}px -${item.y * (32 / TILE_PX)}px`,
+                    backgroundSize: `${240 * (32 / TILE_PX)}px ${384 * (32 / TILE_PX)}px`,
+                    imageRendering: "pixelated",
+                  }}
                 />
-                <span className="text-xs uppercase tracking-widest">
+                <span className="text-sm uppercase tracking-widest">
                   {item.label}
                 </span>
               </div>

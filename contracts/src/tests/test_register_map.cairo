@@ -15,7 +15,9 @@ fn test_register_map() {
     let (actions_dispatcher, mut world) = setup();
 
     let map_id = actions_dispatcher
-        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
     assert(map_id == 1, 'map_id should be 1');
 
     // Verify MapInfo
@@ -75,7 +77,8 @@ fn test_register_map_with_mixed_tiles() {
         2 * 16777216 + 2 * 65536 + 18 * 256 + 19 // P2 Tank @ (18,19)
     ];
 
-    let map_id = actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), units);
+    let map_id = actions_dispatcher
+        .register_map("test", 20, 20, tiles, build_test_buildings(), units);
 
     // Verify stored tiles by seq
     let t0: MapTileSeq = world.read_model((map_id, 0_u16));
@@ -121,7 +124,7 @@ fn test_register_map_too_few_hqs() {
     let (actions_dispatcher, _) = setup();
     let tiles: Array<u32> = array![0 * 256 + 4]; // 1 HQ tile
     let buildings: Array<u32> = array![1 * 16777216 + 3 * 65536 + 0 * 256 + 0]; // 1 HQ building
-    actions_dispatcher.register_map(20, 20, tiles, buildings, array![]);
+    actions_dispatcher.register_map("test", 20, 20, tiles, buildings, array![]);
 }
 
 #[test]
@@ -139,7 +142,7 @@ fn test_register_map_too_many_hqs() {
         3 * 16777216 + 3 * 65536 + 2 * 256 + 0, 4 * 16777216 + 3 * 65536 + 3 * 256 + 0,
         5 * 16777216 + 3 * 65536 + 4 * 256 + 0,
     ];
-    actions_dispatcher.register_map(20, 20, tiles, buildings, array![]);
+    actions_dispatcher.register_map("test", 20, 20, tiles, buildings, array![]);
 }
 
 #[test]
@@ -152,7 +155,7 @@ fn test_register_map_out_of_bounds() {
 
     let (actions_dispatcher, _) = setup();
     let tiles: Array<u32> = array![0 * 256 + 4, 399 * 256 + 4, 400 * 256 + 1];
-    actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), array![]);
+    actions_dispatcher.register_map("test", 20, 20, tiles, build_test_buildings(), array![]);
 }
 
 #[test]
@@ -165,7 +168,7 @@ fn test_register_map_grass_not_allowed() {
 
     let (actions_dispatcher, _) = setup();
     let tiles: Array<u32> = array![0 * 256 + 4, 1 * 256 + 0, 399 * 256 + 4];
-    actions_dispatcher.register_map(20, 20, tiles, build_test_buildings(), array![]);
+    actions_dispatcher.register_map("test", 20, 20, tiles, build_test_buildings(), array![]);
 }
 
 #[test]
@@ -179,5 +182,6 @@ fn test_register_map_unit_invalid_player() {
     let (actions_dispatcher, _) = setup();
     // player_id 3 invalid for a 2-HQ map
     let units: Array<u32> = array![3 * 16777216 + 1 * 65536 + 1 * 256 + 0];
-    actions_dispatcher.register_map(20, 20, build_test_tiles(), build_test_buildings(), units);
+    actions_dispatcher
+        .register_map("test", 20, 20, build_test_tiles(), build_test_buildings(), units);
 }

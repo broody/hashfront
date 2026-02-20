@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROFILE="sepolia"
 MAP_FILE=""
+MAP_NAME=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -10,11 +11,15 @@ while [[ $# -gt 0 ]]; do
       PROFILE="$2"
       shift 2
       ;;
+    --name)
+      MAP_NAME="$2"
+      shift 2
+      ;;
     *)
       if [ -z "$MAP_FILE" ]; then
         MAP_FILE="$1"
       else
-        echo "Usage: $0 [--profile <profile>] <terrain.txt> (default profile: sepolia)" >&2
+        echo "Usage: $0 [--profile <profile>] [--name <name>] <terrain.txt> (default profile: sepolia)" >&2
         exit 1
       fi
       shift
@@ -23,8 +28,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$MAP_FILE" ]; then
-  echo "Usage: $0 [--profile <profile>] <terrain.txt> (default profile: sepolia)" >&2
+  echo "Usage: $0 [--profile <profile>] [--name <name>] <terrain.txt> (default profile: sepolia)" >&2
   exit 1
+fi
+
+# Default name from filename (without extension)
+if [ -z "$MAP_NAME" ]; then
+  MAP_NAME="$(basename "$MAP_FILE" .txt)"
 fi
 
 if [ ! -f "$MAP_FILE" ]; then
@@ -106,7 +116,8 @@ if [ -n "$PROFILE" ]; then
 fi
 
 sozo execute ${PROFILE_ARGS[@]:+"${PROFILE_ARGS[@]}"} hashfront-actions register_map \
+  str:"$MAP_NAME" \
   $WIDTH $HEIGHT \
   $TILE_COUNT $TILES \
   $BUILDING_COUNT $BUILDINGS \
-  $UNIT_COUNT $UNITS 
+  $UNIT_COUNT $UNITS

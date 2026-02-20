@@ -16,8 +16,10 @@ fn setup_combat() -> (IActionsDispatcher, dojo::world::WorldStorage, u32) {
 
     let (actions_dispatcher, mut world) = setup();
     let map_id = actions_dispatcher
-        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
-    let game_id = actions_dispatcher.create_game(map_id, 1, false);
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
+    let game_id = actions_dispatcher.create_game("test", map_id, 1, false);
 
     let p2 = PLAYER2();
     set_contract_address(p2);
@@ -123,8 +125,10 @@ fn test_attack_out_of_range() {
 
     let (actions_dispatcher, _world) = setup();
     let map_id = actions_dispatcher
-        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
-    let game_id = actions_dispatcher.create_game(map_id, 1, false);
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
+    let game_id = actions_dispatcher.create_game("test", map_id, 1, false);
 
     let p2 = PLAYER2();
     set_contract_address(p2);

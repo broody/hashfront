@@ -6,7 +6,7 @@ import {
   useProvider,
   useSendTransaction,
 } from "@starknet-react/core";
-import { shortString } from "starknet";
+import { CallData, byteArray, hash, num } from "starknet";
 import { lookupAddresses } from "@cartridge/controller";
 import { ControllerConnector } from "@cartridge/connector";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +23,7 @@ interface GraphEdge<T> {
 
 interface GameModelNode {
   game_id: string | number;
+  name: string;
   map_id: string | number;
   height: string | number;
   width: string | number;
@@ -245,14 +246,16 @@ export default function Lobby() {
     try {
       toast("Submitting deployment...", "info");
       const trimmedName = operationName.trim();
+      const nameByteArray = byteArray.byteArrayFromString(trimmedName);
       const tx = await sendTransaction([
         {
           contractAddress: ACTIONS_ADDRESS,
           entrypoint: "create_game",
           calldata: [
-            "0", // ByteArray data.len
-            shortString.encodeShortString(trimmedName.slice(0, 31)), // pending_word
-            trimmedName.length.toString(), // pending_word_len
+            nameByteArray.data.length.toString(),
+            ...nameByteArray.data.map((d) => d.toString()),
+            nameByteArray.pending_word.toString(),
+            nameByteArray.pending_word_len.toString(),
             mapId.toString(),
             selectedPlayerId.toString(),
             "1",
@@ -273,13 +276,38 @@ export default function Lobby() {
       console.log("create_game waitForTransaction result:", waitResult);
 
       const receipt = await provider.getTransactionReceipt(tx.transaction_hash);
-      console.log("create_game receipt:", receipt);
+
+      // Parse GameCreated event from receipt to get game_id
+      // Dojo events: keys[0]=EventEmitted selector, keys[1]=event selector, keys[2]=system address
+      // data: [keys_len, ...key_fields, values_len, ...value_fields]
+      const eventEmittedSelector = hash.getSelectorFromName("EventEmitted");
+      const normalizedActionsAddress = num.toHex(ACTIONS_ADDRESS);
+      let createdGameId: number | null = null;
+      if ("events" in receipt && Array.isArray(receipt.events)) {
+        for (const event of receipt.events) {
+          if (!event.keys || event.keys.length < 3 || !event.data) continue;
+          // Match EventEmitted selector and actions contract address
+          if (num.toHex(event.keys[0]) !== num.toHex(eventEmittedSelector)) continue;
+          if (num.toHex(event.keys[2]) !== normalizedActionsAddress) continue;
+          // GameCreated has 1 key field (game_id) and 2 value fields (map_id, player_count)
+          const keysLen = Number(event.data[0]);
+          if (keysLen !== 1 || event.data.length < 4) continue;
+          const valuesLen = Number(event.data[2]);
+          if (valuesLen !== 2) continue;
+          createdGameId = Number(event.data[1]);
+          break;
+        }
+      }
 
       toast("Deployment confirmed.", "success", {
         linkUrl: explorer.transaction(tx.transaction_hash),
         linkLabel: `TX ${shortTxHash(tx.transaction_hash)}`,
       });
       setIsCreateModalOpen(false);
+
+      if (createdGameId !== null) {
+        navigate(`/game/${createdGameId}`);
+      }
     } catch (error) {
       console.error("Failed to create deployment:", error);
       toast("Failed to deploy operation.", "error");
@@ -478,6 +506,7 @@ export default function Lobby() {
             edges {
               node {
                 game_id
+                name
                 map_id
                 height
                 width
@@ -754,7 +783,7 @@ export default function Lobby() {
                     </div>
                     <div>
                       <div className="text-lg font-bold flex items-center gap-2">
-                        OPERATION_{gameId}
+                        {game.name || `OPERATION_${gameId}`}
                         {isPlaying && (
                           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                         )}
@@ -1043,8 +1072,9 @@ export default function Lobby() {
                   OPERATION NAME
                   <input
                     value={operationName}
-                    onChange={(e) => setOperationName(e.target.value.slice(0, 31))}
+                    onChange={(e) => setOperationName(e.target.value)}
                     placeholder="e.g. Iron Ridge Offensive"
+                    maxLength={30}
                     className="bg-blueprint-dark/80 border border-white/40 px-3 py-2 outline-none tracking-wide"
                     disabled={isDeploying}
                   />
@@ -1208,7 +1238,7 @@ export default function Lobby() {
                       <div>
                         NAME:{" "}
                         <span className="font-bold">
-                          OPERATION_{toNumber(joinTargetGame.game_id)}
+                          {joinTargetGame.name || `OPERATION_${toNumber(joinTargetGame.game_id)}`}
                         </span>
                       </div>
                       <div>

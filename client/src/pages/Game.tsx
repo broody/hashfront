@@ -8,6 +8,7 @@ export default function Game() {
   const { id } = useParams<{ id: string }>();
   const { loading: dataLoading, error } = useGameState(id);
   const [viewportLoaded, setViewportLoaded] = useState(false);
+  const isFullyLoaded = !dataLoading && viewportLoaded;
 
   const loadingMessage = useMemo(() => {
     const messages = [
@@ -24,8 +25,6 @@ export default function Game() {
     ];
     return messages[Math.floor(Math.random() * messages.length)];
   }, []);
-
-  const isFullyLoaded = !dataLoading && viewportLoaded;
 
   if (error) {
     return (
@@ -90,7 +89,7 @@ export default function Game() {
         <div className="mt-6 flex flex-col items-center gap-2">
           <div className="w-64 h-1 border border-white/20 relative overflow-hidden">
             <div
-              className="absolute inset-y-0 left-0 bg-white/40 transition-all duration-700 ease-out"
+              className={`absolute inset-y-0 left-0 bg-white/40 ${isFullyLoaded ? "" : "transition-all duration-700 ease-out"}`}
               style={{
                 width: viewportLoaded ? "100%" : dataLoading ? "30%" : "70%",
               }}

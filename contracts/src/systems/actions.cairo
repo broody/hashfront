@@ -4,13 +4,16 @@ use hashfront::types::{UnitType, Vec2};
 pub trait IActions<T> {
     fn register_map(
         ref self: T,
+        name: ByteArray,
         width: u8,
         height: u8,
         tiles: Array<u32>,
         buildings: Array<u32>,
         units: Array<u32>,
     ) -> u8;
-    fn create_game(ref self: T, map_id: u8, player_id: u8, is_test_mode: bool) -> u32;
+    fn create_game(
+        ref self: T, name: ByteArray, map_id: u8, player_id: u8, is_test_mode: bool,
+    ) -> u32;
     fn join_game(ref self: T, game_id: u32, player_id: u8);
     fn move_unit(ref self: T, game_id: u32, unit_id: u8, path: Array<Vec2>);
     fn attack(ref self: T, game_id: u32, unit_id: u8, target_id: u8);
@@ -51,6 +54,7 @@ pub mod actions {
         /// Player count is derived from the number of HQ buildings. Returns the new map_id.
         fn register_map(
             ref self: ContractState,
+            name: ByteArray,
             width: u8,
             height: u8,
             tiles: Array<u32>,
@@ -150,6 +154,7 @@ pub mod actions {
                 .write_model(
                     @MapInfo {
                         map_id,
+                        name,
                         player_count: hq_count,
                         width,
                         height,
@@ -165,7 +170,7 @@ pub mod actions {
         /// Create a new game from a registered map. Copies tiles and buildings into per-game
         /// state and registers the caller as the chosen player_id. Returns game_id.
         fn create_game(
-            ref self: ContractState, map_id: u8, player_id: u8, is_test_mode: bool,
+            ref self: ContractState, name: ByteArray, map_id: u8, player_id: u8, is_test_mode: bool,
         ) -> u32 {
             let mut world = self.world_default();
             let caller = get_caller_address();
@@ -183,6 +188,7 @@ pub mod actions {
                 .write_model(
                     @Game {
                         game_id,
+                        name,
                         map_id,
                         state: GameState::Lobby,
                         player_count: map_info.player_count,

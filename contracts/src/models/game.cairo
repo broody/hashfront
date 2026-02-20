@@ -13,6 +13,7 @@ pub struct GameCounter {
 pub struct Game {
     #[key]
     pub game_id: u32,
+    pub name: ByteArray,
     pub map_id: u8,
     pub state: GameState,
     pub player_count: u8,

@@ -19,8 +19,10 @@ fn test_create_game() {
     let (actions_dispatcher, mut world) = setup();
 
     let map_id = actions_dispatcher
-        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
-    let game_id = actions_dispatcher.create_game(map_id, 1, false);
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
+    let game_id = actions_dispatcher.create_game("test", map_id, 1, false);
     assert(game_id == 1, 'game_id should be 1');
 
     // Verify Game model
@@ -71,7 +73,7 @@ fn test_create_game_invalid_map() {
     set_account_contract_address(caller);
 
     let (actions_dispatcher, _) = setup();
-    actions_dispatcher.create_game(99, 1, false);
+    actions_dispatcher.create_game("test", 99, 1, false);
 }
 
 #[test]
@@ -84,10 +86,12 @@ fn test_self_play_game() {
     let (actions_dispatcher, mut world) = setup();
 
     let map_id = actions_dispatcher
-        .register_map(20, 20, build_test_tiles(), build_test_buildings(), build_test_units());
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
 
     // Create game in test mode
-    let game_id = actions_dispatcher.create_game(map_id, 1, true);
+    let game_id = actions_dispatcher.create_game("test", map_id, 1, true);
 
     // Join same game with same address as player 2
     actions_dispatcher.join_game(game_id, 2);
