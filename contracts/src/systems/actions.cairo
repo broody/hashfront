@@ -39,6 +39,7 @@ pub mod actions {
     use hashfront::models::player::PlayerState;
     use hashfront::models::tile::Tile;
     use hashfront::models::unit::{Unit, UnitImpl};
+    use hashfront::models::unit_position::UnitPosition;
     use hashfront::types::{BuildingType, GameState, TileType, UnitType, Vec2};
     use starknet::get_caller_address;
     use super::IActions;
@@ -298,9 +299,7 @@ pub mod actions {
             if game.num_players == game.player_count {
                 game.state = GameState::Playing;
                 game_helpers::spawn_starting_units(ref world, game_id, ref game, game.map_id);
-                game_helpers::count_player_buildings(
-                    ref world, game_id, game.player_count, game.width, game.height,
-                );
+                game_helpers::count_player_buildings(ref world, game_id, game.map_id);
                 game_helpers::run_income(ref world, game_id, 1);
                 game_helpers::run_production(ref world, game_id, 1, ref game);
                 world.emit_event(@GameStarted { game_id, player_count: game.player_count });
@@ -372,10 +371,14 @@ pub mod actions {
                 'Destination occupied',
             );
 
+            let old_x = unit.x;
+            let old_y = unit.y;
             unit.x = dest.x;
             unit.y = dest.y;
             unit.has_moved = true;
             world.write_model(@unit);
+            world.write_model(@UnitPosition { game_id, x: old_x, y: old_y, unit_id: 0 });
+            world.write_model(@UnitPosition { game_id, x: dest.x, y: dest.y, unit_id });
 
             world.emit_event(@UnitMoved { game_id, unit_id, x: dest.x, y: dest.y });
         }
@@ -419,6 +422,10 @@ pub mod actions {
             );
 
             if dmg_to_def >= defender.hp {
+                world
+                    .write_model(
+                        @UnitPosition { game_id, x: defender.x, y: defender.y, unit_id: 0 },
+                    );
                 defender.hp = 0;
                 defender.is_alive = false;
                 world.write_model(@defender);
@@ -436,6 +443,10 @@ pub mod actions {
 
             if dmg_to_atk > 0 {
                 if dmg_to_atk >= attacker.hp {
+                    world
+                        .write_model(
+                            @UnitPosition { game_id, x: attacker.x, y: attacker.y, unit_id: 0 },
+                        );
                     attacker.hp = 0;
                     attacker.is_alive = false;
                     world.write_model(@attacker);
@@ -619,7 +630,7 @@ pub mod actions {
             assert(current_ps.address == caller, 'Not your turn');
 
             game_helpers::reset_stale_captures(
-                ref world, game_id, game.current_player, game.width, game.height,
+                ref world, game_id, game.current_player, game.map_id,
             );
             game_helpers::reset_unit_flags(
                 ref world, game_id, game.current_player, game.next_unit_id,
@@ -650,7 +661,11 @@ pub mod actions {
 
             if new_round > MAX_ROUNDS {
                 game.state = GameState::Finished;
-                game.winner = game_helpers::timeout_winner(ref world, game_id, game.player_count);
+                game
+                    .winner =
+                        game_helpers::timeout_winner(
+                            ref world, game_id, game.player_count, game.next_unit_id,
+                        );
                 world.write_model(@game);
                 world.emit_event(@GameOver { game_id, winner: game.winner });
                 return;

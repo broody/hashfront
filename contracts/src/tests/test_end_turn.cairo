@@ -90,13 +90,13 @@ fn test_end_turn_resets_unit_flags() {
 fn test_end_turn_runs_production() {
     let (actions_dispatcher, mut world, game_id) = setup_playing_game();
 
-    // Give P2 a factory with a queued infantry
+    // Convert P2's HQ tile into a factory with a queued infantry
     world
         .write_model_test(
             @Building {
                 game_id,
-                x: 15,
-                y: 15,
+                x: 19,
+                y: 19,
                 building_type: BuildingType::Factory,
                 player_id: 2,
                 capture_player: 0,
@@ -109,7 +109,7 @@ fn test_end_turn_runs_production() {
     actions_dispatcher.end_turn(game_id);
 
     // Factory should have produced the unit
-    let building: Building = world.read_model((game_id, 15_u8, 15_u8));
+    let building: Building = world.read_model((game_id, 19_u8, 19_u8));
     assert(building.queued_unit == 0, 'queue should be cleared');
 
     // New unit should exist
@@ -118,8 +118,8 @@ fn test_end_turn_runs_production() {
     assert(new_unit.is_alive, 'new unit should be alive');
     assert(new_unit.player_id == 2, 'unit belongs to P2');
     assert(new_unit.unit_type == UnitType::Infantry, 'should be infantry');
-    assert(new_unit.x == 15, 'spawned at factory x');
-    assert(new_unit.y == 15, 'spawned at factory y');
+    assert(new_unit.x == 19, 'spawned at factory x');
+    assert(new_unit.y == 19, 'spawned at factory y');
 }
 
 #[test]

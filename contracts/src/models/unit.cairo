@@ -1,4 +1,5 @@
 use dojo::model::ModelStorage;
+use hashfront::models::unit_position::UnitPosition;
 use hashfront::types::UnitType;
 
 #[derive(Introspect, Serde, Drop, DojoStore)]
@@ -24,38 +25,33 @@ pub impl UnitImpl of UnitTrait {
     fn exists_at(
         ref world: dojo::world::WorldStorage, game_id: u32, x: u8, y: u8, next_unit_id: u8,
     ) -> bool {
-        let mut i: u8 = 1;
-        let mut found = false;
-        while i <= next_unit_id && !found {
-            let u: Unit = world.read_model((game_id, i));
-            if u.is_alive && u.x == x && u.y == y {
-                found = true;
-            }
-            i += 1;
+        if next_unit_id == 0 {
+            return false;
         }
-        found
+
+        let pos: UnitPosition = world.read_model((game_id, x, y));
+        if pos.unit_id == 0 || pos.unit_id > next_unit_id {
+            return false;
+        }
+
+        let u: Unit = world.read_model((game_id, pos.unit_id));
+        u.is_alive && u.x == x && u.y == y
     }
 
     /// Check if a specific player's infantry occupies (x, y).
     fn infantry_exists_at(
         ref world: dojo::world::WorldStorage, game_id: u32, x: u8, y: u8, player_id: u8,
     ) -> bool {
-        let mut i: u8 = 1;
-        let mut found = false;
-        while i < 255 && !found {
-            let u: Unit = world.read_model((game_id, i));
-            if u.unit_type == UnitType::None && u.hp == 0 && !u.is_alive {
-                break;
-            }
-            if u.is_alive
-                && u.player_id == player_id
-                && u.unit_type == UnitType::Infantry
-                && u.x == x
-                && u.y == y {
-                found = true;
-            }
-            i += 1;
+        let pos: UnitPosition = world.read_model((game_id, x, y));
+        if pos.unit_id == 0 {
+            return false;
         }
-        found
+
+        let u: Unit = world.read_model((game_id, pos.unit_id));
+        u.is_alive
+            && u.player_id == player_id
+            && u.unit_type == UnitType::Infantry
+            && u.x == x
+            && u.y == y
     }
 }

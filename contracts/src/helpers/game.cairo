@@ -5,9 +5,10 @@ use hashfront::events::GameOver;
 use hashfront::helpers::unit_stats;
 use hashfront::models::building::Building;
 use hashfront::models::game::Game;
-use hashfront::models::map::{MapInfo, MapUnit};
+use hashfront::models::map::{MapBuilding, MapInfo, MapUnit};
 use hashfront::models::player::PlayerState;
 use hashfront::models::unit::{Unit, UnitImpl};
+use hashfront::models::unit_position::UnitPosition;
 use hashfront::types::{BuildingType, GameState, UnitType};
 
 pub fn spawn_starting_units(
@@ -36,6 +37,7 @@ pub fn spawn_starting_units(
                     is_alive: true,
                 },
             );
+        world.write_model(@UnitPosition { game_id, x: map_unit.x, y: map_unit.y, unit_id });
 
         let mut ps: PlayerState = world.read_model((game_id, map_unit.player_id));
         ps.unit_count += 1;
@@ -45,32 +47,31 @@ pub fn spawn_starting_units(
     };
 }
 
-pub fn count_player_buildings(
-    ref world: dojo::world::WorldStorage, game_id: u32, player_count: u8, width: u8, height: u8,
-) {
-    let mut y: u8 = 0;
-    while y < height {
-        let mut x: u8 = 0;
-        while x < width {
-            let building: Building = world.read_model((game_id, x, y));
-            if building.player_id != 0 {
-                let mut ps: PlayerState = world.read_model((game_id, building.player_id));
-                if building.building_type == BuildingType::Factory {
-                    ps.factory_count += 1;
-                } else if building.building_type == BuildingType::City {
-                    ps.city_count += 1;
-                }
-                world.write_model(@ps);
+pub fn count_player_buildings(ref world: dojo::world::WorldStorage, game_id: u32, map_id: u8) {
+    let map_info: MapInfo = world.read_model(map_id);
+    let mut i: u16 = 0;
+    while i < map_info.building_count {
+        let mb: MapBuilding = world.read_model((map_id, i));
+        let building: Building = world.read_model((game_id, mb.x, mb.y));
+        if building.player_id != 0 {
+            let mut ps: PlayerState = world.read_model((game_id, building.player_id));
+            if building.building_type == BuildingType::Factory {
+                ps.factory_count += 1;
+            } else if building.building_type == BuildingType::City {
+                ps.city_count += 1;
             }
-            x += 1;
+            world.write_model(@ps);
         }
-        y += 1;
+        i += 1;
     };
 }
 
 pub fn run_income(ref world: dojo::world::WorldStorage, game_id: u32, player_id: u8) {
     let mut ps: PlayerState = world.read_model((game_id, player_id));
     let income = ps.city_count * INCOME_PER_CITY;
+    if income == 0 {
+        return;
+    }
     ps.gold += income;
     world.write_model(@ps);
 }
@@ -78,46 +79,51 @@ pub fn run_income(ref world: dojo::world::WorldStorage, game_id: u32, player_id:
 pub fn run_production(
     ref world: dojo::world::WorldStorage, game_id: u32, player_id: u8, ref game: Game,
 ) {
-    let mut y: u8 = 0;
-    while y < game.height {
-        let mut x: u8 = 0;
-        while x < game.width {
-            let mut building: Building = world.read_model((game_id, x, y));
-            if building.building_type == BuildingType::Factory
-                && building.player_id == player_id
-                && building.queued_unit != 0 {
-                if !UnitImpl::exists_at(ref world, game_id, x, y, game.next_unit_id) {
-                    let ut: UnitType = building.queued_unit.into();
-                    game.next_unit_id += 1;
-                    let uid = game.next_unit_id;
+    let map_info: MapInfo = world.read_model(game.map_id);
+    let mut produced: u8 = 0;
+    let mut i: u16 = 0;
+    while i < map_info.building_count {
+        let mb: MapBuilding = world.read_model((game.map_id, i));
+        let x = mb.x;
+        let y = mb.y;
+        let mut building: Building = world.read_model((game_id, x, y));
+        if building.building_type == BuildingType::Factory
+            && building.player_id == player_id
+            && building.queued_unit != 0 {
+            if !UnitImpl::exists_at(ref world, game_id, x, y, game.next_unit_id) {
+                let ut: UnitType = building.queued_unit.into();
+                game.next_unit_id += 1;
+                let uid = game.next_unit_id;
 
-                    world
-                        .write_model(
-                            @Unit {
-                                game_id,
-                                unit_id: uid,
-                                player_id,
-                                unit_type: ut,
-                                x,
-                                y,
-                                hp: unit_stats::max_hp(ut),
-                                has_moved: true,
-                                has_acted: true,
-                                is_alive: true,
-                            },
-                        );
+                world
+                    .write_model(
+                        @Unit {
+                            game_id,
+                            unit_id: uid,
+                            player_id,
+                            unit_type: ut,
+                            x,
+                            y,
+                            hp: unit_stats::max_hp(ut),
+                            has_moved: true,
+                            has_acted: true,
+                            is_alive: true,
+                        },
+                    );
+                world.write_model(@UnitPosition { game_id, x, y, unit_id: uid });
 
-                    let mut ps: PlayerState = world.read_model((game_id, player_id));
-                    ps.unit_count += 1;
-                    world.write_model(@ps);
-
-                    building.queued_unit = 0;
-                    world.write_model(@building);
-                }
+                produced += 1;
+                building.queued_unit = 0;
+                world.write_model(@building);
             }
-            x += 1;
         }
-        y += 1;
+        i += 1;
+    }
+
+    if produced > 0 {
+        let mut ps: PlayerState = world.read_model((game_id, player_id));
+        ps.unit_count += produced;
+        world.write_model(@ps);
     };
 }
 
@@ -128,32 +134,34 @@ pub fn reset_unit_flags(
     while i <= next_unit_id {
         let mut u: Unit = world.read_model((game_id, i));
         if u.is_alive && u.player_id == player_id {
-            u.has_moved = false;
-            u.has_acted = false;
-            world.write_model(@u);
+            if u.has_moved || u.has_acted {
+                u.has_moved = false;
+                u.has_acted = false;
+                world.write_model(@u);
+            }
         }
         i += 1;
     };
 }
 
 pub fn reset_stale_captures(
-    ref world: dojo::world::WorldStorage, game_id: u32, player_id: u8, width: u8, height: u8,
+    ref world: dojo::world::WorldStorage, game_id: u32, player_id: u8, map_id: u8,
 ) {
-    let mut y: u8 = 0;
-    while y < height {
-        let mut x: u8 = 0;
-        while x < width {
-            let mut building: Building = world.read_model((game_id, x, y));
-            if building.capture_player == player_id && building.capture_progress > 0 {
-                if !UnitImpl::infantry_exists_at(ref world, game_id, x, y, player_id) {
-                    building.capture_player = 0;
-                    building.capture_progress = 0;
-                    world.write_model(@building);
-                }
+    let map_info: MapInfo = world.read_model(map_id);
+    let mut i: u16 = 0;
+    while i < map_info.building_count {
+        let mb: MapBuilding = world.read_model((map_id, i));
+        let x = mb.x;
+        let y = mb.y;
+        let mut building: Building = world.read_model((game_id, x, y));
+        if building.capture_player == player_id && building.capture_progress > 0 {
+            if !UnitImpl::infantry_exists_at(ref world, game_id, x, y, player_id) {
+                building.capture_player = 0;
+                building.capture_progress = 0;
+                world.write_model(@building);
             }
-            x += 1;
         }
-        y += 1;
+        i += 1;
     };
 }
 
@@ -165,18 +173,16 @@ pub fn check_elimination(
         return;
     }
 
-    let mut y: u8 = 0;
+    let map_info: MapInfo = world.read_model(game.map_id);
+    let mut i: u16 = 0;
     let mut has_hq = false;
-    while y < game.height {
-        let mut x: u8 = 0;
-        while x < game.width {
-            let building: Building = world.read_model((game_id, x, y));
-            if building.building_type == BuildingType::HQ && building.player_id == player_id {
-                has_hq = true;
-            }
-            x += 1;
+    while i < map_info.building_count {
+        let mb: MapBuilding = world.read_model((game.map_id, i));
+        let building: Building = world.read_model((game_id, mb.x, mb.y));
+        if building.building_type == BuildingType::HQ && building.player_id == player_id {
+            has_hq = true;
         }
-        y += 1;
+        i += 1;
     }
 
     let eliminated = !has_hq || (ps.unit_count == 0 && ps.factory_count == 0 && ps.gold == 0);
@@ -207,7 +213,9 @@ pub fn check_elimination(
     }
 }
 
-pub fn timeout_winner(ref world: dojo::world::WorldStorage, game_id: u32, player_count: u8) -> u8 {
+pub fn timeout_winner(
+    ref world: dojo::world::WorldStorage, game_id: u32, player_count: u8, next_unit_id: u8,
+) -> u8 {
     let mut best_player: u8 = 0;
     let mut best_score: u16 = 0;
     let mut p: u8 = 1;
@@ -216,11 +224,8 @@ pub fn timeout_winner(ref world: dojo::world::WorldStorage, game_id: u32, player
         if ps.is_alive {
             let mut total_hp: u16 = 0;
             let mut i: u8 = 1;
-            while i < 255 {
+            while i <= next_unit_id {
                 let u: Unit = world.read_model((game_id, i));
-                if u.unit_type == UnitType::None && u.hp == 0 {
-                    break;
-                }
                 if u.is_alive && u.player_id == p {
                     total_hp += u.hp.into();
                 }

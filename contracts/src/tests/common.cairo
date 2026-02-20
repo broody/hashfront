@@ -10,6 +10,7 @@ use hashfront::models::map::{m_MapBuilding, m_MapInfo, m_MapTile, m_MapUnit};
 use hashfront::models::player::m_PlayerState;
 use hashfront::models::tile::m_Tile;
 use hashfront::models::unit::m_Unit;
+use hashfront::models::unit_position::m_UnitPosition;
 use hashfront::systems::actions::{IActionsDispatcher, actions};
 use starknet::ContractAddress;
 
@@ -35,6 +36,7 @@ fn namespace_def() -> NamespaceDef {
             TestResource::Model(m_Tile::TEST_CLASS_HASH),
             TestResource::Model(m_Building::TEST_CLASS_HASH),
             TestResource::Model(m_Unit::TEST_CLASS_HASH),
+            TestResource::Model(m_UnitPosition::TEST_CLASS_HASH),
             TestResource::Event(events::e_GameCreated::TEST_CLASS_HASH),
             TestResource::Event(events::e_GameStarted::TEST_CLASS_HASH),
             TestResource::Event(events::e_PlayerJoined::TEST_CLASS_HASH),

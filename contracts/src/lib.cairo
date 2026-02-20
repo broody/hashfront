@@ -9,6 +9,7 @@ pub mod models {
     pub mod player;
     pub mod tile;
     pub mod unit;
+    pub mod unit_position;
 }
 
 pub mod systems {
