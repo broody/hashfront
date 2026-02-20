@@ -127,65 +127,67 @@ const ECGMonitor = ({
   const randomDelay = (gameId * 37.7 + 13.3) % scrollDuration;
 
   return (
-    <div 
-      className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group animate-intermittent-glitch"
-      style={{ animationDelay: `-${(gameId * 1.43) % 8}s` }}
-    >
-      {/* Background Grid */}
-      <div
-        className="absolute inset-0 opacity-10"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)",
-          backgroundSize: "4px 4px",
-        }}
-      />
-
-      <div className="absolute inset-0 flex items-center">
-        <svg
-          viewBox="0 0 160 40"
-          className="h-full shrink-0 animate-ecg-scroll"
+    <div className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group">
+      <div 
+        className="absolute inset-0 animate-intermittent-glitch"
+        style={{ animationDelay: `-${(gameId * 1.43) % 8}s` }}
+      >
+        {/* Background Grid */}
+        <div
+          className="absolute inset-0 opacity-10"
           style={{
-            animationDuration: `${scrollDuration}s`,
-            animationDelay: `-${randomDelay}s`,
+            backgroundImage:
+              "linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)",
+            backgroundSize: "4px 4px",
+          }}
+        />
+
+        <div className="absolute inset-0 flex items-center">
+          <svg
+            viewBox="0 0 160 40"
+            className="h-full shrink-0 animate-ecg-scroll"
+            style={{
+              animationDuration: `${scrollDuration}s`,
+              animationDelay: `-${randomDelay}s`,
+            }}
+          >
+            {/* Repeating heartbeat path - 2 segments to allow continuous scroll */}
+            <g
+              className="flicker-text"
+              style={{ animationDelay: `-${(randomDelay * 0.8) % 5}s` }}
+            >
+              <path
+                d="M0,20 L15,20 L18,10 L22,30 L25,20 L40,20 L55,20 L58,10 L62,30 L65,20 L80,20 L95,20 L98,10 L102,30 L105,20 L120,20 L135,20 L138,10 L142,30 L145,20 L160,20"
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.5)"
+                strokeWidth="1.2"
+                className="animate-ecg-glow"
+                style={{
+                  animationDuration: `${scrollDuration * 0.5}s`,
+                }}
+              />
+            </g>
+          </svg>
+        </div>
+
+        {/* Realistic CRT Beam */}
+        <div
+          className="absolute top-0 bottom-0 w-12 animate-ecg-sweep pointer-events-none"
+          style={{
+            animationDuration: `${scrollDuration * 2}s`,
+            animationDelay: `-${(randomDelay * 1.3) % (scrollDuration * 2)}s`,
           }}
         >
-          {/* Repeating heartbeat path - 2 segments to allow continuous scroll */}
-          <g 
-            className="flicker-text" 
-            style={{ animationDelay: `-${(randomDelay * 0.8) % 5}s` }}
-          >
-            <path
-              d="M0,20 L15,20 L18,10 L22,30 L25,20 L40,20 L55,20 L58,10 L62,30 L65,20 L80,20 L95,20 L98,10 L102,30 L105,20 L120,20 L135,20 L138,10 L142,30 L145,20 L160,20"
-              fill="none"
-              stroke="rgba(255, 255, 255, 0.5)"
-              strokeWidth="1.2"
-              className="animate-ecg-glow"
-              style={{ 
-                animationDuration: `${scrollDuration * 0.5}s`,
-              }}
-            />
-          </g>
-        </svg>
-      </div>
+          {/* Leading sharp line */}
+          <div className="absolute right-0 top-0 bottom-0 w-[1.5px] bg-white/30 shadow-[0_0_8px_rgba(255,255,255,0.4)]" />
+          {/* Trailing phosphor decay */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-white/10" />
+        </div>
 
-      {/* Realistic CRT Beam */}
-      <div
-        className="absolute top-0 bottom-0 w-12 animate-ecg-sweep pointer-events-none"
-        style={{
-          animationDuration: `${scrollDuration * 2}s`,
-          animationDelay: `-${(randomDelay * 1.3) % (scrollDuration * 2)}s`,
-        }}
-      >
-        {/* Leading sharp line */}
-        <div className="absolute right-0 top-0 bottom-0 w-[1.5px] bg-white/30 shadow-[0_0_8px_rgba(255,255,255,0.4)]" />
-        {/* Trailing phosphor decay */}
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-white/10" />
-      </div>
-
-      {/* Pulse status indicator */}
-      <div className="absolute bottom-1 right-1 text-[7px] font-mono text-white/20 leading-none uppercase">
-        VITAL_{pulses > 1 ? "MULT" : "STABLE"}
+        {/* Pulse status indicator */}
+        <div className="absolute bottom-1 right-1 text-[7px] font-mono text-white/20 leading-none uppercase">
+          VITAL_{pulses > 1 ? "MULT" : "STABLE"}
+        </div>
       </div>
     </div>
   );
