@@ -641,7 +641,7 @@ export default function Lobby() {
 
   return (
     <BlueprintContainer>
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden min-h-[80px]">
         {/* Decorative Background SVG for Header */}
         <div className="absolute right-0 top-0 h-full w-1/2 opacity-10 pointer-events-none">
           <svg
@@ -739,7 +739,7 @@ export default function Lobby() {
         </div>
       </header>
 
-      <div className="grid md:grid-cols-[2.5fr_1fr] gap-4 lg:gap-8 flex-1 min-h-0 overflow-hidden">
+      <div className="grid md:grid-cols-[2.5fr_1fr] gap-3 lg:gap-8 flex-1 min-h-0 overflow-hidden">
         <PixelPanel
           title="DEPLOYMENTS"
           className="flex flex-col gap-0 min-h-0 overflow-hidden"
@@ -850,7 +850,7 @@ export default function Lobby() {
           </div>
         </PixelPanel>
 
-        <div className="flex flex-col gap-8 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-3 lg:gap-8 overflow-y-auto pr-1">
           <PixelPanel title="System Nav" className="relative">
             <div className="absolute top-2 right-2 opacity-20 hidden lg:block">
               <svg width="60" height="60" viewBox="0 0 100 100">
