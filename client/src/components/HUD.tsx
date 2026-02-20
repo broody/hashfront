@@ -59,7 +59,7 @@ function shortTxHash(txHash: string): string {
   return `${txHash.slice(0, 8)}...${txHash.slice(-6)}`;
 }
 
-const HUD = () => {
+export default function HUD() {
   const { id } = useParams<{ id: string }>();
   const gameId = parseInt(id || "1", 10) || 1;
   const graphqlClient = useClient();
@@ -291,6 +291,4 @@ const HUD = () => {
       </div>
     </>
   );
-};
-
-export default HUD;
+}
