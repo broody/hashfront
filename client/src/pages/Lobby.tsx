@@ -130,7 +130,7 @@ const ECGMonitor = ({
     <div className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group">
       <div 
         className="absolute inset-0 animate-intermittent-glitch"
-        style={{ animationDelay: `-${(gameId * 1.43) % 16}s` }}
+        style={{ animationDelay: `-${(gameId * 1.43) % 32}s` }}
       >
         {/* Background Grid */}
         <div

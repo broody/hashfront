@@ -303,13 +303,13 @@ a {
   animation: ecg-sweep 2s linear infinite;
 }
 @keyframes intermittent-glitch {
-  0%, 15%, 17%, 18%, 45%, 46%, 48%, 70%, 72%, 100% { opacity: 1; }
+  0%, 15.5%, 16.5%, 17%, 46.5%, 47.5%, 70.5%, 71.5%, 100% { opacity: 1; }
   16%, 47%, 71% { opacity: 0; }
-  17.5% { opacity: 0.2; }
+  16.25% { opacity: 0.2; }
 }
 
 .animate-intermittent-glitch {
-  animation: intermittent-glitch 16s step-end infinite;
+  animation: intermittent-glitch 32s step-end infinite;
 }
 
 ::-webkit-scrollbar {
