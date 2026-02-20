@@ -1,8 +1,8 @@
 {
   "world": {
     "class_hash": "0x613551abceb2b37073b1149bb862ea70cf029981ce1ca47e9dd7c7ab97cb65d",
-    "address": "0x4a1643022cba34b693a8050075a5dc2a29d8c890b1804b05846f866a5a304aa",
-    "seed": "hashfront_3",
+    "address": "0x6c4cd8095fb36334ca65d135bff7361fd19f13f67ee45dbecdd27eb1d0a5a08",
+    "seed": "hashfront_sepolia",
     "name": "Hashfront",
     "entrypoints": [
       "uuid",
@@ -33,11 +33,11 @@
   },
   "contracts": [
     {
-      "address": "0x7739c5dcc89dbcffe817b970224e4d2b39e43e5f612e228d0dd9b911d816682",
-      "class_hash": "0x3b0703945daaeb6fca524e612724ababe0fea40dbf37293b0bab27d7618391f",
+      "address": "0xd7bfd765f64dee218bad64a583141f701b1999a1d020493feedbfb0549d989",
+      "class_hash": "0x16acd5c6a1646865cb2e815132068a26bdb13ed644cb3cd09af689c335c9fab",
       "init_calldata": [],
       "tag": "hashfront-actions",
-      "selector": "0x10d95ab7e962c6637491dc1551130b8ada3cc9f2c3421c79d75623ca922466c",
+      "selector": "0x8b04e6669a8a23a1c372cc7c4078e7cea1d7e35253b6a592e2393a823fb26d",
       "systems": [
         "register_map",
         "create_game",
@@ -97,9 +97,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x4de2a2fae3a07ae48f2a03ee71b2b7ae1c82ef78c361cdcbdf835011bb98181",
+      "class_hash": "0x4e6b70d3131cead7bccf3ca08dc378dea27cca54ea92d28411ce3f008d6659",
       "tag": "hashfront-Building",
-      "selector": "0x4ecf43b372aa0394176c21985100b004ac1b18679eeb95c0f2914caee89cd7c"
+      "selector": "0x7d111cd8be3636ce119f311a00074ca226fbc012a369ef3e5dc8085488e7870"
     },
     {
       "members": [
@@ -164,9 +164,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x442855bc448de3810ab973e17c178fcb060828e6321dd0bf068ede3279fe9b2",
+      "class_hash": "0x32a0db4db47989c3293f7fd424dbff19f054ecdb39dda2abe74a11980b4834c",
       "tag": "hashfront-Game",
-      "selector": "0x2be78c5ae6b0c742cd7ba5ec45363e60f831c26cc9e0ea446ba482a4e204484"
+      "selector": "0x61decd6e8cbe912670ec402a77ea2aea40ec5898828b18c44790715b52c2f35"
     },
     {
       "members": [
@@ -181,9 +181,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x69fa2a68b64cda5198c8581197dbfdf0d43044319e30ba28bc0e2e710b6af1b",
+      "class_hash": "0x3f409574456bc9cffee28ef15aa40e5f0e887659f9d2e8fc5ee637cfcb1e0de",
       "tag": "hashfront-GameCounter",
-      "selector": "0x322841f49335c0df79641e2b97a2a86f5f7b514fe9caebf03bd464f94d8420e"
+      "selector": "0x6e67990a9f7bebbea315d3c621803d5126df040cc595e894aa285d8b5321bd3"
     },
     {
       "members": [
@@ -218,9 +218,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x44a02d50d5746742c82d9a41ed6355346d918e6ecb86018fdbe05f5560d90bc",
+      "class_hash": "0x1f0ea91a078da9ffa35754bd92fb5c1d2b22e1aebcbb787c95b28a62047018a",
       "tag": "hashfront-MapBuilding",
-      "selector": "0x123326471d7febb3960a76b2e1f1c9d57dd7cc604337bee776847af4957643b"
+      "selector": "0x5602066c52a2d96b1c371ad5e7806189b21701d293d4022fc02da3fe32fc62c"
     },
     {
       "members": [
@@ -260,9 +260,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x18274e968b52194cb990eec6e4fa436718f73959b6f6c07a23a481842752280",
+      "class_hash": "0x7f7ce2e0ada5532eaadf378faa653ec09d208eaf80005c594778cfb9d21836f",
       "tag": "hashfront-MapInfo",
-      "selector": "0x6bbbbf7c95e6ac498db0be731189a5f420852612aa558065bfeab09b5952225"
+      "selector": "0x2adb259072793fb9d12697f699276fd44cade48de61c0a2421b7ba75db5a2a4"
     },
     {
       "members": [
@@ -287,9 +287,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x57a01bdb53109f7c60facbdeba29a2a10f4f19d6df713d497ff4628c0e6def2",
+      "class_hash": "0x38c8972a469e38bd656867861a5f51e3c51a86c99276d3f42a8f70e984edf01",
       "tag": "hashfront-MapTile",
-      "selector": "0x6f29437299071183095d64ca6ac3a0379a150dd6692afed76b4040db00682df"
+      "selector": "0x2c8bb09ffc4435173e0d5383ee2f1f8bc269b089adf7cd85a8a53bbf5b9b11f"
     },
     {
       "members": [
@@ -324,9 +324,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x5ca1ba514efe5c00d256e4b708a7608bf1b172b9ee8a09f8f81c8dadaea1d3a",
+      "class_hash": "0x73ad038a33de137bae271f7ef806cfa4314b5fa64d46e2e70d2c6bc6b23cc61",
       "tag": "hashfront-MapUnit",
-      "selector": "0x3ff9624e321fc641d91ac3b8574bbec07bd5af451abee7d94661df1945e8b99"
+      "selector": "0x69228a475a5ead3b25dbd6a1252162d43f10670bbae9cd6debbb532b8db8a6e"
     },
     {
       "members": [
@@ -371,9 +371,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x2fcc574bbcc05a4117c3359ef7ada93bc45f0d846da0da6beee203f01c20e21",
+      "class_hash": "0x3752a1872b660a158e513f528288593e8db25352c8455c3ee5b774df0f0fb9e",
       "tag": "hashfront-PlayerState",
-      "selector": "0x24cb685db879872a1f4ba7ce535c11e9f94d12213506ab073bf74737a69bac0"
+      "selector": "0x2ba15935b5f34cec87ca1cefae71696b046d2cbf671021d6ecaa51f6a58f4d3"
     },
     {
       "members": [
@@ -398,9 +398,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x229de9ccb23c18f7946f93b88bcac17417f74aec0a4961a791239e5c3fd8d95",
+      "class_hash": "0x6f37327191cbac23422c02cf3f5b0fc31a2cb42ebe9d7aea23f0e09f5887f37",
       "tag": "hashfront-Tile",
-      "selector": "0x4f4446b29928375e095539f4355dcbf0f4e96b423a669711e78c2c73d4349d1"
+      "selector": "0x515b29329b0d21518d1f9bd642e0805ba4dbe4b36de3c80cda4203f42507ba2"
     },
     {
       "members": [
@@ -455,9 +455,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x2cbe52e1f808b6aca44343590b65c2fb9da65ae137199905a5762ba9be74ec8",
+      "class_hash": "0x3e048f202ad16245d5f7fb941628f51d61787f649a8b78f792d7caa3d41dd1c",
       "tag": "hashfront-Unit",
-      "selector": "0x7d97b4eeac0257748dd5b8c659493ab7ac45d6850c7eeb659e92457daf095f"
+      "selector": "0x456e996e5437ea643e9af5c4030664fff1efb3b95f63489eff58323b9c1d701"
     }
   ],
   "events": [
@@ -484,9 +484,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x5d39f86de5ecc41103b15e639fa3df8122d41371d5bde795261068bc3c1e070",
+      "class_hash": "0x656fbb4336935951a0fc2c2dba3c817c729e1220073aa5980a2e7fbda807556",
       "tag": "hashfront-BuildingCaptured",
-      "selector": "0x1511a36332d08800c50a7512aa6e17a53855a92a15edb8f6bf49f19d3beada"
+      "selector": "0x65c9f73010137dc30c5e2c983d723e1c4bbbcc97b3b9f1db483e2e1901166f0"
     },
     {
       "members": [
@@ -506,9 +506,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x5aca55b1efafe09c1b5bbb9bb6228f3b08811be2e2407a69dd7d4887ae34cf2",
+      "class_hash": "0x386606fdabfdf00ee75fb3413e5fc3bdae6a83fc9eda92bd464c374fb0ea474",
       "tag": "hashfront-GameCreated",
-      "selector": "0x4cc43058221a44ad5db1ce977ef8c273cf77a420245022577a581292fe0f934"
+      "selector": "0x5752191432eff88ae41729193cbdc2fcc59794eef1f0d96d5adfa03c61cbc3e"
     },
     {
       "members": [
@@ -523,9 +523,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x3308ab23988bc5603dd6a597ce21ff5048c87dd397f39d04e66f006d04871ea",
+      "class_hash": "0x7d59b62776ef0f766f65df6051675f6be4f0acd8d8fc3588452477aa4113589",
       "tag": "hashfront-GameOver",
-      "selector": "0x6835f6c616a047990f383867e4c56bfd9f696acaa09c067e4c6131a4924dab9"
+      "selector": "0x9f179844c8752fa480ca67e5edd31a1d01a2c5815e5f5964525b3a3bf6909"
     },
     {
       "members": [
@@ -540,9 +540,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x401cc571b9f1a1d60751862084a7456fe102d41619c87b7502d8e5d49b065b8",
+      "class_hash": "0x4ff4a4a1a0033948a55177360b836be1bcba6794e8402f9bc02974df9eb8ff2",
       "tag": "hashfront-GameStarted",
-      "selector": "0x2f7f4cdaef2f698e0631822428f3f5da7ee282df95e86afe965e97b808f15bf"
+      "selector": "0x63bbd6bb7a5611662ff889c16c028eb761bb7ac0269af3439e130140bfa538c"
     },
     {
       "members": [
@@ -557,9 +557,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x3afdb76e00bb2c0cf2844c25cf09d8899d8e2a9c7e46b0c0b69bb81b5b7a52d",
+      "class_hash": "0x25d86b97c1ace3ea4df6bc60afb252ad6252f86e0993999f60bbe71d4e72c0",
       "tag": "hashfront-PlayerJoined",
-      "selector": "0x4f7c023b57664636a37ea8d68416b48856c1e7e6903729513796d77e05742eb"
+      "selector": "0x765f737a280546d8188a75c5ec836a25d4d95bb3f4e033f3932a029a47dc880"
     },
     {
       "members": [
@@ -579,9 +579,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x66461c26a50018a375d93a45e0ab2dbf8005dc922c6facad1ec999e126f2ffe",
+      "class_hash": "0x35b75b76b19cf881da604fb3d6638d058bc65fdc42e9bddfc83b74de403e69c",
       "tag": "hashfront-TurnEnded",
-      "selector": "0x6c4e576167579cb860e0b22854c485571c28013150cf062a48ec66ff0cc060e"
+      "selector": "0x215cedabd6acc62bfc98595a1df959bb4f3647a44721ea02f242ad0d1c6b7cd"
     },
     {
       "members": [
@@ -611,9 +611,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x675206b81f381b3f1e841998ad92b3c20a27e86ed1ef9805bad60f81dee968e",
+      "class_hash": "0x1fe903cf87ef386e9cb0d323548b827bbd4e3f3f6f2576142e63677267b07fd",
       "tag": "hashfront-UnitAttacked",
-      "selector": "0x1ccf66b1b7153baf1d15bc20b252d542f0f6ee9ccdefb31375f96dff6a1ff05"
+      "selector": "0xd8a329fd7df50ea4399dc8c1047778383178e66ad65a035e2214d0c4265c39"
     },
     {
       "members": [
@@ -638,9 +638,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x546455a02086f62720b2789256f802f7cee4d060b4146cedb1de8cee818b3b4",
+      "class_hash": "0x6d4e66a470503c8c2129b6f70c654868b95b279467830b0f99355134743947f",
       "tag": "hashfront-UnitBuilt",
-      "selector": "0x1226370148482c07ff97d68eddfdbc20690dd5cdb9bdcc9e35646cf81d772"
+      "selector": "0x10594c689295d1bdd46d16d119220c14158cd00d7661893ed86e95ef5c1ee30"
     },
     {
       "members": [
@@ -655,9 +655,9 @@
           "key": false
         }
       ],
-      "class_hash": "0x6a8a4e4dc0eb7d52d8c41117d3aa0b34435d525991a490bf128816f6695270a",
+      "class_hash": "0x46e0e41de109d584dc1ad701afe942adc3b331ab99977769da07f7f1e330037",
       "tag": "hashfront-UnitDied",
-      "selector": "0xd6ff2482c61592012b1d686c8c82dd179b6f046fbe4b31a069627a13387de1"
+      "selector": "0x27a4fecb12a70123b1cf88da2e5d2b0fec99cfc489c57da4c612c0d2be27c1a"
     },
     {
       "members": [
@@ -682,1406 +682,13 @@
           "key": false
         }
       ],
-      "class_hash": "0x3934db7f6d782f29e26ea782085c8f4262e5843c30fb1398078268c93ac0568",
+      "class_hash": "0x1925694ec740bc9a67625e02f7d80d0d48820bb5455a3330c12fd5a6ebef836",
       "tag": "hashfront-UnitMoved",
-      "selector": "0x4f9c767c42c24b2b8dfe826a6945e0d9162018dc430587c616a1071047c1acf"
+      "selector": "0x6348a3a504c2e52bff08a4a9c7721fc826fc7f98b95f3c62ad58263e5443225"
     }
   ],
   "external_contracts": [],
   "abis": [
-    {
-      "type": "struct",
-      "name": "hashfront::events::BuildingCaptured",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::BuildingCapturedValue",
-      "members": [
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameCreated",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameCreatedValue",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameOver",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "winner",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameOverValue",
-      "members": [
-        {
-          "name": "winner",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameStarted",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::GameStartedValue",
-      "members": [
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::PlayerJoined",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::PlayerJoinedValue",
-      "members": [
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::TurnEnded",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "next_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "round",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::TurnEndedValue",
-      "members": [
-        {
-          "name": "next_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "round",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitAttacked",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "attacker_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "target_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "damage_to_defender",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "damage_to_attacker",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitAttackedValue",
-      "members": [
-        {
-          "name": "attacker_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "target_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "damage_to_defender",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "damage_to_attacker",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitBuilt",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitBuiltValue",
-      "members": [
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitDied",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "unit_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitDiedValue",
-      "members": [
-        {
-          "name": "unit_id",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitMoved",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "unit_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::events::UnitMovedValue",
-      "members": [
-        {
-          "name": "unit_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_BuildingCaptured::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_GameCreated::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_GameOver::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_GameStarted::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_PlayerJoined::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_TurnEnded::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_UnitAttacked::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_UnitBuilt::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_UnitDied::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::events::e_UnitMoved::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::building::Building",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "building_type",
-          "type": "hashfront::types::BuildingType"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "capture_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "capture_progress",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "queued_unit",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::building::BuildingValue",
-      "members": [
-        {
-          "name": "building_type",
-          "type": "hashfront::types::BuildingType"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "capture_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "capture_progress",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "queued_unit",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::building::m_Building::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::game::Game",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "state",
-          "type": "hashfront::types::GameState"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "num_players",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "current_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "round",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "next_unit_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "winner",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "width",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "height",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "is_test_mode",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::game::GameCounter",
-      "members": [
-        {
-          "name": "id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "count",
-          "type": "core::integer::u32"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::game::GameCounterValue",
-      "members": [
-        {
-          "name": "count",
-          "type": "core::integer::u32"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::game::GameValue",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "state",
-          "type": "hashfront::types::GameState"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "num_players",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "current_player",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "round",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "next_unit_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "winner",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "width",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "height",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "is_test_mode",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::game::m_Game::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::game::m_GameCounter::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapBuilding",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "seq",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "building_type",
-          "type": "hashfront::types::BuildingType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapBuildingValue",
-      "members": [
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "building_type",
-          "type": "hashfront::types::BuildingType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapInfo",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "width",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "height",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "tile_count",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "building_count",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "unit_count",
-          "type": "core::integer::u16"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapInfoValue",
-      "members": [
-        {
-          "name": "player_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "width",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "height",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "tile_count",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "building_count",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "unit_count",
-          "type": "core::integer::u16"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapTile",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "seq",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "index",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "tile_type",
-          "type": "hashfront::types::TileType"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapTileValue",
-      "members": [
-        {
-          "name": "index",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "tile_type",
-          "type": "hashfront::types::TileType"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapUnit",
-      "members": [
-        {
-          "name": "map_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "seq",
-          "type": "core::integer::u16"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::map::MapUnitValue",
-      "members": [
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::map::m_MapBuilding::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::map::m_MapInfo::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::map::m_MapTile::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::map::m_MapUnit::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::player::PlayerState",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "address",
-          "type": "core::starknet::contract_address::ContractAddress"
-        },
-        {
-          "name": "gold",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "factory_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "city_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "is_alive",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::player::PlayerStateValue",
-      "members": [
-        {
-          "name": "address",
-          "type": "core::starknet::contract_address::ContractAddress"
-        },
-        {
-          "name": "gold",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "factory_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "city_count",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "is_alive",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::player::m_PlayerState::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::tile::Tile",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "tile_type",
-          "type": "hashfront::types::TileType"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::tile::TileValue",
-      "members": [
-        {
-          "name": "tile_type",
-          "type": "hashfront::types::TileType"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::tile::m_Tile::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::unit::Unit",
-      "members": [
-        {
-          "name": "game_id",
-          "type": "core::integer::u32"
-        },
-        {
-          "name": "unit_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "hp",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "has_moved",
-          "type": "core::bool"
-        },
-        {
-          "name": "has_acted",
-          "type": "core::bool"
-        },
-        {
-          "name": "is_alive",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::models::unit::UnitValue",
-      "members": [
-        {
-          "name": "player_id",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "unit_type",
-          "type": "hashfront::types::UnitType"
-        },
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "hp",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "has_moved",
-          "type": "core::bool"
-        },
-        {
-          "name": "has_acted",
-          "type": "core::bool"
-        },
-        {
-          "name": "is_alive",
-          "type": "core::bool"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::models::unit::m_Unit::Event",
-      "kind": "enum",
-      "variants": []
-    },
-    {
-      "type": "interface",
-      "name": "hashfront::systems::actions::IActions",
-      "items": [
-        {
-          "type": "function",
-          "name": "register_map",
-          "inputs": [
-            {
-              "name": "width",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "height",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "tiles",
-              "type": "core::array::Array::<core::integer::u32>"
-            },
-            {
-              "name": "buildings",
-              "type": "core::array::Array::<core::integer::u32>"
-            },
-            {
-              "name": "units",
-              "type": "core::array::Array::<core::integer::u32>"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u8"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "create_game",
-          "inputs": [
-            {
-              "name": "map_id",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "player_id",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "is_test_mode",
-              "type": "core::bool"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u32"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "join_game",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "player_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "move_unit",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "unit_id",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "path",
-              "type": "core::array::Array::<hashfront::types::Vec2>"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "attack",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "unit_id",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "target_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "capture",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "unit_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "wait_unit",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "unit_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "build_unit",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "factory_x",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "factory_y",
-              "type": "core::integer::u8"
-            },
-            {
-              "name": "unit_type",
-              "type": "hashfront::types::UnitType"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "end_turn",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "get_terrain",
-          "inputs": [
-            {
-              "name": "map_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_buildings",
-          "inputs": [
-            {
-              "name": "map_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_units",
-          "inputs": [
-            {
-              "name": "map_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
-            }
-          ],
-          "state_mutability": "view"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "hashfront::systems::actions::actions::Event",
-      "kind": "enum",
-      "variants": [
-        {
-          "name": "UpgradeableEvent",
-          "type": "dojo::contract::components::upgradeable::upgradeable_cpt::Event",
-          "kind": "nested"
-        },
-        {
-          "name": "WorldProviderEvent",
-          "type": "dojo::contract::components::world_provider::world_provider_cpt::Event",
-          "kind": "nested"
-        }
-      ]
-    },
-    {
-      "type": "enum",
-      "name": "hashfront::types::BuildingType",
-      "variants": [
-        {
-          "name": "None",
-          "type": "()"
-        },
-        {
-          "name": "City",
-          "type": "()"
-        },
-        {
-          "name": "Factory",
-          "type": "()"
-        },
-        {
-          "name": "HQ",
-          "type": "()"
-        }
-      ]
-    },
-    {
-      "type": "enum",
-      "name": "hashfront::types::GameState",
-      "variants": [
-        {
-          "name": "Lobby",
-          "type": "()"
-        },
-        {
-          "name": "Playing",
-          "type": "()"
-        },
-        {
-          "name": "Finished",
-          "type": "()"
-        }
-      ]
-    },
-    {
-      "type": "enum",
-      "name": "hashfront::types::TileType",
-      "variants": [
-        {
-          "name": "Grass",
-          "type": "()"
-        },
-        {
-          "name": "Mountain",
-          "type": "()"
-        },
-        {
-          "name": "City",
-          "type": "()"
-        },
-        {
-          "name": "Factory",
-          "type": "()"
-        },
-        {
-          "name": "HQ",
-          "type": "()"
-        },
-        {
-          "name": "Road",
-          "type": "()"
-        },
-        {
-          "name": "Tree",
-          "type": "()"
-        },
-        {
-          "name": "DirtRoad",
-          "type": "()"
-        }
-      ]
-    },
-    {
-      "type": "enum",
-      "name": "hashfront::types::UnitType",
-      "variants": [
-        {
-          "name": "None",
-          "type": "()"
-        },
-        {
-          "name": "Infantry",
-          "type": "()"
-        },
-        {
-          "name": "Tank",
-          "type": "()"
-        },
-        {
-          "name": "Ranger",
-          "type": "()"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "hashfront::types::Vec2",
-      "members": [
-        {
-          "name": "x",
-          "type": "core::integer::u8"
-        },
-        {
-          "name": "y",
-          "type": "core::integer::u8"
-        }
-      ]
-    },
     {
       "type": "constructor",
       "name": "constructor",
@@ -3927,6 +2534,1399 @@
       ],
       "outputs": [],
       "state_mutability": "view"
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::BuildingCaptured",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::BuildingCapturedValue",
+      "members": [
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameCreated",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameCreatedValue",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameOver",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameOverValue",
+      "members": [
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameStarted",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::GameStartedValue",
+      "members": [
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::PlayerJoined",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::PlayerJoinedValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::TurnEnded",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "next_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::TurnEndedValue",
+      "members": [
+        {
+          "name": "next_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitAttacked",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "attacker_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "target_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_defender",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_attacker",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitAttackedValue",
+      "members": [
+        {
+          "name": "attacker_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "target_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_defender",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "damage_to_attacker",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitBuilt",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitBuiltValue",
+      "members": [
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitDied",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitDiedValue",
+      "members": [
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitMoved",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::events::UnitMovedValue",
+      "members": [
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_BuildingCaptured::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_GameCreated::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_GameOver::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_GameStarted::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_PlayerJoined::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_TurnEnded::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_UnitAttacked::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_UnitBuilt::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_UnitDied::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::events::e_UnitMoved::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::building::Building",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "hashfront::types::BuildingType"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_progress",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "queued_unit",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::building::BuildingValue",
+      "members": [
+        {
+          "name": "building_type",
+          "type": "hashfront::types::BuildingType"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "capture_progress",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "queued_unit",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::building::m_Building::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::game::Game",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "state",
+          "type": "hashfront::types::GameState"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "num_players",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "current_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "next_unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_test_mode",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::game::GameCounter",
+      "members": [
+        {
+          "name": "id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::game::GameCounterValue",
+      "members": [
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::game::GameValue",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "state",
+          "type": "hashfront::types::GameState"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "num_players",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "current_player",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "round",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "next_unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "winner",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_test_mode",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::game::m_Game::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::game::m_GameCounter::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapBuilding",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "hashfront::types::BuildingType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapBuildingValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "building_type",
+          "type": "hashfront::types::BuildingType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapInfo",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "building_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u16"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapInfoValue",
+      "members": [
+        {
+          "name": "player_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "width",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "height",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "building_count",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u16"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapTile",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "index",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "tile_type",
+          "type": "hashfront::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapTileValue",
+      "members": [
+        {
+          "name": "index",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "tile_type",
+          "type": "hashfront::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapUnit",
+      "members": [
+        {
+          "name": "map_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "seq",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::map::MapUnitValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::map::m_MapBuilding::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::map::m_MapInfo::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::map::m_MapTile::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::map::m_MapUnit::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::player::PlayerState",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "gold",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "factory_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "city_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::player::PlayerStateValue",
+      "members": [
+        {
+          "name": "address",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "gold",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "factory_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "city_count",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::player::m_PlayerState::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::tile::Tile",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "tile_type",
+          "type": "hashfront::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::tile::TileValue",
+      "members": [
+        {
+          "name": "tile_type",
+          "type": "hashfront::types::TileType"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::tile::m_Tile::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::unit::Unit",
+      "members": [
+        {
+          "name": "game_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "unit_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "hp",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "has_moved",
+          "type": "core::bool"
+        },
+        {
+          "name": "has_acted",
+          "type": "core::bool"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::models::unit::UnitValue",
+      "members": [
+        {
+          "name": "player_id",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "unit_type",
+          "type": "hashfront::types::UnitType"
+        },
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "hp",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "has_moved",
+          "type": "core::bool"
+        },
+        {
+          "name": "has_acted",
+          "type": "core::bool"
+        },
+        {
+          "name": "is_alive",
+          "type": "core::bool"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::models::unit::m_Unit::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "interface",
+      "name": "hashfront::systems::actions::IActions",
+      "items": [
+        {
+          "type": "function",
+          "name": "register_map",
+          "inputs": [
+            {
+              "name": "width",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "height",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "tiles",
+              "type": "core::array::Array::<core::integer::u32>"
+            },
+            {
+              "name": "buildings",
+              "type": "core::array::Array::<core::integer::u32>"
+            },
+            {
+              "name": "units",
+              "type": "core::array::Array::<core::integer::u32>"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u8"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "create_game",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "player_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "is_test_mode",
+              "type": "core::bool"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u32"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "join_game",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "player_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "move_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "path",
+              "type": "core::array::Array::<hashfront::types::Vec2>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "attack",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "target_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "capture",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "wait_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "unit_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "build_unit",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "factory_x",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "factory_y",
+              "type": "core::integer::u8"
+            },
+            {
+              "name": "unit_type",
+              "type": "hashfront::types::UnitType"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "end_turn",
+          "inputs": [
+            {
+              "name": "game_id",
+              "type": "core::integer::u32"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "get_terrain",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_buildings",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_units",
+          "inputs": [
+            {
+              "name": "map_id",
+              "type": "core::integer::u8"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "(core::integer::u8, core::integer::u8, core::array::Array::<core::integer::u32>)"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "hashfront::systems::actions::actions::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "UpgradeableEvent",
+          "type": "dojo::contract::components::upgradeable::upgradeable_cpt::Event",
+          "kind": "nested"
+        },
+        {
+          "name": "WorldProviderEvent",
+          "type": "dojo::contract::components::world_provider::world_provider_cpt::Event",
+          "kind": "nested"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "hashfront::types::BuildingType",
+      "variants": [
+        {
+          "name": "None",
+          "type": "()"
+        },
+        {
+          "name": "City",
+          "type": "()"
+        },
+        {
+          "name": "Factory",
+          "type": "()"
+        },
+        {
+          "name": "HQ",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "hashfront::types::GameState",
+      "variants": [
+        {
+          "name": "Lobby",
+          "type": "()"
+        },
+        {
+          "name": "Playing",
+          "type": "()"
+        },
+        {
+          "name": "Finished",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "hashfront::types::TileType",
+      "variants": [
+        {
+          "name": "Grass",
+          "type": "()"
+        },
+        {
+          "name": "Mountain",
+          "type": "()"
+        },
+        {
+          "name": "City",
+          "type": "()"
+        },
+        {
+          "name": "Factory",
+          "type": "()"
+        },
+        {
+          "name": "HQ",
+          "type": "()"
+        },
+        {
+          "name": "Road",
+          "type": "()"
+        },
+        {
+          "name": "Tree",
+          "type": "()"
+        },
+        {
+          "name": "DirtRoad",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "hashfront::types::UnitType",
+      "variants": [
+        {
+          "name": "None",
+          "type": "()"
+        },
+        {
+          "name": "Infantry",
+          "type": "()"
+        },
+        {
+          "name": "Tank",
+          "type": "()"
+        },
+        {
+          "name": "Ranger",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "hashfront::types::Vec2",
+      "members": [
+        {
+          "name": "x",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "y",
+          "type": "core::integer::u8"
+        }
+      ]
     }
   ]
 }

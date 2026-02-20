@@ -1,5 +1,5 @@
 const DEFAULT_TORII_GRAPHQL_URL =
-  "https://api.cartridge.gg/x/chain-tactics/torii/graphql";
+  "https://api.cartridge.gg/x/hashfront/torii/graphql";
 const envToriiGraphqlUrl = import.meta.env.VITE_TORII_GRAPHQL_URL?.trim();
 
 if (!envToriiGraphqlUrl) {

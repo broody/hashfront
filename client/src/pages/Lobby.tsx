@@ -722,11 +722,11 @@ export default function Lobby() {
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-blueprint-dark/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-2xl">
-            <PixelPanel title="CREATE_DEPLOYMENT" className="!p-6">
+            <PixelPanel className="!p-6">
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm uppercase tracking-widest opacity-80">
-                    Configure new operation
+                  <div className="blueprint-title mb-0">
+                    [CREATE_DEPLOYMENT]
                   </div>
                   <PixelButton
                     variant="gray"

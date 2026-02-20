@@ -39,7 +39,7 @@ Each turn: move units → attack/capture/build → end turn. Simple, strategic, 
 pnpm install
 
 # Client env (Torii GraphQL endpoint)
-export VITE_TORII_GRAPHQL_URL=https://api.cartridge.gg/x/chain-tactics/torii/
+export VITE_TORII_GRAPHQL_URL=https://api.cartridge.gg/x/hashfront/torii/graphql
 
 # Run client (port 5173)
 pnpm dev:client
