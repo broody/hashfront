@@ -2,7 +2,7 @@ use dojo::model::ModelStorage;
 use hashfront::consts::STARTING_GOLD;
 use hashfront::models::building::Building;
 use hashfront::models::game::Game;
-use hashfront::models::map::{MapBuilding, MapInfo, MapTile, MapUnit};
+use hashfront::models::map::MapTile;
 use hashfront::models::player::PlayerState;
 use hashfront::systems::actions::IActionsDispatcherTrait;
 use hashfront::types::{BuildingType, GameState, TileType};
@@ -33,14 +33,14 @@ fn test_create_game() {
     assert(game.num_players == 1, 'creator is player 1');
     assert(game.current_player == 1, 'current should be 1');
     assert(game.round == 1, 'round should be 1');
-    assert(game.next_unit_id == 0, 'no units yet');
+    assert(game.next_unit_id == 1, 'creator unit spawned');
     assert(game.winner == 0, 'no winner yet');
 
     // Verify PlayerState for creator
     let ps: PlayerState = world.read_model((game_id, 1_u8));
     assert(ps.address == caller, 'wrong address');
     assert(ps.gold == STARTING_GOLD, 'wrong starting gold');
-    assert(ps.unit_count == 0, 'no units yet');
+    assert(ps.unit_count == 1, 'creator has 1 unit');
     assert(ps.is_alive, 'should be alive');
 
     // Verify HQ buildings were created with ownership from template

@@ -1,5 +1,5 @@
 use dojo::model::ModelStorage;
-use hashfront::models::map::{MapBuilding, MapInfo, MapTile, MapTileSeq, MapUnit};
+use hashfront::models::map::{MapInfo, MapTileSeq, MapUnit};
 use hashfront::systems::actions::IActionsDispatcherTrait;
 use hashfront::types::{TileType, UnitType};
 use starknet::testing::{set_account_contract_address, set_contract_address};

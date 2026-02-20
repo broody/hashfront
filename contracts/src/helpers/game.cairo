@@ -10,37 +10,38 @@ use hashfront::models::player::{PlayerHQ, PlayerState};
 use hashfront::models::unit::{Unit, UnitImpl, UnitPosition};
 use hashfront::types::{BuildingType, GameState, UnitType};
 
-pub fn spawn_starting_units(
-    ref world: dojo::world::WorldStorage, game_id: u32, ref game: Game, map_id: u8,
+pub fn spawn_player_units(
+    ref world: dojo::world::WorldStorage, game_id: u32, ref game: Game, map_id: u8, player_id: u8,
 ) {
-    // Spawn units from map template
     let map_info: MapInfo = world.read_model(map_id);
     let mut i: u16 = 0;
     while i < map_info.unit_count {
         let map_unit: MapUnit = world.read_model((map_id, i));
-        game.next_unit_id += 1;
-        let unit_id = game.next_unit_id;
+        if map_unit.player_id == player_id {
+            game.next_unit_id += 1;
+            let unit_id = game.next_unit_id;
 
-        world
-            .write_model(
-                @Unit {
-                    game_id,
-                    unit_id,
-                    player_id: map_unit.player_id,
-                    unit_type: map_unit.unit_type,
-                    x: map_unit.x,
-                    y: map_unit.y,
-                    hp: unit_stats::max_hp(map_unit.unit_type),
-                    last_moved_round: 0,
-                    last_acted_round: 0,
-                    is_alive: true,
-                },
-            );
-        world.write_model(@UnitPosition { game_id, x: map_unit.x, y: map_unit.y, unit_id });
+            world
+                .write_model(
+                    @Unit {
+                        game_id,
+                        unit_id,
+                        player_id,
+                        unit_type: map_unit.unit_type,
+                        x: map_unit.x,
+                        y: map_unit.y,
+                        hp: unit_stats::max_hp(map_unit.unit_type),
+                        last_moved_round: 0,
+                        last_acted_round: 0,
+                        is_alive: true,
+                    },
+                );
+            world.write_model(@UnitPosition { game_id, x: map_unit.x, y: map_unit.y, unit_id });
 
-        let mut ps: PlayerState = world.read_model((game_id, map_unit.player_id));
-        ps.unit_count += 1;
-        world.write_model(@ps);
+            let mut ps: PlayerState = world.read_model((game_id, player_id));
+            ps.unit_count += 1;
+            world.write_model(@ps);
+        }
 
         i += 1;
     };

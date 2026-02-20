@@ -245,6 +245,10 @@ pub mod actions {
                     },
                 );
 
+            let mut game: Game = world.read_model(game_id);
+            game_helpers::spawn_player_units(ref world, game_id, ref game, map_id, player_id);
+            world.write_model(@game);
+
             world.emit_event(@GameCreated { game_id, map_id, player_count: map_info.player_count });
 
             game_id
@@ -294,11 +298,12 @@ pub mod actions {
                     },
                 );
 
+            game_helpers::spawn_player_units(ref world, game_id, ref game, game.map_id, player_id);
+
             world.emit_event(@PlayerJoined { game_id, player_id });
 
             if game.num_players == game.player_count {
                 game.state = GameState::Playing;
-                game_helpers::spawn_starting_units(ref world, game_id, ref game, game.map_id);
                 game_helpers::count_player_buildings(ref world, game_id, game.map_id);
                 game_helpers::run_income(ref world, game_id, 1);
                 game_helpers::run_production(ref world, game_id, 1, ref game);
