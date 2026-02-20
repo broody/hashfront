@@ -603,12 +603,26 @@ export default function Lobby() {
                 to="/leaderboard"
                 className="hover:translate-x-2 transition-transform"
               >
-                &gt; COMMANDER_LOG
+                &gt; LEADERBOARD
               </Link>
-              <a href="#" className="hover:translate-x-2 transition-transform">
-                &gt; SCHEMATICS
+              <a
+                href="#"
+                className="hover:translate-x-2 transition-transform"
+                onClick={(e) => {
+                  e.preventDefault();
+                  toast("Access denied", "error");
+                }}
+              >
+                &gt; MAP_EDITOR
               </a>
-              <a href="#" className="hover:translate-x-2 transition-transform">
+              <a
+                href="#"
+                className="hover:translate-x-2 transition-transform"
+                onClick={(e) => {
+                  e.preventDefault();
+                  toast("Access denied", "error");
+                }}
+              >
                 &gt; SETTINGS_CFG
               </a>
             </div>
