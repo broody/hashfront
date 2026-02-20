@@ -309,7 +309,7 @@ a {
 }
 
 .animate-intermittent-glitch {
-  animation: intermittent-glitch 8s step-end infinite;
+  animation: intermittent-glitch 16s step-end infinite;
 }
 
 ::-webkit-scrollbar {
