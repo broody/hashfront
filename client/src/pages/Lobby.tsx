@@ -7,7 +7,7 @@ import {
 } from "@starknet-react/core";
 import { lookupAddresses } from "@cartridge/controller";
 import { ControllerConnector } from "@cartridge/connector";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient } from "urql";
 import { PixelButton } from "../components/PixelButton";
 import { PixelPanel } from "../components/PixelPanel";
@@ -119,6 +119,8 @@ export default function Lobby() {
   const [username, setUsername] = useState<string>();
   const [games, setGames] = useState<GameModelNode[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesLoadingMore, setGamesLoadingMore] = useState(false);
+  const [gamesTotalCount, setGamesTotalCount] = useState(0);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapInfos, setMapInfos] = useState<MapInfoNode[]>([]);
   const [mapsLoading, setMapsLoading] = useState(false);
@@ -138,6 +140,7 @@ export default function Lobby() {
   >(null);
   const [isJoining, setIsJoining] = useState(false);
   const [joiningGameId, setJoiningGameId] = useState<number | null>(null);
+  const gamesListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!address) return;
@@ -353,59 +356,86 @@ export default function Lobby() {
     await runJoinTransaction(gameId, selectedJoinPlayerId);
   }
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadGames() {
-      try {
-        const query = `
-          query {
-            chainTacticsGameModels(order: {field: STATE, direction: ASC}) {
-              totalCount
-              edges {
-                node {
-                  game_id
-                  map_id
-                  height
-                  width
-                  state
-                  player_count
-                  num_players
-                  current_player
-                  round
-                  next_unit_id
-                  is_test_mode
-                  winner
-                }
+  async function loadGamesPage(offset: number, append: boolean) {
+    if (append) {
+      setGamesLoadingMore(true);
+    } else {
+      setGamesLoading(true);
+    }
+    try {
+      const query = `
+        query {
+          chainTacticsGameModels(
+            limit: 10
+            offset: ${offset}
+            order: {field: STATE, direction: ASC}
+          ) {
+            totalCount
+            edges {
+              node {
+                game_id
+                map_id
+                height
+                width
+                state
+                player_count
+                num_players
+                current_player
+                round
+                next_unit_id
+                is_test_mode
+                winner
               }
             }
           }
-        `;
+        }
+      `;
 
-        const result = await graphqlClient
-          .query<LobbyGamesQueryResult>(query, undefined, {
-            requestPolicy: "network-only",
-          })
-          .toPromise();
-        if (!active || result.error || !result.data) return;
-        setGames(
-          result.data.chainTacticsGameModels.edges.map((edge) => edge.node),
-        );
-      } finally {
-        if (active) setGamesLoading(false);
+      const result = await graphqlClient
+        .query<LobbyGamesQueryResult>(query, undefined, {
+          requestPolicy: "network-only",
+        })
+        .toPromise();
+      if (result.error || !result.data) return;
+
+      const connection = result.data.chainTacticsGameModels;
+      const nextNodes = connection.edges.map((edge) => edge.node);
+
+      setGamesTotalCount(toNumber(connection.totalCount));
+      if (append) {
+        setGames((prev) => {
+          const existingIds = new Set(
+            prev.map((game) => toNumber(game.game_id)),
+          );
+          const deduped = nextNodes.filter(
+            (game) => !existingIds.has(toNumber(game.game_id)),
+          );
+          return [...prev, ...deduped];
+        });
+      } else {
+        setGames(nextNodes);
       }
+    } finally {
+      setGamesLoading(false);
+      setGamesLoadingMore(false);
     }
+  }
 
-    void loadGames();
-    const intervalId = window.setInterval(() => {
-      void loadGames();
-    }, 5000);
-
-    return () => {
-      active = false;
-      window.clearInterval(intervalId);
-    };
+  useEffect(() => {
+    void loadGamesPage(0, false);
   }, [graphqlClient]);
+
+  function handleGamesScroll() {
+    const el = gamesListRef.current;
+    if (!el) return;
+    if (gamesLoading || gamesLoadingMore) return;
+    if (games.length >= gamesTotalCount) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom <= 80) {
+      void loadGamesPage(games.length, true);
+    }
+  }
 
   useEffect(() => {
     if (!isCreateModalOpen) return;
@@ -509,9 +539,16 @@ export default function Lobby() {
         </div>
       </header>
 
-      <div className="grid md:grid-cols-[2.5fr_1fr] gap-8 flex-1 overflow-hidden">
-        <PixelPanel title="DEPLOYMENTS" className="flex flex-col gap-0">
-          <div className="space-y-0 overflow-y-auto pr-2 custom-scrollbar flex-1">
+      <div className="grid md:grid-cols-[2.5fr_1fr] gap-8 flex-1 min-h-0 overflow-hidden">
+        <PixelPanel
+          title="DEPLOYMENTS"
+          className="flex flex-col gap-0 h-[70vh] min-h-0"
+        >
+          <div
+            ref={gamesListRef}
+            onScroll={handleGamesScroll}
+            className="space-y-0 overflow-y-auto pr-2 custom-scrollbar flex-1 min-h-0"
+          >
             {gamesLoading ? (
               <div className="border-b-2 border-dashed border-white py-5 text-sm opacity-80">
                 SYNCING OPERATIONS...
@@ -543,9 +580,7 @@ export default function Lobby() {
                         STATUS: {statusLabel} | SLOTS:{" "}
                         {toNumber(game.num_players)}/
                         {toNumber(game.player_count)}
-                        {isPlaying
-                          ? ` | ROUND: ${toNumber(game.round)} | TURN: P${toNumber(game.current_player)}`
-                          : ""}
+                        {isPlaying ? ` | ROUND: ${toNumber(game.round)}` : ""}
                       </div>
                     </div>
                     {isLobby ? (
@@ -562,7 +597,7 @@ export default function Lobby() {
                       </PixelButton>
                     ) : (
                       <Link to={`/game/${gameId}`}>
-                        <PixelButton className="w-full" variant="gray">
+                        <PixelButton className="w-full" variant="blue">
                           {actionLabel}
                         </PixelButton>
                       </Link>
@@ -570,6 +605,11 @@ export default function Lobby() {
                   </div>
                 );
               })
+            )}
+            {gamesLoadingMore && (
+              <div className="py-3 text-xs opacity-70 text-center">
+                LOADING MORE DEPLOYMENTS...
+              </div>
             )}
           </div>
 
@@ -628,23 +668,19 @@ export default function Lobby() {
             </div>
           </PixelPanel>
 
-          <PixelPanel title="Core Status">
+          <PixelPanel title="24HR STATUS">
             <div className="text-base space-y-3">
               <div className="flex justify-between border-b border-white/10 pb-1">
-                <span className="opacity-70">WINS:</span>
-                <span className="font-bold">450</span>
+                <span className="opacity-70">IN_PROGRESS:</span>
+                <span className="font-bold">342</span>
               </div>
               <div className="flex justify-between border-b border-white/10 pb-1">
-                <span className="opacity-70">LOSS:</span>
-                <span className="font-bold">120</span>
+                <span className="opacity-70">COMPLETED:</span>
+                <span className="font-bold">1420</span>
               </div>
               <div className="flex justify-between border-b border-white/10 pb-1">
-                <span className="opacity-70">K/D:</span>
-                <span className="font-bold">3.75</span>
-              </div>
-              <div className="flex justify-between border-b border-white/10 pb-1">
-                <span className="opacity-70">RANK:</span>
-                <span className="font-bold text-blue-400">GENERAL</span>
+                <span className="opacity-70">TRANSACTIONS:</span>
+                <span className="font-bold">12K</span>
               </div>
             </div>
           </PixelPanel>
