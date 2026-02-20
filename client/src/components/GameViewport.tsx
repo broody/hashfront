@@ -1,4 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
+import { useParams } from "react-router-dom";
+import { useProvider, useSendTransaction } from "@starknet-react/core";
 import {
   AnimatedSprite,
   Application,
@@ -19,13 +21,31 @@ import {
   unitAtlasYellow,
 } from "../game/spritesheets/units";
 import { findPath } from "../game/pathfinding";
+import { ACTIONS_ADDRESS } from "../StarknetProvider";
+import { useToast } from "./Toast";
 
 const WORLD_SIZE = GRID_SIZE * TILE_PX;
 
 export default function GameViewport() {
+  const { id } = useParams<{ id: string }>();
+  const gameId = Number.parseInt(id || "", 10);
+  const { provider } = useProvider();
+  const { sendAsync: sendMoveUnit } = useSendTransaction({});
+  const { toast } = useToast();
+  const providerRef = useRef(provider);
+  const sendMoveUnitRef = useRef(sendMoveUnit);
+  const toastRef = useRef(toast);
+  const gameIdRef = useRef(gameId);
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    providerRef.current = provider;
+    sendMoveUnitRef.current = sendMoveUnit;
+    toastRef.current = toast;
+    gameIdRef.current = gameId;
+  }, [gameId, provider, sendMoveUnit, toast]);
 
   const init = useCallback(async () => {
     if (!containerRef.current || appRef.current) return;
@@ -366,6 +386,7 @@ export default function GameViewport() {
 
     // --- Selection state ---
     let selectedUnit: Unit | null = null;
+    const pendingMoveTransactions = new Set<number>();
     const selectGfx = new Graphics();
     vp.addChild(selectGfx);
     let selectPulse = 0;
@@ -433,6 +454,8 @@ export default function GameViewport() {
       progress: number;
       startX: number;
       startY: number;
+      originX: number;
+      originY: number;
     }
     const activeMovements = new Map<number, MoveState>();
 
@@ -449,6 +472,7 @@ export default function GameViewport() {
     function drawPathPreview(gridX: number, gridY: number) {
       pathGfx.clear();
       if (!selectedUnit || activeMovements.has(selectedUnit.id)) return;
+      if (pendingMoveTransactions.has(selectedUnit.id)) return;
       if (gridX === selectedUnit.x && gridY === selectedUnit.y) return;
 
       const range = UNIT_MOVE_RANGE[selectedUnit.type] ?? 5;
@@ -509,7 +533,11 @@ export default function GameViewport() {
 
       // Find unit at clicked tile — click empty space to deselect
       const clicked = units.find(
-        (u) => u.x === gridX && u.y === gridY && !activeMovements.has(u.id),
+        (u) =>
+          u.x === gridX &&
+          u.y === gridY &&
+          !activeMovements.has(u.id) &&
+          !pendingMoveTransactions.has(u.id),
       );
       selectedUnit = clicked ?? null;
       drawSelection();
@@ -526,6 +554,7 @@ export default function GameViewport() {
 
     function startMovement(unit: Unit, gridX: number, gridY: number) {
       if (activeMovements.has(unit.id)) return; // already moving
+      if (pendingMoveTransactions.has(unit.id)) return; // waiting on tx
 
       const range = UNIT_MOVE_RANGE[unit.type] ?? 5;
       const path = findPath(
@@ -546,6 +575,8 @@ export default function GameViewport() {
         progress: 0,
         startX: unit.x,
         startY: unit.y,
+        originX: unit.x,
+        originY: unit.y,
       };
       activeMovements.set(unit.id, ms);
 
@@ -565,6 +596,7 @@ export default function GameViewport() {
     function onPointerDown(ev: PointerEvent) {
       if (ev.button !== 2) return; // right-click only
       if (!selectedUnit) return;
+      if (pendingMoveTransactions.has(selectedUnit.id)) return;
 
       const rect = canvas.getBoundingClientRect();
       const screenX = ev.clientX - rect.left;
@@ -585,6 +617,75 @@ export default function GameViewport() {
 
     // --- Movement ticker ---
     const MOVE_SPEED = 4; // tiles per second
+
+    function encodeMovePath(path: { x: number; y: number }[]): string[] {
+      const calldata: string[] = [path.length.toString()];
+      for (const step of path) {
+        calldata.push(step.x.toString(), step.y.toString());
+      }
+      return calldata;
+    }
+
+    function rollbackUnitPosition(
+      unit: Unit,
+      sprite: AnimatedSprite,
+      originX: number,
+      originY: number,
+    ) {
+      unit.x = originX;
+      unit.y = originY;
+      sprite.x = originX * TILE_PX + TILE_PX / 2;
+      sprite.y = originY * TILE_PX + TILE_PX / 2;
+      setUnitAnim(unit, sprite, "idle");
+      drawSelection();
+    }
+
+    async function submitMoveTransaction(
+      unit: Unit,
+      path: { x: number; y: number }[],
+      originX: number,
+      originY: number,
+    ) {
+      const sprite = unitSprites.get(unit.id);
+      if (!sprite) return;
+
+      pendingMoveTransactions.add(unit.id);
+      try {
+        if (!Number.isInteger(gameIdRef.current)) {
+          throw new Error("Invalid game id");
+        }
+        if (unit.onchainId <= 0) {
+          throw new Error("Invalid unit id");
+        }
+
+        toastRef.current("Submitting move...", "info");
+        const res = await sendMoveUnitRef.current([
+          {
+            contractAddress: ACTIONS_ADDRESS,
+            entrypoint: "move_unit",
+            calldata: [
+              gameIdRef.current.toString(),
+              unit.onchainId.toString(),
+              ...encodeMovePath(path),
+            ],
+          },
+        ]);
+        if (!res?.transaction_hash) {
+          throw new Error("Missing transaction hash");
+        }
+
+        await providerRef.current.waitForTransaction(res.transaction_hash, {
+          retryInterval: 500,
+        });
+        toastRef.current("Move confirmed.", "success");
+      } catch (error) {
+        console.error("Move transaction failed:", error);
+        rollbackUnitPosition(unit, sprite, originX, originY);
+        toastRef.current("Move failed. Unit moved back.", "error");
+      } finally {
+        pendingMoveTransactions.delete(unit.id);
+      }
+    }
 
     const tickerCb = (ticker: { deltaTime: number }) => {
       for (const [id, ms] of activeMovements) {
@@ -608,6 +709,12 @@ export default function GameViewport() {
             setUnitAnim(ms.unit, sprite, "idle");
             activeMovements.delete(id);
             drawSelection();
+            void submitMoveTransaction(
+              ms.unit,
+              ms.path,
+              ms.originX,
+              ms.originY,
+            );
             continue;
           }
 

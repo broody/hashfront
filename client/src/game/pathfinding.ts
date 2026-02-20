@@ -9,7 +9,7 @@ const TILE_COST: Record<TileType, number> = {
   [TileType.Factory]: 1,
   [TileType.HQ]: 1,
   [TileType.Mountain]: 2,
-  [TileType.Tree]: -1, // impassable
+  [TileType.Tree]: 1,
   [TileType.Barracks]: 1,
 };
 

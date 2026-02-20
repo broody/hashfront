@@ -1,16 +1,10 @@
-import {
-  useAccount,
-  useConnect,
-  useProvider,
-  useSendTransaction,
-} from "@starknet-react/core";
+import { useAccount, useConnect } from "@starknet-react/core";
 import { ControllerConnector } from "@cartridge/connector";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useClient } from "urql";
 import { PixelButton } from "./PixelButton";
 import { PixelPanel } from "./PixelPanel";
-import { useToast } from "./Toast";
-import { ACTIONS_ADDRESS } from "../StarknetProvider";
 
 const LEGEND: { label: string; color: string }[] = [
   { label: "Grass", color: "#4a7c59" },
@@ -21,80 +15,121 @@ const LEGEND: { label: string; color: string }[] = [
   { label: "Road", color: "#9e9e9e" },
 ];
 
+interface GraphEdge<T> {
+  node: T;
+}
+
+interface TurnStatusQueryResult {
+  chainTacticsGameModels: {
+    edges: GraphEdge<{ current_player: string | number }>[];
+  };
+  chainTacticsPlayerStateModels: {
+    edges: GraphEdge<{ player_id: string | number; address: string }>[];
+  };
+}
+
+function toNumber(value: string | number | null | undefined): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+function normalizeAddressHex(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return BigInt(value).toString(16);
+  } catch {
+    return value.toLowerCase().replace(/^0x/, "");
+  }
+}
+
 const HUD = () => {
   const { id } = useParams<{ id: string }>();
   const gameId = parseInt(id || "1", 10) || 1;
-  const { provider } = useProvider();
+  const graphqlClient = useClient();
 
   const { connect, connectors } = useConnect();
   const { address } = useAccount();
   const [username, setUsername] = useState<string>();
-  const { toast } = useToast();
+  const [currentPlayer, setCurrentPlayer] = useState<number | null>(null);
+  const [myPlayerId, setMyPlayerId] = useState<number | null>(null);
   const controllerConnector = useMemo(
     () => ControllerConnector.fromConnectors(connectors),
     [connectors],
   );
 
-  const [isJoining, setIsJoining] = useState(false);
-  const { sendAsync: sendJoin } = useSendTransaction({
-    calls: [
-      {
-        contractAddress: ACTIONS_ADDRESS,
-        entrypoint: "join_game",
-        calldata: [gameId.toString(), "2"],
-      },
-    ],
-  });
-
-  const handleJoin = async () => {
-    try {
-      setIsJoining(true);
-      const res = await sendJoin();
-      if (res && res.transaction_hash) {
-        toast("Joining game... please wait", "info");
-        await provider.waitForTransaction(res.transaction_hash);
-        toast("You joined the game!", "success");
-      }
-    } catch (e) {
-      toast("Failed to join game.", "error");
-      console.error(e);
-    } finally {
-      setIsJoining(false);
-    }
-  };
-
-  const [isEnding, setIsEnding] = useState(false);
-  const { sendAsync: sendEndTurn } = useSendTransaction({
-    calls: [
-      {
-        contractAddress: ACTIONS_ADDRESS,
-        entrypoint: "end_turn",
-        calldata: [gameId.toString()],
-      },
-    ],
-  });
-
-  const handleEndTurn = async () => {
-    try {
-      setIsEnding(true);
-      const res = await sendEndTurn();
-      if (res && res.transaction_hash) {
-        toast("Ending turn... please wait", "info");
-        await provider.waitForTransaction(res.transaction_hash);
-        toast("You ended your turn.", "warning");
-      }
-    } catch (e) {
-      toast("Failed to end turn.", "error");
-      console.error(e);
-    } finally {
-      setIsEnding(false);
-    }
-  };
-
   useEffect(() => {
     if (!address) return;
     controllerConnector.username()?.then(setUsername);
   }, [address, controllerConnector]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTurnStatus() {
+      try {
+        const query = `
+          query {
+            chainTacticsGameModels(where: {game_idEQ: ${gameId}}) {
+              edges {
+                node {
+                  current_player
+                }
+              }
+            }
+            chainTacticsPlayerStateModels(where: {game_idEQ: ${gameId}}) {
+              edges {
+                node {
+                  player_id
+                  address
+                }
+              }
+            }
+          }
+        `;
+
+        const result = await graphqlClient
+          .query<TurnStatusQueryResult>(query, undefined, {
+            requestPolicy: "network-only",
+          })
+          .toPromise();
+
+        if (!active || result.error || !result.data) return;
+
+        const nextCurrentPlayer = toNumber(
+          result.data.chainTacticsGameModels.edges[0]?.node.current_player,
+        );
+        setCurrentPlayer(nextCurrentPlayer > 0 ? nextCurrentPlayer : null);
+
+        if (!address) {
+          setMyPlayerId(null);
+          return;
+        }
+
+        const normalizedAddress = normalizeAddressHex(address);
+        const myPlayer = result.data.chainTacticsPlayerStateModels.edges.find(
+          (edge) =>
+            normalizeAddressHex(edge.node.address) === normalizedAddress,
+        )?.node;
+        setMyPlayerId(myPlayer ? toNumber(myPlayer.player_id) : null);
+      } catch (error) {
+        console.error("Failed to load turn status:", error);
+      }
+    }
+
+    void loadTurnStatus();
+    const intervalId = window.setInterval(() => {
+      void loadTurnStatus();
+    }, 2000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [address, gameId, graphqlClient]);
 
   return (
     <>
@@ -144,30 +179,20 @@ const HUD = () => {
       </div>
 
       <div className="absolute top-24 right-8 z-10">
-        <PixelPanel title="TEST_MODE" className="!p-4 min-w-[200px]">
-          <div className="flex flex-col gap-4 mt-2">
-            <PixelButton
-              variant="blue"
-              onClick={handleJoin}
-              disabled={isJoining}
-              className="w-full justify-center flex items-center gap-2"
-            >
-              {isJoining && (
-                <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              )}
-              {isJoining ? "JOINING..." : "JOIN GAME"}
-            </PixelButton>
-            <PixelButton
-              variant="gray"
-              onClick={handleEndTurn}
-              disabled={isEnding}
-              className="w-full justify-center flex items-center gap-2"
-            >
-              {isEnding && (
-                <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              )}
-              {isEnding ? "ENDING..." : "END TURN"}
-            </PixelButton>
+        <PixelPanel title="COMMAND_STATUS" className="!p-4 min-w-[200px]">
+          <div className="flex flex-col gap-2 mt-2 text-xs uppercase tracking-widest">
+            <div>
+              CURRENT TURN:{" "}
+              <span className="font-bold">
+                {currentPlayer === null ? "UNKNOWN" : `P${currentPlayer}`}
+              </span>
+            </div>
+            <div>
+              MY PLAYER ID:{" "}
+              <span className="font-bold">
+                {myPlayerId === null ? "NOT JOINED" : `P${myPlayerId}`}
+              </span>
+            </div>
           </div>
         </PixelPanel>
       </div>
