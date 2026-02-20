@@ -637,7 +637,7 @@ export default function Lobby() {
                 to="/player/me"
                 className="hover:translate-x-2 transition-transform"
               >
-                &gt; PROFILE_DB
+                &gt; PROFILE
               </Link>
               <Link
                 to="/leaderboard"
@@ -663,7 +663,7 @@ export default function Lobby() {
                   toast("Access denied", "error");
                 }}
               >
-                &gt; SETTINGS_CFG
+                &gt; SETTINGS
               </a>
             </div>
           </PixelPanel>

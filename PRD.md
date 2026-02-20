@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hashfront is a turn-based tactics game on StarkNet. Two to four players command small armies on a grid, taking alternating turns to move and attack — like classic Advance Wars. The core gameplay is outmaneuvering your opponent through positioning, unit matchups, and resource control.
+Hashfront is a turn-based tactics game on Starknet. Two to four players command small armies on a grid, taking alternating turns to move and attack — like classic Advance Wars. The core gameplay is outmaneuvering your opponent through positioning, unit matchups, and resource control.
 
 Built on Dojo with a React + PixiJS client. An AI agent can play either side using the same transaction API as a human. Players can chat with AI agents during the game, attempting to influence their behavior through dialogue and diplomacy.
 
@@ -267,7 +267,7 @@ AI agents are real on-chain players. They use **controller-cli** to submit trans
 
 ## Tech Stack
 
-- **Chain**: StarkNet
+- **Chain**: Starknet
 - **Framework**: Dojo (models for units, buildings, game state)
 - **Indexer**: Torii (gRPC subscriptions for real-time state)
 - **Client**: React + PixiJS + Vite

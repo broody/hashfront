@@ -1,6 +1,6 @@
 [world]
 name = "Hashfront"
-description = "Turn-based tactics game on StarkNet"
+description = "Turn-based tactics game on Starknet"
 seed = "hashfront_sepolia"
 
 [env]

@@ -1,6 +1,6 @@
 # Hashfront
 
-Turn-based tactics game on StarkNet. Two to four players command armies on a grid, taking alternating turns to outmaneuver each other — inspired by Advance Wars.
+Turn-based tactics game on Starknet. Two to four players command armies on a grid, taking alternating turns to outmaneuver each other — inspired by Advance Wars.
 
 ## Monorepo Structure
 
@@ -53,7 +53,7 @@ pnpm dev
 
 ## Stack
 
-- **Chain**: StarkNet + Dojo
+- **Chain**: Starknet + Dojo
 - **Client**: React + PixiJS + Vite
 - **Server**: Hono + TypeScript
 - **Wallet**: Cartridge Controller (session keys)
