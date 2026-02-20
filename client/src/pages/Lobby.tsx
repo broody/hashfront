@@ -514,7 +514,7 @@ export default function Lobby() {
             CHAIN_TACTICS
           </h1>
           <div className="text-sm mt-1 opacity-80">
-            &gt; FULLY_ONCHAIN [STARKNET SEPOLIA]
+            &gt; FULL_ONCHAIN_STRATEGY [STARKNET SEPOLIA]
           </div>
         </div>
         <div className="text-right mt-4 md:mt-0 flex flex-col items-end">
@@ -542,7 +542,7 @@ export default function Lobby() {
       <div className="grid md:grid-cols-[2.5fr_1fr] gap-8 flex-1 min-h-0 overflow-hidden">
         <PixelPanel
           title="DEPLOYMENTS"
-          className="flex flex-col gap-0 h-[70vh] min-h-0"
+          className="flex flex-col gap-0 min-h-0 overflow-hidden"
         >
           <div
             ref={gamesListRef}
@@ -690,7 +690,7 @@ export default function Lobby() {
       <footer className="flex justify-between border-t-[3px] border-white pt-5 mt-2 text-xs md:text-sm">
         <span>CHAIN_TACTICS // DOJO // CARTRIDGE</span>
         <span className="hidden md:inline">
-          COORDINATES: 42.124 N / 12.042 E
+          VERSION: 0.1.3
         </span>
       </footer>
 
