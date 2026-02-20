@@ -127,7 +127,10 @@ const ECGMonitor = ({
   const randomDelay = (gameId * 37.7 + 13.3) % scrollDuration;
 
   return (
-    <div className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group">
+    <div 
+      className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group animate-intermittent-glitch"
+      style={{ animationDelay: `-${(gameId * 1.43) % 8}s` }}
+    >
       {/* Background Grid */}
       <div
         className="absolute inset-0 opacity-10"
