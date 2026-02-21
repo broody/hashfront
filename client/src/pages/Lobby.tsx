@@ -713,7 +713,7 @@ export default function Lobby() {
               </span>
             </h1>
             <div className="text-sm mt-1 opacity-80 font-mono">
-              &gt; SYSTEM_READY // LATENCY: 24ms // SECTOR: 0x7A
+              &gt; SYSTEM_READY // TPS: 5.3 // CHAIN: SEPOLIA
             </div>
           </div>
         </div>

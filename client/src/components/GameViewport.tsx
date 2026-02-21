@@ -579,7 +579,9 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
 
       // Find unit at clicked tile — click empty space to deselect
       const { units, game } = useGameStore.getState();
-      const myTeam = getMyTeam(addressRef.current);
+      const currentTurnTeam = game?.currentPlayer
+        ? TEAMS[game.currentPlayer] ?? null
+        : null;
       const clicked = units.find(
         (u) =>
           u.x === gridX &&
@@ -587,8 +589,8 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
           !activeMovements.has(u.id) &&
           !pendingMoveTransactions.has(u.id),
       );
-      // Only allow selecting own units unless test mode is on
-      if (clicked && !game?.isTestMode && clicked.team !== myTeam) {
+      // Only allow selecting units belonging to the current turn's player
+      if (clicked && clicked.team !== currentTurnTeam) {
         selectedUnit = null;
       } else {
         selectedUnit = clicked ?? null;
