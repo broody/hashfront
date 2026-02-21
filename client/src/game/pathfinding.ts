@@ -127,3 +127,59 @@ export function findPath(
 
   return []; // no path found
 }
+
+/**
+ * Returns all tiles reachable from (fromX, fromY) within maxSteps movement cost.
+ * Excludes the starting tile.
+ */
+export function findReachable(
+  tileMap: Uint8Array,
+  fromX: number,
+  fromY: number,
+  maxSteps: number,
+  blocked?: Set<number>,
+): { x: number; y: number }[] {
+  const key = (x: number, y: number) => y * GRID_SIZE + x;
+  const bestG = new Map<number, number>();
+  const queue: { x: number; y: number; g: number }[] = [
+    { x: fromX, y: fromY, g: 0 },
+  ];
+  bestG.set(key(fromX, fromY), 0);
+
+  const result: { x: number; y: number }[] = [];
+
+  while (queue.length > 0) {
+    // Pick lowest cost node
+    let bestIdx = 0;
+    for (let i = 1; i < queue.length; i++) {
+      if (queue[i].g < queue[bestIdx].g) bestIdx = i;
+    }
+    const current = queue[bestIdx];
+    queue.splice(bestIdx, 1);
+
+    for (const [dx, dy] of DIRS) {
+      const nx = current.x + dx;
+      const ny = current.y + dy;
+
+      if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+
+      const nk = key(nx, ny);
+      const tileCost = TILE_COST[tileMap[ny * GRID_SIZE + nx] as TileType];
+      if (tileCost < 0) continue;
+      if (blocked?.has(nk)) continue;
+
+      const ng = current.g + tileCost;
+      if (ng > maxSteps) continue;
+
+      const prev = bestG.get(nk);
+      if (prev !== undefined && ng >= prev) continue;
+
+      const isNew = prev === undefined;
+      bestG.set(nk, ng);
+      queue.push({ x: nx, y: ny, g: ng });
+      if (isNew) result.push({ x: nx, y: ny });
+    }
+  }
+
+  return result;
+}

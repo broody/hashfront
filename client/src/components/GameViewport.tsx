@@ -25,7 +25,7 @@ import {
   unitAtlasGreen,
   unitAtlasYellow,
 } from "../game/spritesheets/units";
-import { findPath } from "../game/pathfinding";
+import { findPath, findReachable } from "../game/pathfinding";
 import { num } from "starknet";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
 import { useToast } from "./Toast";
@@ -496,38 +496,52 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     }
     const activeMovements = new Map<number, MoveState>();
 
-    // --- Hover highlight + path preview ---
+    // --- Hover highlight + movement range ---
     const hoverGfx = new Graphics();
-    const pathGfx = new Graphics();
-    vp.addChild(pathGfx);
+    const rangeGfx = new Graphics();
+    vp.addChild(rangeGfx);
     vp.addChild(hoverGfx);
 
     const canvas = app.canvas as HTMLCanvasElement;
-    let lastPathGridX = -1;
-    let lastPathGridY = -1;
 
-    function drawPathPreview(gridX: number, gridY: number) {
-      pathGfx.clear();
+    function drawMoveRange() {
+      rangeGfx.clear();
       if (!selectedUnit || activeMovements.has(selectedUnit.id)) return;
       if (pendingMoveTransactions.has(selectedUnit.id)) return;
-      if (gridX === selectedUnit.x && gridY === selectedUnit.y) return;
 
       const range = UNIT_MOVE_RANGE[selectedUnit.type] ?? 5;
-      const path = findPath(
+      const reachable = findReachable(
         tileMap,
         selectedUnit.x,
         selectedUnit.y,
-        gridX,
-        gridY,
         range,
         getBlockedTiles(selectedUnit.id),
       );
-      if (path.length === 0) return;
 
-      for (const step of path) {
-        pathGfx
-          .rect(step.x * TILE_PX, step.y * TILE_PX, TILE_PX, TILE_PX)
-          .fill({ color: 0xffffff, alpha: 0.2 });
+      const reachableSet = new Set(
+        reachable.map((t) => `${t.x},${t.y}`),
+      );
+
+      for (const tile of reachable) {
+        rangeGfx
+          .rect(tile.x * TILE_PX, tile.y * TILE_PX, TILE_PX, TILE_PX)
+          .fill({ color: 0xffffff, alpha: 0.15 });
+
+        // Draw border edges where the range meets non-reachable tiles
+        const x = tile.x * TILE_PX;
+        const y = tile.y * TILE_PX;
+        if (!reachableSet.has(`${tile.x},${tile.y - 1}`)) {
+          rangeGfx.moveTo(x, y).lineTo(x + TILE_PX, y).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+        }
+        if (!reachableSet.has(`${tile.x},${tile.y + 1}`)) {
+          rangeGfx.moveTo(x, y + TILE_PX).lineTo(x + TILE_PX, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+        }
+        if (!reachableSet.has(`${tile.x - 1},${tile.y}`)) {
+          rangeGfx.moveTo(x, y).lineTo(x, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+        }
+        if (!reachableSet.has(`${tile.x + 1},${tile.y}`)) {
+          rangeGfx.moveTo(x + TILE_PX, y).lineTo(x + TILE_PX, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+        }
       }
     }
 
@@ -544,13 +558,6 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         hoverGfx
           .rect(gridX * TILE_PX, gridY * TILE_PX, TILE_PX, TILE_PX)
           .fill({ color: 0xffffff, alpha: 0.2 });
-
-        // Update path preview only when grid cell changes
-        if (gridX !== lastPathGridX || gridY !== lastPathGridY) {
-          lastPathGridX = gridX;
-          lastPathGridY = gridY;
-          drawPathPreview(gridX, gridY);
-        }
       }
     }
 
@@ -587,9 +594,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         selectedUnit = clicked ?? null;
       }
       drawSelection();
-      pathGfx.clear();
-      lastPathGridX = -1;
-      lastPathGridY = -1;
+      drawMoveRange();
     }
     vp.on("clicked", onVpClicked);
 
@@ -652,7 +657,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       const originY = selectedUnit.y;
       startMovement(selectedUnit, path);
       void submitMoveTransaction(selectedUnit, path, originX, originY);
-      pathGfx.clear();
+      rangeGfx.clear();
     }
 
     function onContextMenu(ev: MouseEvent) {
