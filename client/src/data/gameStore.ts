@@ -46,6 +46,7 @@ export interface GameInfo {
   mapId: number;
   width: number;
   height: number;
+  playerCount: number;
   isTestMode: boolean;
 }
 

@@ -87,8 +87,55 @@ export default function HUD() {
   }, [address, players]);
 
   const canEndTurn =
+    game?.state === "Playing" &&
     currentPlayer !== null &&
     (isTestMode || (myPlayerId !== null && myPlayerId === currentPlayer));
+
+  const isLobby = game?.state === "Lobby";
+  const canJoin = isLobby && !!address;
+  const [isJoining, setIsJoining] = useState(false);
+
+  const firstAvailableSlot = useMemo(() => {
+    if (!isLobby || !game) return null;
+    const occupiedIds = new Set(players.map((p) => p.playerId));
+    for (let id = 1; id <= game.playerCount; id++) {
+      if (!occupiedIds.has(id)) return id;
+    }
+    return null;
+  }, [isLobby, game, players]);
+
+  async function handleJoinGame() {
+    if (!address || !canJoin || firstAvailableSlot === null || isJoining)
+      return;
+    setIsJoining(true);
+    try {
+      const tx = await sendTransaction([
+        {
+          contractAddress: ACTIONS_ADDRESS,
+          entrypoint: "join_game",
+          calldata: [gameId.toString(), firstAvailableSlot.toString()],
+        },
+      ]);
+      if (!tx?.transaction_hash) throw new Error("Missing transaction hash");
+      await provider.waitForTransaction(tx.transaction_hash, {
+        retryInterval: 250,
+      });
+      toast("Joined game.", "success", {
+        linkUrl: explorer.transaction(tx.transaction_hash),
+        linkLabel: `TX ${shortTxHash(tx.transaction_hash)}`,
+      });
+    } catch (error) {
+      console.error("Failed to join game:", error);
+      const parsed = parseTransactionError(error);
+      if (parsed) {
+        showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
+      } else {
+        toast("Failed to join game.", "error");
+      }
+    } finally {
+      setIsJoining(false);
+    }
+  }
 
   useEffect(() => {
     if (!address) return;
@@ -255,8 +302,18 @@ export default function HUD() {
 
         {address ? (
           <div className="flex items-center gap-6">
+            {canJoin && firstAvailableSlot !== null && (
+              <PixelButton
+                variant="blue"
+                onClick={() => void handleJoinGame()}
+                disabled={isJoining}
+                className="!py-1 !px-4"
+              >
+                {isJoining ? "JOINING..." : "JOIN_GAME"}
+              </PixelButton>
+            )}
             <PixelButton
-              variant="gray"
+              variant="blue"
               onClick={() => controllerConnector.controller.openProfile()}
               className="!py-1 !px-4"
             >

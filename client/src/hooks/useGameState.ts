@@ -74,6 +74,7 @@ function processEntityUpdates(entities: StandardizedQueryResult<Schema>) {
         mapId: toNumber(g.map_id),
         width: toNumber(g.width),
         height: toNumber(g.height),
+        playerCount: toNumber(g.player_count),
         isTestMode: Boolean(g.is_test_mode),
       });
     }
