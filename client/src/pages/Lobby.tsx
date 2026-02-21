@@ -16,6 +16,7 @@ import { PixelPanel } from "../components/PixelPanel";
 import { BlueprintContainer } from "../components/BlueprintContainer";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
 import { useToast } from "../components/Toast";
+import { parseTransactionError } from "../utils/parseTransactionError";
 
 interface GraphEdge<T> {
   node: T;
@@ -129,7 +130,7 @@ const ECGMonitor = ({
 
   return (
     <div className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group">
-      <div 
+      <div
         className="absolute inset-0 animate-intermittent-glitch"
         style={{ animationDelay: `-${(gameId * 1.43) % 32}s` }}
       >
@@ -201,7 +202,7 @@ export default function Lobby() {
   const { provider } = useProvider();
   const { sendAsync: sendTransaction } = useSendTransaction({});
   const graphqlClient = useClient();
-  const { toast } = useToast();
+  const { toast, showErrorModal } = useToast();
   const navigate = useNavigate();
   const controllerConnector = useMemo(
     () => ControllerConnector.fromConnectors(connectors),
@@ -287,7 +288,8 @@ export default function Lobby() {
         for (const event of receipt.events) {
           if (!event.keys || event.keys.length < 3 || !event.data) continue;
           // Match EventEmitted selector and actions contract address
-          if (num.toHex(event.keys[0]) !== num.toHex(eventEmittedSelector)) continue;
+          if (num.toHex(event.keys[0]) !== num.toHex(eventEmittedSelector))
+            continue;
           if (num.toHex(event.keys[2]) !== normalizedActionsAddress) continue;
           // GameCreated has 1 key field (game_id) and 2 value fields (map_id, player_count)
           const keysLen = Number(event.data[0]);
@@ -310,7 +312,12 @@ export default function Lobby() {
       }
     } catch (error) {
       console.error("Failed to create deployment:", error);
-      toast("Failed to deploy operation.", "error");
+      const parsed = parseTransactionError(error);
+      if (parsed) {
+        showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
+      } else {
+        toast("Failed to deploy operation.", "error");
+      }
     } finally {
       setIsDeploying(false);
     }
@@ -370,7 +377,12 @@ export default function Lobby() {
       navigate(`/game/${gameId}`);
     } catch (error) {
       console.error("Failed to join game:", error);
-      toast("Failed to join game.", "error");
+      const parsed = parseTransactionError(error);
+      if (parsed) {
+        showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
+      } else {
+        toast("Failed to join game.", "error");
+      }
     } finally {
       setIsJoining(false);
       setJoiningGameId(null);
@@ -1072,7 +1084,11 @@ export default function Lobby() {
                   OPERATION NAME
                   <input
                     value={operationName}
-                    onChange={(e) => setOperationName(e.target.value.toUpperCase().replace(/ /g, "_"))}
+                    onChange={(e) =>
+                      setOperationName(
+                        e.target.value.toUpperCase().replace(/ /g, "_"),
+                      )
+                    }
                     placeholder="e.g. Iron Ridge Offensive"
                     maxLength={30}
                     className="bg-blueprint-dark/80 border border-white/40 px-3 py-2 outline-none tracking-wide"
@@ -1194,7 +1210,10 @@ export default function Lobby() {
                     variant="green"
                     onClick={handleConfirmDeploy}
                     disabled={
-                      isDeploying || !selectedMapInfo || !selectedPlayerId || !operationName.trim()
+                      isDeploying ||
+                      !selectedMapInfo ||
+                      !selectedPlayerId ||
+                      !operationName.trim()
                     }
                     className="flex items-center gap-2"
                   >
@@ -1238,7 +1257,8 @@ export default function Lobby() {
                       <div>
                         NAME:{" "}
                         <span className="font-bold">
-                          {joinTargetGame.name || `OPERATION_${toNumber(joinTargetGame.game_id)}`}
+                          {joinTargetGame.name ||
+                            `OPERATION_${toNumber(joinTargetGame.game_id)}`}
                         </span>
                       </div>
                       <div>

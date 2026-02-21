@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
 import { useToast } from "./Toast";
+import { parseTransactionError } from "../utils/parseTransactionError";
 import { PixelButton } from "./PixelButton";
 import { PixelPanel } from "./PixelPanel";
 import { useGameStore, TEAMS } from "../data/gameStore";
@@ -52,7 +53,7 @@ export default function HUD() {
   const explorer = useExplorer();
   const { provider } = useProvider();
   const { sendAsync: sendTransaction } = useSendTransaction({});
-  const { toast } = useToast();
+  const { toast, showErrorModal } = useToast();
 
   const { connect, connectors } = useConnect();
   const { address } = useAccount();
@@ -98,9 +99,7 @@ export default function HUD() {
 
     async function loadUsernames() {
       try {
-        const addressMap = await lookupAddresses(
-          players.map((p) => p.address),
-        );
+        const addressMap = await lookupAddresses(players.map((p) => p.address));
         if (!active) return;
 
         const normalizedLookup: Record<string, string> = {};
@@ -135,7 +134,13 @@ export default function HUD() {
     const team = TEAMS[currentPlayer] ?? "blue";
     const color = PLAYER_COLORS[team] ?? "#ffffff";
     const name = playerUsernames[player.address];
-    return { playerId: currentPlayer, team, color, name, address: player.address };
+    return {
+      playerId: currentPlayer,
+      team,
+      color,
+      name,
+      address: player.address,
+    };
   }, [currentPlayer, players, playerUsernames]);
 
   async function handleEndTurn() {
@@ -167,7 +172,12 @@ export default function HUD() {
       });
     } catch (error) {
       console.error("Failed to end turn:", error);
-      toast("Failed to end turn.", "error");
+      const parsed = parseTransactionError(error);
+      if (parsed) {
+        showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
+      } else {
+        toast("Failed to end turn.", "error");
+      }
     } finally {
       setIsEndingTurn(false);
     }
@@ -177,7 +187,10 @@ export default function HUD() {
     <>
       <div className="absolute top-0 left-0 right-0 h-16 bg-blueprint-blue/60 flex items-center justify-between px-8 z-10 border-b-2 border-white backdrop-blur-sm">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity">
+          <Link
+            to="/"
+            className="flex items-center gap-4 hover:opacity-80 transition-opacity"
+          >
             <div className="flicker-text scale-75">
               <svg width="40" height="40" viewBox="0 0 40 40">
                 <g
@@ -266,7 +279,10 @@ export default function HUD() {
             <div>
               CURRENT TURN:{" "}
               {currentTurnPlayer ? (
-                <span className="font-bold" style={{ color: currentTurnPlayer.color }}>
+                <span
+                  className="font-bold"
+                  style={{ color: currentTurnPlayer.color }}
+                >
                   {currentTurnPlayer.name ??
                     `${currentTurnPlayer.address.slice(0, 6)}...${currentTurnPlayer.address.slice(-4)}`}
                 </span>
@@ -274,11 +290,11 @@ export default function HUD() {
                 <span className="font-bold">UNKNOWN</span>
               )}
             </div>
-            {myPlayerId !== null && (
+            {myPlayerId !== null && myPlayerId === currentPlayer && (
               <PixelButton
                 variant="blue"
                 onClick={handleEndTurn}
-                disabled={isEndingTurn || !address || !canEndTurn}
+                disabled={isEndingTurn || !address}
                 className="!mt-2"
               >
                 {isEndingTurn ? "ENDING..." : "END TURN"}

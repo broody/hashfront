@@ -29,6 +29,7 @@ import { findPath, findReachable } from "../game/pathfinding";
 import { num } from "starknet";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
 import { useToast } from "./Toast";
+import { parseTransactionError } from "../utils/parseTransactionError";
 
 const WORLD_SIZE = GRID_SIZE * TILE_PX;
 
@@ -62,10 +63,11 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
   const explorer = useExplorer();
   const { provider } = useProvider();
   const { sendAsync: sendMoveUnit } = useSendTransaction({});
-  const { toast } = useToast();
+  const { toast, showErrorModal } = useToast();
   const providerRef = useRef(provider);
   const sendMoveUnitRef = useRef(sendMoveUnit);
   const toastRef = useRef(toast);
+  const showErrorModalRef = useRef(showErrorModal);
   const gameIdRef = useRef(gameId);
   const addressRef = useRef(address);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,9 +78,10 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     providerRef.current = provider;
     sendMoveUnitRef.current = sendMoveUnit;
     toastRef.current = toast;
+    showErrorModalRef.current = showErrorModal;
     gameIdRef.current = gameId;
     addressRef.current = address;
-  }, [address, gameId, provider, sendMoveUnit, toast]);
+  }, [address, gameId, provider, sendMoveUnit, toast, showErrorModal]);
 
   const init = useCallback(async () => {
     if (!containerRef.current || appRef.current) return;
@@ -518,9 +521,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         getBlockedTiles(selectedUnit.id),
       );
 
-      const reachableSet = new Set(
-        reachable.map((t) => `${t.x},${t.y}`),
-      );
+      const reachableSet = new Set(reachable.map((t) => `${t.x},${t.y}`));
 
       for (const tile of reachable) {
         rangeGfx
@@ -531,16 +532,28 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         const x = tile.x * TILE_PX;
         const y = tile.y * TILE_PX;
         if (!reachableSet.has(`${tile.x},${tile.y - 1}`)) {
-          rangeGfx.moveTo(x, y).lineTo(x + TILE_PX, y).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+          rangeGfx
+            .moveTo(x, y)
+            .lineTo(x + TILE_PX, y)
+            .stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
         }
         if (!reachableSet.has(`${tile.x},${tile.y + 1}`)) {
-          rangeGfx.moveTo(x, y + TILE_PX).lineTo(x + TILE_PX, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+          rangeGfx
+            .moveTo(x, y + TILE_PX)
+            .lineTo(x + TILE_PX, y + TILE_PX)
+            .stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
         }
         if (!reachableSet.has(`${tile.x - 1},${tile.y}`)) {
-          rangeGfx.moveTo(x, y).lineTo(x, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+          rangeGfx
+            .moveTo(x, y)
+            .lineTo(x, y + TILE_PX)
+            .stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
         }
         if (!reachableSet.has(`${tile.x + 1},${tile.y}`)) {
-          rangeGfx.moveTo(x + TILE_PX, y).lineTo(x + TILE_PX, y + TILE_PX).stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
+          rangeGfx
+            .moveTo(x + TILE_PX, y)
+            .lineTo(x + TILE_PX, y + TILE_PX)
+            .stroke({ color: 0xffffff, alpha: 0.25, width: 1 });
         }
       }
     }
@@ -579,9 +592,11 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
 
       // Find unit at clicked tile — click empty space to deselect
       const { units, game } = useGameStore.getState();
-      const currentTurnTeam = game?.currentPlayer
-        ? TEAMS[game.currentPlayer] ?? null
-        : null;
+      const myTeam = getMyTeam(addressRef.current);
+      const isMyTurn =
+        myTeam !== null &&
+        game?.currentPlayer !== undefined &&
+        TEAMS[game.currentPlayer] === myTeam;
       const clicked = units.find(
         (u) =>
           u.x === gridX &&
@@ -589,8 +604,8 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
           !activeMovements.has(u.id) &&
           !pendingMoveTransactions.has(u.id),
       );
-      // Only allow selecting units belonging to the current turn's player
-      if (clicked && clicked.team !== currentTurnTeam) {
+      // Only allow selecting own units when it's my turn
+      if (!isMyTurn || (clicked && clicked.team !== myTeam)) {
         selectedUnit = null;
       } else {
         selectedUnit = clicked ?? null;
@@ -632,8 +647,9 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     }
 
     function tryMoveSelectedUnit(screenX: number, screenY: number) {
-      if (!isPlayerInGame(addressRef.current)) return;
       if (!selectedUnit) return;
+      const myTeam = getMyTeam(addressRef.current);
+      if (!myTeam || selectedUnit.team !== myTeam) return;
       if (pendingMoveTransactions.has(selectedUnit.id)) return;
 
       const worldPos = vp.toWorld(screenX, screenY);
@@ -747,7 +763,16 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         console.error("Move transaction failed:", error);
         activeMovements.delete(unit.id);
         rollbackUnitPosition(unit, sprite, originX, originY);
-        toastRef.current("Move failed. Unit moved back.", "error");
+        const parsed = parseTransactionError(error);
+        if (parsed) {
+          showErrorModalRef.current(
+            "TRANSACTION_REJECTED",
+            parsed.message,
+            parsed.rawError,
+          );
+        } else {
+          toastRef.current("Move failed. Unit moved back.", "error");
+        }
       } finally {
         pendingMoveTransactions.delete(unit.id);
       }
@@ -846,8 +871,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
           // Check if position changed compared to previous state
           const prevUnit = prevState.units.find((u) => u.id === unit.id);
           const moved =
-            prevUnit &&
-            (prevUnit.x !== unit.x || prevUnit.y !== unit.y);
+            prevUnit && (prevUnit.x !== unit.x || prevUnit.y !== unit.y);
 
           if (moved) {
             // Animate along a pathfound route from old to new position
