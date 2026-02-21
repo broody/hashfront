@@ -1,11 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import {
-  useAccount,
-  useExplorer,
-  useProvider,
-  useSendTransaction,
-} from "@starknet-react/core";
+import { useAccount } from "@starknet-react/core";
 import {
   AnimatedSprite,
   Application,
@@ -16,7 +11,7 @@ import {
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 import { useGameStore, TEAMS } from "../data/gameStore";
-import type { Unit } from "../data/gameStore";
+import type { Unit, QueuedMove } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
 import {
@@ -28,15 +23,8 @@ import {
 import { findPath, findReachable } from "../game/pathfinding";
 import { num } from "starknet";
 import { ACTIONS_ADDRESS } from "../StarknetProvider";
-import { useToast } from "./Toast";
-import { parseTransactionError } from "../utils/parseTransactionError";
 
 const WORLD_SIZE = GRID_SIZE * TILE_PX;
-
-function shortTxHash(txHash: string): string {
-  if (txHash.length <= 14) return txHash;
-  return `${txHash.slice(0, 8)}...${txHash.slice(-6)}`;
-}
 
 function isPlayerInGame(address: string | undefined): boolean {
   if (!address) return false;
@@ -60,14 +48,6 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
   const { id } = useParams<{ id: string }>();
   const gameId = Number.parseInt(id || "", 10);
   const { address } = useAccount();
-  const explorer = useExplorer();
-  const { provider } = useProvider();
-  const { sendAsync: sendMoveUnit } = useSendTransaction({});
-  const { toast, showErrorModal } = useToast();
-  const providerRef = useRef(provider);
-  const sendMoveUnitRef = useRef(sendMoveUnit);
-  const toastRef = useRef(toast);
-  const showErrorModalRef = useRef(showErrorModal);
   const gameIdRef = useRef(gameId);
   const addressRef = useRef(address);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,13 +55,9 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    providerRef.current = provider;
-    sendMoveUnitRef.current = sendMoveUnit;
-    toastRef.current = toast;
-    showErrorModalRef.current = showErrorModal;
     gameIdRef.current = gameId;
     addressRef.current = address;
-  }, [address, gameId, provider, sendMoveUnit, toast, showErrorModal]);
+  }, [address, gameId]);
 
   const init = useCallback(async () => {
     if (!containerRef.current || appRef.current) return;
@@ -500,6 +476,53 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     }
     const activeMovements = new Map<number, MoveState>();
 
+    // --- Move trail overlay ---
+    const trailGfx = new Graphics();
+    vp.addChild(trailGfx);
+
+    function drawTrails() {
+      trailGfx.clear();
+      const { moveQueue: queue, units } = useGameStore.getState();
+      if (queue.length === 0) return;
+      for (const m of queue) {
+        const unit = units.find((u) => u.id === m.unitId);
+        const color = TEAM_COLORS[unit?.team ?? "blue"] ?? 0xffffff;
+
+        // Dashed line following the path
+        if (m.path.length < 2) continue;
+        const dashLen = 4;
+        const gapLen = 3;
+        let carry = 0; // tracks dash/gap state across segments
+        for (let i = 0; i < m.path.length - 1; i++) {
+          const ax = m.path[i].x * TILE_PX + TILE_PX / 2;
+          const ay = m.path[i].y * TILE_PX + TILE_PX / 2;
+          const bx = m.path[i + 1].x * TILE_PX + TILE_PX / 2;
+          const by = m.path[i + 1].y * TILE_PX + TILE_PX / 2;
+          const segDist = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
+          if (segDist < 0.1) continue;
+          const nx = (bx - ax) / segDist;
+          const ny = (by - ay) / segDist;
+          let d = 0;
+          while (d < segDist) {
+            const remaining = dashLen - carry;
+            const end = Math.min(d + remaining, segDist);
+            trailGfx
+              .moveTo(ax + nx * d, ay + ny * d)
+              .lineTo(ax + nx * end, ay + ny * end)
+              .stroke({ color, alpha: 0.45, width: 1.5 });
+            carry += end - d;
+            d = end;
+            if (carry >= dashLen) {
+              // skip gap
+              const gapEnd = Math.min(d + gapLen, segDist);
+              d = gapEnd;
+              carry = 0;
+            }
+          }
+        }
+      }
+    }
+
     // --- Hover highlight + movement range ---
     const hoverGfx = new Graphics();
     const rangeGfx = new Graphics();
@@ -508,10 +531,19 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
 
     const canvas = app.canvas as HTMLCanvasElement;
 
+    function unitHasMoved(unit: Unit): boolean {
+      const { game: g, moveQueue } = useGameStore.getState();
+      if (moveQueue.some((m) => m.unitId === unit.id)) return true;
+      if (g && unit.lastMovedRound >= g.round) return true;
+      return false;
+    }
+
     function drawMoveRange() {
       rangeGfx.clear();
       if (!selectedUnit || activeMovements.has(selectedUnit.id)) return;
       if (pendingMoveTransactions.has(selectedUnit.id)) return;
+      if (useGameStore.getState().game?.state !== "Playing") return;
+      if (unitHasMoved(selectedUnit)) return;
 
       const range = UNIT_MOVE_RANGE[selectedUnit.type] ?? 5;
       const reachable = findReachable(
@@ -657,6 +689,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     function tryMoveSelectedUnit(screenX: number, screenY: number) {
       if (!selectedUnit) return;
       const { game } = useGameStore.getState();
+      if (game?.state !== "Playing") return;
       const currentTeam =
         game?.currentPlayer !== undefined
           ? (TEAMS[game.currentPlayer] ?? null)
@@ -666,6 +699,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         : getMyTeam(addressRef.current);
       if (!allowedTeam || selectedUnit.team !== allowedTeam) return;
       if (pendingMoveTransactions.has(selectedUnit.id)) return;
+      if (unitHasMoved(selectedUnit)) return;
 
       const worldPos = vp.toWorld(screenX, screenY);
       const gridX = Math.floor(worldPos.x / TILE_PX);
@@ -689,8 +723,10 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       const originX = selectedUnit.x;
       const originY = selectedUnit.y;
       startMovement(selectedUnit, path);
-      void submitMoveTransaction(selectedUnit, path, originX, originY);
+      queueMoveForUnit(selectedUnit, path, originX, originY);
+      selectedUnit = null;
       rangeGfx.clear();
+      drawTrails();
     }
 
     function onContextMenu(ev: MouseEvent) {
@@ -719,78 +755,37 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       return calldata;
     }
 
-    function rollbackUnitPosition(
-      unit: Unit,
-      sprite: AnimatedSprite,
-      originX: number,
-      originY: number,
-    ) {
-      unit.x = originX;
-      unit.y = originY;
-      sprite.x = originX * TILE_PX + TILE_PX / 2;
-      sprite.y = originY * TILE_PX + TILE_PX / 2;
-      setUnitAnim(unit, sprite, "idle");
-      drawSelection();
-    }
-
-    async function submitMoveTransaction(
+    function queueMoveForUnit(
       unit: Unit,
       path: { x: number; y: number }[],
       originX: number,
       originY: number,
     ) {
-      const sprite = unitSprites.get(unit.id);
-      if (!sprite) return;
-
       pendingMoveTransactions.add(unit.id);
-      try {
-        if (!Number.isInteger(gameIdRef.current)) {
-          throw new Error("Invalid game id");
-        }
-        if (unit.onchainId <= 0) {
-          throw new Error("Invalid unit id");
-        }
 
-        toastRef.current("Submitting move...", "info");
-        const res = await sendMoveUnitRef.current([
-          {
-            contractAddress: ACTIONS_ADDRESS,
-            entrypoint: "move_unit",
-            calldata: [
-              gameIdRef.current.toString(),
-              unit.onchainId.toString(),
-              ...encodeMovePath(path),
-            ],
-          },
-        ]);
-        if (!res?.transaction_hash) {
-          throw new Error("Missing transaction hash");
-        }
+      const call = {
+        contractAddress: ACTIONS_ADDRESS,
+        entrypoint: "move_unit",
+        calldata: [
+          gameIdRef.current.toString(),
+          unit.onchainId.toString(),
+          ...encodeMovePath(path),
+        ],
+      };
 
-        await providerRef.current.waitForTransaction(res.transaction_hash, {
-          retryInterval: 500,
-        });
-        toastRef.current("Move confirmed.", "success", {
-          linkUrl: explorer.transaction(res.transaction_hash),
-          linkLabel: `TX ${shortTxHash(res.transaction_hash)}`,
-        });
-      } catch (error) {
-        console.error("Move transaction failed:", error);
-        activeMovements.delete(unit.id);
-        rollbackUnitPosition(unit, sprite, originX, originY);
-        const parsed = parseTransactionError(error);
-        if (parsed) {
-          showErrorModalRef.current(
-            "TRANSACTION_REJECTED",
-            parsed.message,
-            parsed.rawError,
-          );
-        } else {
-          toastRef.current("Move failed. Unit moved back.", "error");
-        }
-      } finally {
-        pendingMoveTransactions.delete(unit.id);
-      }
+      const dest = path[path.length - 1];
+      const entry: QueuedMove = {
+        unitId: unit.id,
+        unitOnchainId: unit.onchainId,
+        call,
+        originX,
+        originY,
+        destX: dest.x,
+        destY: dest.y,
+        path: [{ x: originX, y: originY }, ...path],
+      };
+
+      useGameStore.getState().queueMove(entry);
     }
 
     const tickerCb = (ticker: { deltaTime: number }) => {
@@ -860,6 +855,28 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
 
     // --- Subscribe to store for real-time unit updates (other players' moves) ---
     const storeUnsub = useGameStore.subscribe((state, prevState) => {
+      // Sync pendingMoveTransactions and sprites from moveQueue
+      if (state.moveQueue !== prevState.moveQueue) {
+        const queuedIds = new Set(state.moveQueue.map((m) => m.unitId));
+        // For dequeued units, cancel any active movement and snap sprite to store position
+        for (const prev of prevState.moveQueue) {
+          if (!queuedIds.has(prev.unitId)) {
+            activeMovements.delete(prev.unitId);
+            pendingMoveTransactions.delete(prev.unitId);
+            const sprite = unitSprites.get(prev.unitId);
+            const unit = state.units.find((u) => u.id === prev.unitId);
+            if (sprite && unit) {
+              sprite.x = unit.x * TILE_PX + TILE_PX / 2;
+              sprite.y = unit.y * TILE_PX + TILE_PX / 2;
+              setUnitAnim(unit, sprite, "idle");
+            }
+          }
+        }
+        drawSelection();
+        drawMoveRange();
+        drawTrails();
+      }
+
       if (state.units === prevState.units) return;
 
       const newUnits = state.units;

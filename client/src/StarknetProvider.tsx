@@ -30,6 +30,7 @@ const policies: SessionPolicies = {
 const connector = new ControllerConnector({
   policies,
   defaultChainId: shortString.encodeShortString("SN_SEPOLIA"),
+  propagateSessionErrors: true,
 });
 
 const provider = jsonRpcProvider({

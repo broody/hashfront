@@ -103,15 +103,17 @@ B2=$(( 2 * 16777216 + 3 * 65536 + LAST_X * 256 + LAST_Y ))      # P2 HQ @ (W-1, 
 BUILDING_COUNT=2
 BUILDINGS="$B1 $B2"
 
-# Units: 1 infantry per player near the center for testing
+# Units: 1 infantry + 1 tank per player near the center
 # packed u32 = (player_id << 24) | (unit_type << 16) | (x << 8) | y
-# UnitType::Infantry = 1
+# UnitType::Infantry = 1, UnitType::Tank = 2
 MID_X=$(( WIDTH / 2 ))
 MID_Y=$(( HEIGHT / 2 ))
 U1=$(( 1 * 16777216 + 1 * 65536 + (MID_X - 1) * 256 + MID_Y ))         # P1 Infantry @ (mid-1, mid)
 U2=$(( 2 * 16777216 + 1 * 65536 + (MID_X + 1) * 256 + MID_Y ))         # P2 Infantry @ (mid+1, mid)
-UNIT_COUNT=2
-UNITS="$U1 $U2"
+U3=$(( 1 * 16777216 + 2 * 65536 + (MID_X - 1) * 256 + (MID_Y - 1) ))   # P1 Tank @ (mid-1, mid-1)
+U4=$(( 2 * 16777216 + 2 * 65536 + (MID_X + 1) * 256 + (MID_Y + 1) ))   # P2 Tank @ (mid+1, mid+1)
+UNIT_COUNT=4
+UNITS="$U1 $U2 $U3 $U4"
 
 echo "Map: ${WIDTH}x${HEIGHT}, ${TILE_COUNT} tiles, ${BUILDING_COUNT} buildings, ${UNIT_COUNT} units"
 

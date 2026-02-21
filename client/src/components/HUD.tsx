@@ -70,6 +70,7 @@ export default function HUD() {
   // Read game state from Zustand store (reactive — updates via gRPC subscriptions)
   const game = useGameStore((s) => s.game);
   const players = useGameStore((s) => s.players);
+  const moveQueue = useGameStore((s) => s.moveQueue);
 
   const currentPlayer = game?.currentPlayer ?? null;
   const gameName = game?.name ?? "";
@@ -151,27 +152,42 @@ export default function HUD() {
     if (!canEndTurn || isEndingTurn) return;
 
     setIsEndingTurn(true);
+    const {
+      moveQueue: queue,
+      updateUnit,
+      clearQueue,
+    } = useGameStore.getState();
     try {
-      toast("Ending turn...", "info");
-      const tx = await sendTransaction([
+      const calls = [
+        ...queue.map((m) => m.call),
         {
           contractAddress: ACTIONS_ADDRESS,
           entrypoint: "end_turn",
           calldata: [gameId.toString()],
         },
-      ]);
+      ];
+      const tx = await sendTransaction(calls);
       if (!tx?.transaction_hash) {
         throw new Error("Missing transaction hash");
       }
       await provider.waitForTransaction(tx.transaction_hash, {
-        retryInterval: 500,
+        retryInterval: 250,
       });
+      // Set store positions to destinations so sprites don't snap back
+      for (const m of queue) {
+        updateUnit(m.unitOnchainId, { x: m.destX, y: m.destY });
+      }
+      clearQueue();
       toast("Turn ended.", "success", {
         linkUrl: explorer.transaction(tx.transaction_hash),
         linkLabel: `TX ${shortTxHash(tx.transaction_hash)}`,
       });
     } catch (error) {
       console.error("Failed to end turn:", error);
+      for (const m of queue) {
+        updateUnit(m.unitOnchainId, { x: m.originX, y: m.originY });
+      }
+      clearQueue();
       const parsed = parseTransactionError(error);
       if (parsed) {
         showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
@@ -181,6 +197,14 @@ export default function HUD() {
     } finally {
       setIsEndingTurn(false);
     }
+  }
+
+  function handleUndoMove() {
+    const { moveQueue, dequeueMove, updateUnit } = useGameStore.getState();
+    if (moveQueue.length === 0) return;
+    const last = moveQueue[moveQueue.length - 1];
+    updateUnit(last.unitOnchainId, { x: last.originX, y: last.originY });
+    dequeueMove(last.unitId);
   }
 
   return (
@@ -291,14 +315,28 @@ export default function HUD() {
               )}
             </div>
             {canEndTurn && (
-              <PixelButton
-                variant="blue"
-                onClick={handleEndTurn}
-                disabled={isEndingTurn || !address}
-                className="!mt-2"
-              >
-                {isEndingTurn ? "ENDING..." : "END TURN"}
-              </PixelButton>
+              <div className="flex gap-2 !mt-2">
+                {moveQueue.length > 0 && (
+                  <PixelButton
+                    variant="gray"
+                    onClick={handleUndoMove}
+                    disabled={isEndingTurn}
+                  >
+                    UNDO
+                  </PixelButton>
+                )}
+                <PixelButton
+                  variant="blue"
+                  onClick={handleEndTurn}
+                  disabled={isEndingTurn || !address}
+                >
+                  {isEndingTurn
+                    ? "ENDING..."
+                    : moveQueue.length > 0
+                      ? `END TURN (${moveQueue.length})`
+                      : "END TURN"}
+                </PixelButton>
+              </div>
             )}
           </div>
         </PixelPanel>

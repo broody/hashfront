@@ -24,6 +24,7 @@ export interface Unit {
   team: TeamId;
   x: number;
   y: number;
+  lastMovedRound: number;
   facing: "left" | "right" | "up" | "down";
   animation:
     | "idle"
@@ -59,6 +60,18 @@ export interface GamePlayerState {
   isAlive: boolean;
 }
 
+// --- Move queue ---
+export interface QueuedMove {
+  unitId: number;
+  unitOnchainId: number;
+  call: { contractAddress: string; entrypoint: string; calldata: string[] };
+  originX: number;
+  originY: number;
+  destX: number;
+  destY: number;
+  path: { x: number; y: number }[];
+}
+
 // --- Store ---
 interface GameStore {
   tileMap: Uint8Array;
@@ -72,10 +85,13 @@ interface GameStore {
     x: number,
     y: number,
     onchainId: number,
+    lastMovedRound?: number,
   ) => Unit;
   updateUnit: (
     onchainId: number,
-    updates: Partial<Pick<Unit, "x" | "y" | "type" | "team">>,
+    updates: Partial<
+      Pick<Unit, "x" | "y" | "type" | "team" | "lastMovedRound">
+    >,
   ) => void;
   removeUnit: (onchainId: number) => void;
   setUnits: (units: Unit[]) => void;
@@ -86,6 +102,11 @@ interface GameStore {
 
   players: GamePlayerState[];
   setPlayers: (players: GamePlayerState[]) => void;
+
+  moveQueue: QueuedMove[];
+  queueMove: (entry: QueuedMove) => void;
+  dequeueMove: (unitId: number) => void;
+  clearQueue: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -94,7 +115,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   units: [],
   nextId: 1,
-  addUnit: (type, team, x, y, onchainId) => {
+  addUnit: (type, team, x, y, onchainId, lastMovedRound = 0) => {
     const { nextId, units } = get();
     const unit: Unit = {
       id: nextId,
@@ -103,6 +124,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       team,
       x,
       y,
+      lastMovedRound,
       facing: team === "red" ? "left" : "right",
       animation: "idle",
     };
@@ -132,4 +154,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   players: [],
   setPlayers: (players) => set({ players }),
+
+  moveQueue: [],
+  queueMove: (entry) =>
+    set((state) => ({
+      moveQueue: [
+        ...state.moveQueue.filter((m) => m.unitId !== entry.unitId),
+        entry,
+      ],
+    })),
+  dequeueMove: (unitId) =>
+    set((state) => ({
+      moveQueue: state.moveQueue.filter((m) => m.unitId !== unitId),
+    })),
+  clearQueue: () => set({ moveQueue: [] }),
 }));

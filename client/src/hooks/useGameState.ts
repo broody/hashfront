@@ -94,11 +94,19 @@ function processEntityUpdates(entities: StandardizedQueryResult<Schema>) {
           y: toNumber(u.y),
           type: UNIT_TYPES[String(u.unit_type)] || existing.type,
           team: TEAMS[playerId] || existing.team,
+          lastMovedRound: toNumber(u.last_moved_round),
         });
       } else if (isAlive && unitId > 0) {
         const teamId = TEAMS[playerId] || "blue";
         const typeName = UNIT_TYPES[String(u.unit_type)] || "rifle";
-        store.addUnit(typeName, teamId, toNumber(u.x), toNumber(u.y), unitId);
+        store.addUnit(
+          typeName,
+          teamId,
+          toNumber(u.x),
+          toNumber(u.y),
+          unitId,
+          toNumber(u.last_moved_round),
+        );
       }
     }
 
@@ -225,19 +233,19 @@ export function useGameState(id: string | undefined): {
                   "hashfront-Building",
                   "hashfront-PlayerState",
                 ],
-                [gameIdNum.toString()],
+                [`0x${gameIdNum.toString(16)}`],
                 "VariableLen",
               ).build(),
             )
             .withLimit(1000)
             .includeHashedKeys(),
-          callback: ({ data, error }) => {
-            if (error) {
-              console.error("Entity subscription error:", error);
+          callback: (response) => {
+            if (response.error) {
+              console.error("Entity subscription error:", response.error);
               return;
             }
-            if (data) {
-              processEntityUpdates(data);
+            if (response.data) {
+              processEntityUpdates(response.data);
             }
           },
           fetchInitialData: true,
@@ -264,7 +272,7 @@ export function useGameState(id: string | undefined): {
               .withClause(
                 KeysClause<Schema>(
                   ["hashfront-MapTile"],
-                  [mapId.toString()],
+                  [`0x${mapId.toString(16)}`],
                   "VariableLen",
                 ).build(),
               )
