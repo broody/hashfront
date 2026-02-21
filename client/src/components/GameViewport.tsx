@@ -10,7 +10,7 @@ import {
   Spritesheet,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { useGameStore, TEAMS } from "../data/gameStore";
+import { useGameStore, TEAMS, UNIT_MAX_HP } from "../data/gameStore";
 import type { Unit, QueuedMove } from "../data/gameStore";
 import { GRID_SIZE, TILE_PX, TILE_COLORS, TileType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
@@ -690,6 +690,9 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     const targetGfx = new Graphics();
     vp.addChild(targetGfx);
 
+    const hpGfx = new Graphics();
+    vp.addChild(hpGfx);
+
     let attackableTargets: Unit[] = [];
     let hoveredEnemy: Unit | null = null;
 
@@ -1337,6 +1340,63 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         const ly = ms.startY + (target.y - ms.startY) * ms.progress;
         sprite.x = lx * TILE_PX + TILE_PX / 2;
         sprite.y = ly * TILE_PX + TILE_PX / 2;
+      }
+
+      // Draw health bars above units
+      hpGfx.clear();
+      for (const [id, sprite] of unitSprites) {
+        const unit = useGameStore.getState().units.find((u) => u.id === id);
+        if (!unit) continue;
+        const maxHp = UNIT_MAX_HP[unit.type] ?? 3;
+        if (unit.hp <= 0) continue;
+
+        const boxSize = 3;
+        const gap = 1;
+        const totalW = maxHp * boxSize + (maxHp - 1) * gap;
+        const startX = sprite.x - totalW / 2;
+        const hpOffset = unit.type === "rifle" ? 1 : -5;
+        const barY = sprite.y - TILE_PX / 2 + hpOffset;
+
+        for (let i = 0; i < maxHp; i++) {
+          const bx = startX + i * (boxSize + gap);
+          if (i < unit.hp) {
+            hpGfx
+              .rect(bx, barY, boxSize, boxSize)
+              .fill({ color: 0xffdd4a, alpha: 1 });
+          }
+          hpGfx
+            .rect(bx, barY, boxSize, boxSize)
+            .stroke({ color: 0x000000, alpha: 0.5, width: 0.5 });
+        }
+      }
+
+      // Face idle units toward their closest enemy
+      const allUnits = useGameStore.getState().units;
+      for (const unit of allUnits) {
+        if (activeMovements.has(unit.id)) continue;
+        const sprite = unitSprites.get(unit.id);
+        if (!sprite) continue;
+        const enemies = allUnits.filter((u) => u.team !== unit.team);
+        if (enemies.length === 0) continue;
+        let closest = enemies[0];
+        let closestDist =
+          Math.abs(enemies[0].x - unit.x) + Math.abs(enemies[0].y - unit.y);
+        for (let i = 1; i < enemies.length; i++) {
+          const d =
+            Math.abs(enemies[i].x - unit.x) + Math.abs(enemies[i].y - unit.y);
+          if (d < closestDist) {
+            closest = enemies[i];
+            closestDist = d;
+          }
+        }
+        const dx = closest.x - unit.x;
+        if (dx === 0) continue; // directly above/below — keep current facing
+        const newFacing: Unit["facing"] = dx < 0 ? "left" : "right";
+        if (unit.facing !== newFacing) {
+          unit.facing = newFacing;
+          const absScaleX = Math.abs(sprite.scale.x);
+          sprite.scale.x = newFacing === "left" ? -absScaleX : absScaleX;
+        }
       }
 
       // Update selection highlight with pulse

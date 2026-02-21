@@ -92,6 +92,7 @@ function processEntityUpdates(entities: StandardizedQueryResult<Schema>) {
         store.updateUnit(unitId, {
           x: toNumber(u.x),
           y: toNumber(u.y),
+          hp: toNumber(u.hp),
           type: UNIT_TYPES[String(u.unit_type)] || existing.type,
           team: TEAMS[playerId] || existing.team,
           lastMovedRound: toNumber(u.last_moved_round),
@@ -105,6 +106,7 @@ function processEntityUpdates(entities: StandardizedQueryResult<Schema>) {
           toNumber(u.x),
           toNumber(u.y),
           unitId,
+          toNumber(u.hp),
           toNumber(u.last_moved_round),
         );
       }
