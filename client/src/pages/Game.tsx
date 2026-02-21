@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import GameViewport from "../components/GameViewport";
 import HUD from "../components/HUD";
 import { useGameState } from "../hooks/useGameState";
+import { ToastContainer } from "../components/Toast";
 
 export default function Game() {
   const { id } = useParams<{ id: string }>();
@@ -103,6 +104,7 @@ export default function Game() {
         </div>
       </div>
 
+      <ToastContainer />
       <div className="crt-vignette"></div>
       <div className="haze-bloom w-full h-full relative">
         <GameViewport key={id} onLoaded={() => setViewportLoaded(true)} />

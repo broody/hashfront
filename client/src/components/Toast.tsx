@@ -19,6 +19,7 @@ export interface ToastItem {
 
 interface ToastContextType {
   toast: (message: string, type?: ToastType, options?: ToastOptions) => void;
+  toasts: ToastItem[];
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
@@ -51,34 +52,8 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={{ toast, toasts }}>
       {children}
-      <div className="fixed bottom-8 right-8 z-[9999] flex flex-col gap-4 pointer-events-none">
-        {toasts.map((t) => (
-          <div key={t.id} className="pointer-events-auto animate-fade-in-up">
-            <PixelPanel
-              title={t.type === "info" ? "SYSTEM_MSG" : t.type.toUpperCase()}
-              className="!min-w-[250px] shadow-lg bg-blueprint-dark/95 backdrop-blur-md"
-            >
-              <div className="p-4 text-xs uppercase tracking-widest text-blueprint-light">
-                {t.message}
-                {t.linkUrl && (
-                  <div className="mt-2">
-                    <a
-                      href={t.linkUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline hover:opacity-80 break-all"
-                    >
-                      {t.linkLabel ?? "OPEN IN EXPLORER"}
-                    </a>
-                  </div>
-                )}
-              </div>
-            </PixelPanel>
-          </div>
-        ))}
-      </div>
     </ToastContext.Provider>
   );
 };
@@ -89,4 +64,39 @@ export const useToast = () => {
     throw new Error("useToast must be used within a ToastProvider");
   }
   return context;
+};
+
+export const ToastContainer: React.FC = () => {
+  const { toasts } = useToast();
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="absolute bottom-8 right-8 z-50 flex flex-col gap-4 pointer-events-none">
+      {toasts.map((t) => (
+        <div key={t.id} className="pointer-events-auto animate-fade-in-up">
+          <PixelPanel
+            title={t.type === "info" ? "SYSTEM_MSG" : t.type.toUpperCase()}
+            className="!min-w-[250px] shadow-lg bg-blueprint-dark/95 backdrop-blur-md"
+          >
+            <div className="p-4 text-xs uppercase tracking-widest text-blueprint-light">
+              {t.message}
+              {t.linkUrl && (
+                <div className="mt-2">
+                  <a
+                    href={t.linkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:opacity-80 break-all"
+                  >
+                    {t.linkLabel ?? "OPEN IN EXPLORER"}
+                  </a>
+                </div>
+              )}
+            </div>
+          </PixelPanel>
+        </div>
+      ))}
+    </div>
+  );
 };

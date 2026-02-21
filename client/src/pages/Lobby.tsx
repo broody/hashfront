@@ -641,7 +641,7 @@ export default function Lobby() {
 
   return (
     <BlueprintContainer>
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden min-h-[80px]">
         {/* Decorative Background SVG for Header */}
         <div className="absolute right-0 top-0 h-full w-1/2 opacity-10 pointer-events-none">
           <svg
@@ -949,7 +949,7 @@ export default function Lobby() {
 
           <PixelPanel title="24HR STATUS">
             <div className="text-base space-y-4">
-              <div className="flex justify-between items-end border-b border-white/10 pb-2">
+              <div className="flex justify-between items-end ">
                 <div className="flex flex-col">
                   <span className="text-xs opacity-50 uppercase tracking-tighter">
                     IN_PROGRESS
@@ -970,7 +970,7 @@ export default function Lobby() {
                   </svg>
                 </div>
               </div>
-              <div className="flex justify-between items-end border-b border-white/10 pb-2">
+              <div className="flex justify-between items-end ">
                 <div className="flex flex-col">
                   <span className="text-xs opacity-50 uppercase tracking-tighter">
                     COMPLETED
@@ -991,7 +991,7 @@ export default function Lobby() {
                   </svg>
                 </div>
               </div>
-              <div className="flex justify-between items-end border-b border-white/10 pb-2">
+              <div className="flex justify-between items-end ">
                 <div className="flex flex-col">
                   <span className="text-xs opacity-50 uppercase tracking-tighter">
                     TRANSACTIONS
@@ -1072,7 +1072,7 @@ export default function Lobby() {
                   OPERATION NAME
                   <input
                     value={operationName}
-                    onChange={(e) => setOperationName(e.target.value)}
+                    onChange={(e) => setOperationName(e.target.value.toUpperCase().replace(/ /g, "_"))}
                     placeholder="e.g. Iron Ridge Offensive"
                     maxLength={30}
                     className="bg-blueprint-dark/80 border border-white/40 px-3 py-2 outline-none tracking-wide"
