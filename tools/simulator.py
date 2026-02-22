@@ -75,7 +75,7 @@ UNIT_STATS = {
 }
 
 # Vehicle types get road bonus
-VEHICLE_TYPES = {UnitType.TANK}
+VEHICLE_TYPES = {UnitType.TANK, UnitType.RANGER}
 ROAD_BONUS = 2
 ROAD_TERRAINS = {Terrain.ROAD, Terrain.DIRT_ROAD}
 
