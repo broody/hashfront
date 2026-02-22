@@ -3,7 +3,7 @@
 Hashfront Headless Game Simulator
 
 Runs many games between AI strategies to test unit balance.
-Simplified setup: 2 players, HQ + units only (no cities/factories/economy).
+Includes economy: Cities (income), Factories (unit production), gold system.
 
 Usage:
     python3 tools/simulator.py                     # 100 games per matchup, seed 42
@@ -28,6 +28,13 @@ from typing import Optional
 
 CAPTURE_THRESHOLD = 2
 MAX_ROUNDS = 60  # higher than on-chain 30 to let sims finish
+STARTING_GOLD = 5
+
+UNIT_COST = {
+    "INFANTRY": 1,
+    "TANK": 3,
+    "RANGER": 2,
+}
 
 class Terrain(Enum):
     GRASS = auto()
@@ -36,18 +43,23 @@ class Terrain(Enum):
     TREE = auto()
     MOUNTAIN = auto()
     HQ = auto()
+    CITY = auto()
+    FACTORY = auto()
 
 TERRAIN_DEFENSE = {
     Terrain.GRASS: 0, Terrain.ROAD: 0, Terrain.DIRT_ROAD: 0,
     Terrain.TREE: 1, Terrain.MOUNTAIN: 2, Terrain.HQ: 2,
+    Terrain.CITY: 1, Terrain.FACTORY: 1,
 }
 TERRAIN_EVASION = {
     Terrain.GRASS: 0, Terrain.ROAD: 0, Terrain.DIRT_ROAD: 0,
     Terrain.TREE: 5, Terrain.MOUNTAIN: 12, Terrain.HQ: 10,
+    Terrain.CITY: 8, Terrain.FACTORY: 8,
 }
 TERRAIN_MOVE_COST = {
     Terrain.GRASS: 1, Terrain.ROAD: 1, Terrain.DIRT_ROAD: 1,
     Terrain.TREE: 1, Terrain.MOUNTAIN: 2, Terrain.HQ: 1,
+    Terrain.CITY: 1, Terrain.FACTORY: 1,
 }
 
 class UnitType(Enum):
@@ -93,9 +105,11 @@ class Unit:
 class Building:
     x: int
     y: int
-    owner: int  # 1 or 2
+    owner: int  # 1, 2, or 0 (neutral)
+    building_type: str = "hq"  # "hq", "city", or "factory"
     capture_player: int = 0
     capture_progress: int = 0
+    production_queue: Optional[UnitType] = None  # for factories
 
 @dataclass
 class GameState:
@@ -103,10 +117,13 @@ class GameState:
     height: int
     terrain: list  # 2D list of Terrain
     units: list  # list of Unit
-    buildings: list  # list of Building (just HQs)
+    buildings: list  # list of Building
     current_player: int = 1
     round_num: int = 1
     winner: Optional[int] = None
+    gold: dict = field(default_factory=lambda: {1: STARTING_GOLD, 2: STARTING_GOLD})
+    gold_earned: dict = field(default_factory=lambda: {1: 0, 2: 0})
+    units_produced: dict = field(default_factory=lambda: {1: 0, 2: 0})
     _next_uid: int = 0
 
     def next_uid(self):
@@ -129,9 +146,19 @@ class GameState:
 
     def player_hq(self, player):
         for b in self.buildings:
-            if b.owner == player:
+            if b.owner == player and b.building_type == "hq":
                 return b
         return None
+
+    def player_buildings(self, player, building_type=None):
+        return [b for b in self.buildings
+                if b.owner == player and (building_type is None or b.building_type == building_type)]
+
+    def player_factories(self, player):
+        return self.player_buildings(player, "factory")
+
+    def player_cities(self, player):
+        return self.player_buildings(player, "city")
 
     def other_player(self, player):
         return 2 if player == 1 else 1
@@ -216,7 +243,6 @@ def reachable_tiles(state, unit):
 
     total_move = base_move + bonus
     reached = {(unit.x, unit.y): 0}
-    # (x, y, cost_so_far, road_bonus_remaining)
     queue = collections.deque([(unit.x, unit.y, 0, bonus)])
 
     while queue:
@@ -226,19 +252,15 @@ def reachable_tiles(state, unit):
             t = state.terrain_at(nx, ny)
             if t is None:
                 continue
-            # Mountain: infantry only
             if t == Terrain.MOUNTAIN and unit.unit_type != UnitType.INFANTRY:
                 continue
-            # Tile occupied by another unit (can't pass through)
             occupant = state.unit_at(nx, ny)
             if occupant and occupant.uid != unit.uid:
                 continue
 
             move_cost = TERRAIN_MOVE_COST[t]
             new_rb = rb
-            # Road bonus: if vehicle and tile is road and we have bonus left
             if rb > 0 and t in ROAD_TERRAINS:
-                # Use road bonus to reduce cost
                 if move_cost <= new_rb:
                     new_rb -= move_cost
                     move_cost = 0
@@ -246,7 +268,6 @@ def reachable_tiles(state, unit):
                     move_cost -= new_rb
                     new_rb = 0
             elif rb > 0 and t not in ROAD_TERRAINS:
-                # Left road, lose remaining bonus
                 new_rb = 0
 
             new_cost = cost + move_cost
@@ -259,7 +280,6 @@ def reachable_tiles(state, unit):
                 reached[(nx, ny)] = new_cost
                 queue.append((nx, ny, new_cost, new_rb))
 
-    # Remove own tile
     del reached[(unit.x, unit.y)]
     return reached
 
@@ -271,7 +291,6 @@ def find_path_toward(state, unit, tx, ty):
     if (tx, ty) in tiles:
         return (tx, ty)
     best = min(tiles.keys(), key=lambda p: manhattan(p[0], p[1], tx, ty))
-    # Only move if it gets us closer
     if manhattan(best[0], best[1], tx, ty) < manhattan(unit.x, unit.y, tx, ty):
         return best
     return None
@@ -281,7 +300,7 @@ def find_path_toward(state, unit, tx, ty):
 # ============================================================================
 
 def generate_map(width, height, rng):
-    """Generate a symmetric 2-player map with terrain variety."""
+    """Generate a symmetric 2-player map with terrain variety, cities, and factories."""
     terrain = [[Terrain.GRASS] * width for _ in range(height)]
 
     # Add some roads through the center
@@ -293,6 +312,10 @@ def generate_map(width, height, rng):
     mid_x = width // 2
     for y in range(height):
         terrain[y][mid_x] = Terrain.ROAD
+    # Second vertical road for even-width maps
+    if width % 2 == 0:
+        for y in range(height):
+            terrain[y][mid_x - 1] = Terrain.ROAD
 
     # Scatter trees symmetrically
     for _ in range(width * height // 8):
@@ -300,7 +323,6 @@ def generate_map(width, height, rng):
         y = rng.randint(0, height - 1)
         if terrain[y][x] == Terrain.GRASS:
             terrain[y][x] = Terrain.TREE
-            # Mirror
             mx = width - 1 - x
             if terrain[y][mx] == Terrain.GRASS:
                 terrain[y][mx] = Terrain.TREE
@@ -321,21 +343,60 @@ def generate_map(width, height, rng):
     terrain[hq1_y][hq1_x] = Terrain.HQ
     terrain[hq2_y][hq2_x] = Terrain.HQ
 
-    return terrain, (hq1_x, hq1_y), (hq2_x, hq2_y)
+    # Factory positions (near each HQ)
+    fac1_x, fac1_y = 2, height // 2 - 2
+    fac2_x, fac2_y = width - 3, height // 2 - 2
+    terrain[fac1_y][fac1_x] = Terrain.FACTORY
+    terrain[fac2_y][fac2_x] = Terrain.FACTORY
 
-def create_game(width=12, height=12, rng_seed=42):
+    # City positions (contestable, in the middle area)
+    city_positions = []
+    # 2-3 pairs of symmetric cities
+    city_ys = [height // 4, height // 2, 3 * height // 4]
+    city_x = width // 2  # center
+    for cy in city_ys:
+        terrain[cy][city_x] = Terrain.CITY
+        city_positions.append((city_x, cy))
+    # If even width, also use left-center
+    if width % 2 == 0:
+        cx2 = mid_x - 1
+        terrain[height // 4][cx2] = Terrain.CITY
+        city_positions.append((cx2, height // 4))
+        terrain[3 * height // 4][cx2] = Terrain.CITY
+        city_positions.append((cx2, 3 * height // 4))
+
+    buildings_info = {
+        "hq1": (hq1_x, hq1_y),
+        "hq2": (hq2_x, hq2_y),
+        "fac1": (fac1_x, fac1_y),
+        "fac2": (fac2_x, fac2_y),
+        "cities": city_positions,
+    }
+    return terrain, buildings_info
+
+def create_game(width=14, height=14, rng_seed=42):
     """Create a new game state with starting units."""
     rng = random.Random(rng_seed)
-    terrain, hq1, hq2 = generate_map(width, height, rng)
+    terrain, binfo = generate_map(width, height, rng)
 
     state = GameState(
         width=width, height=height, terrain=terrain,
         units=[], buildings=[], _next_uid=0,
+        gold={1: STARTING_GOLD, 2: STARTING_GOLD},
+        gold_earned={1: 0, 2: 0},
+        units_produced={1: 0, 2: 0},
     )
 
-    # Buildings (HQs)
-    state.buildings.append(Building(x=hq1[0], y=hq1[1], owner=1))
-    state.buildings.append(Building(x=hq2[0], y=hq2[1], owner=2))
+    hq1 = binfo["hq1"]
+    hq2 = binfo["hq2"]
+
+    # Buildings
+    state.buildings.append(Building(x=hq1[0], y=hq1[1], owner=1, building_type="hq"))
+    state.buildings.append(Building(x=hq2[0], y=hq2[1], owner=2, building_type="hq"))
+    state.buildings.append(Building(x=binfo["fac1"][0], y=binfo["fac1"][1], owner=1, building_type="factory"))
+    state.buildings.append(Building(x=binfo["fac2"][0], y=binfo["fac2"][1], owner=2, building_type="factory"))
+    for cx, cy in binfo["cities"]:
+        state.buildings.append(Building(x=cx, y=cy, owner=0, building_type="city"))
 
     # Starting units for player 1 (left side)
     p1_units = [
@@ -346,7 +407,6 @@ def create_game(width=12, height=12, rng_seed=42):
         (UnitType.RANGER, hq1[0], hq1[1] - 1),
         (UnitType.RANGER, hq1[0], hq1[1] + 1),
     ]
-    # Mirror for player 2 (right side)
     p2_units = [
         (UnitType.INFANTRY, hq2[0], hq2[1] - 2),
         (UnitType.INFANTRY, hq2[0], hq2[1] + 2),
@@ -364,17 +424,54 @@ def create_game(width=12, height=12, rng_seed=42):
     return state
 
 # ============================================================================
+# Economy
+# ============================================================================
+
+def collect_income(state, player):
+    """Collect 1 gold per owned city at start of turn."""
+    cities = state.player_cities(player)
+    income = len(cities)
+    state.gold[player] += income
+    state.gold_earned[player] += income
+
+def process_production(state, player):
+    """Spawn queued units at factories if tile is unoccupied."""
+    for fac in state.player_factories(player):
+        if fac.production_queue is not None:
+            if state.unit_at(fac.x, fac.y) is None:
+                ut = fac.production_queue
+                fac.production_queue = None
+                unit = Unit(
+                    uid=state.next_uid(), unit_type=ut, player=player,
+                    x=fac.x, y=fac.y, hp=UNIT_STATS[ut]["hp"],
+                    has_moved=True, has_acted=True,
+                )
+                state.units.append(unit)
+                state.units_produced[player] += 1
+
+def build_unit(state, player, factory, unit_type):
+    """Queue a unit at a factory. Returns True if successful."""
+    if factory.building_type != "factory" or factory.owner != player:
+        return False
+    if factory.production_queue is not None:
+        return False
+    cost = UNIT_COST[unit_type.name]
+    if state.gold[player] < cost:
+        return False
+    state.gold[player] -= cost
+    factory.production_queue = unit_type
+    return True
+
+# ============================================================================
 # Game logic
 # ============================================================================
 
 def do_move(state, unit, tx, ty):
-    """Move unit to target tile."""
     unit.x = tx
     unit.y = ty
     unit.has_moved = True
 
 def do_attack(state, rng, attacker, defender):
-    """Execute attack. Returns (dmg_to_def, dmg_to_atk)."""
     dist = manhattan(attacker.x, attacker.y, defender.x, defender.y)
     def_terrain = state.terrain_at(defender.x, defender.y)
     atk_terrain = state.terrain_at(attacker.x, attacker.y)
@@ -396,11 +493,9 @@ def do_capture(state, unit):
             else:
                 b.capture_progress += 1
             if b.capture_progress >= CAPTURE_THRESHOLD:
-                old_owner = b.owner
                 b.owner = unit.player
                 b.capture_player = 0
                 b.capture_progress = 0
-                # Check HQ capture win
                 return True  # captured!
             unit.has_acted = True
             return False
@@ -412,19 +507,16 @@ def do_wait(unit):
 
 def check_winner(state):
     """Check win conditions."""
-    for b in state.buildings:
-        # If an HQ changed hands, the new owner wins
-        pass  # handled inline during capture
-
-    # Elimination check
+    # Elimination: 0 units AND 0 factories AND 0 gold
     for p in [1, 2]:
-        if not state.player_units(p):
+        if (not state.player_units(p) and
+            not state.player_factories(p) and
+            state.gold[p] <= 0):
             state.winner = state.other_player(p)
             return
 
     # Timeout
     if state.round_num > MAX_ROUNDS:
-        # Most HP wins
         hp1 = sum(u.hp for u in state.player_units(1))
         hp2 = sum(u.hp for u in state.player_units(2))
         state.winner = 1 if hp1 >= hp2 else 2
@@ -434,7 +526,6 @@ def end_turn(state):
     # Reset stale capture progress
     for b in state.buildings:
         if b.capture_player != 0:
-            # If the capturing infantry is no longer on the building, reset
             captor = None
             for u in state.units:
                 if u.alive and u.x == b.x and u.y == b.y and u.player == b.capture_player:
@@ -451,6 +542,10 @@ def end_turn(state):
         state.current_player = 1
         state.round_num += 1
 
+    # Economy: income + production at start of turn
+    collect_income(state, state.current_player)
+    process_production(state, state.current_player)
+
     # Reset unit flags for new current player
     for u in state.player_units(state.current_player):
         u.has_moved = False
@@ -463,7 +558,6 @@ def end_turn(state):
 # ============================================================================
 
 def get_attack_targets(state, unit):
-    """Get enemy units this unit can attack right now."""
     stats = unit.stats
     if not stats["can_attack_after_move"] and unit.has_moved:
         return []
@@ -477,7 +571,6 @@ def get_attack_targets(state, unit):
     return targets
 
 def expected_damage_to(attacker, defender, def_terrain, moved):
-    """Expected damage to defender (for AI evaluation)."""
     stats = attacker.stats
     if not stats["can_attack_after_move"] and moved:
         return 0
@@ -494,6 +587,53 @@ def expected_damage_to(attacker, defender, def_terrain, moved):
     return hc * hd + (1 - hc) * gd
 
 
+def _neutral_cities(state):
+    """Get all neutral (unowned) cities."""
+    return [b for b in state.buildings if b.building_type == "city" and b.owner == 0]
+
+def _uncaptured_cities(state, player):
+    """Cities not owned by this player (neutral or enemy)."""
+    return [b for b in state.buildings if b.building_type == "city" and b.owner != player]
+
+def _try_send_infantry_to_capture(state, unit, player, rng, targets_buildings):
+    """Try to move infantry toward a capturable building. Returns True if handled."""
+    if unit.unit_type != UnitType.INFANTRY:
+        return False
+    if not targets_buildings:
+        return False
+
+    # Already on a building to capture?
+    for b in targets_buildings:
+        if b.x == unit.x and b.y == unit.y:
+            if do_capture(state, unit):
+                # Check HQ capture
+                if b.building_type == "hq":
+                    state.winner = player
+                return True
+
+    # Move toward nearest capturable building
+    nearest = min(targets_buildings, key=lambda b: manhattan(unit.x, unit.y, b.x, b.y))
+    dest = find_path_toward(state, unit, nearest.x, nearest.y)
+    if dest:
+        do_move(state, unit, dest[0], dest[1])
+        # If arrived, capture
+        for b in targets_buildings:
+            if b.x == unit.x and b.y == unit.y:
+                if do_capture(state, unit):
+                    if b.building_type == "hq":
+                        state.winner = player
+                    return True
+        # Attack if possible after moving
+        targets = get_attack_targets(state, unit)
+        if targets:
+            target = min(targets, key=lambda t: t.hp)
+            do_attack(state, rng, unit, target)
+        else:
+            do_wait(unit)
+        return True
+    return False
+
+
 class Strategy:
     """Base strategy class."""
     name = "base"
@@ -501,15 +641,31 @@ class Strategy:
     def play_turn(self, state, player, rng):
         raise NotImplementedError
 
+    def do_economy(self, state, player, rng):
+        """Override to implement build orders."""
+        pass
+
 
 class AggressiveStrategy(Strategy):
     name = "aggressive"
 
+    def do_economy(self, state, player, rng):
+        # Build Tanks when affordable, Infantry as filler
+        for fac in state.player_factories(player):
+            if fac.production_queue is not None:
+                continue
+            if state.gold[player] >= 3:
+                build_unit(state, player, fac, UnitType.TANK)
+            elif state.gold[player] >= 1:
+                build_unit(state, player, fac, UnitType.INFANTRY)
+
     def play_turn(self, state, player, rng):
+        self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
         units = state.player_units(player)
-        # Sort by distance to enemy HQ (closer first for infantry captures)
-        units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
+        capturable = _uncaptured_cities(state, player)
+        enemies = state.player_units(state.other_player(player))
+        units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y) if enemy_hq else 0)
 
         for unit in units:
             if not unit.alive or unit.has_acted:
@@ -518,42 +674,49 @@ class AggressiveStrategy(Strategy):
             # Try attack first without moving
             targets = get_attack_targets(state, unit)
             if targets:
-                # Attack weakest
                 target = min(targets, key=lambda t: t.hp)
                 do_attack(state, rng, unit, target)
                 if state.winner:
                     return
                 continue
 
-            # Move toward nearest enemy
-            enemies = state.player_units(state.other_player(player))
-            if not enemies:
-                break
+            # Infantry: capture cities if no immediate threats nearby
+            if unit.unit_type == UnitType.INFANTRY and capturable:
+                nearby_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3]
+                if not nearby_enemies:
+                    if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                        if state.winner:
+                            return
+                        continue
 
-            # Rangers: don't move if they can stay and shoot next turn; move toward range 2-3
+            # Move toward nearest enemy
+            if not enemies:
+                # Try capture enemy HQ
+                if enemy_hq and unit.unit_type == UnitType.INFANTRY:
+                    _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq])
+                    if state.winner:
+                        return
+                    continue
+                do_wait(unit)
+                continue
+
             if unit.unit_type == UnitType.RANGER:
                 nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
                 dist = manhattan(unit.x, unit.y, nearest.x, nearest.y)
                 if 2 <= dist <= 3:
                     do_wait(unit)
                     continue
-                # Move to get in range 2-3
                 best_tile = _best_ranger_tile(state, unit, nearest)
                 if best_tile:
                     do_move(state, unit, best_tile[0], best_tile[1])
-                    # Ranger can't attack after move
-                    do_wait(unit)
-                    continue
                 do_wait(unit)
                 continue
 
-            # Non-ranger: move toward nearest enemy then attack
             nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
             dest = find_path_toward(state, unit, nearest.x, nearest.y)
             if dest:
                 do_move(state, unit, dest[0], dest[1])
 
-            # Try attack after move
             targets = get_attack_targets(state, unit)
             if targets:
                 target = min(targets, key=lambda t: t.hp)
@@ -561,29 +724,41 @@ class AggressiveStrategy(Strategy):
                 if state.winner:
                     return
             else:
-                # Try capture if infantry on enemy HQ
                 if unit.unit_type == UnitType.INFANTRY:
                     if do_capture(state, unit):
-                        state.winner = player
-                        return
+                        for b in state.buildings:
+                            if b.x == unit.x and b.y == unit.y and b.building_type == "hq":
+                                state.winner = player
+                                return
                 do_wait(unit)
 
 
 class DefensiveStrategy(Strategy):
     name = "defensive"
 
+    def do_economy(self, state, player, rng):
+        # Build Rangers for zone control, Infantry for captures
+        for fac in state.player_factories(player):
+            if fac.production_queue is not None:
+                continue
+            if state.gold[player] >= 2:
+                build_unit(state, player, fac, UnitType.RANGER)
+            elif state.gold[player] >= 1:
+                build_unit(state, player, fac, UnitType.INFANTRY)
+
     def play_turn(self, state, player, rng):
+        self.do_economy(state, player, rng)
         own_hq = state.player_hq(player)
         units = state.player_units(player)
+        capturable = _uncaptured_cities(state, player)
+        enemies = state.player_units(state.other_player(player))
 
         for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
 
-            # Attack if we can without moving
             targets = get_attack_targets(state, unit)
             if targets:
-                # Prefer targets we can kill
                 killable = [t for t in targets if t.hp <= hit_damage(unit.stats["atk"], TERRAIN_DEFENSE[state.terrain_at(t.x, t.y)])]
                 target = min(killable if killable else targets, key=lambda t: t.hp)
                 do_attack(state, rng, unit, target)
@@ -591,12 +766,16 @@ class DefensiveStrategy(Strategy):
                     return
                 continue
 
-            # Stay near own HQ (within 3 tiles)
-            dist_to_hq = manhattan(unit.x, unit.y, own_hq.x, own_hq.y)
-            enemies = state.player_units(state.other_player(player))
+            dist_to_hq = manhattan(unit.x, unit.y, own_hq.x, own_hq.y) if own_hq else 99
 
-            # If enemy is close to our HQ, intercept
-            threats = [e for e in enemies if manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
+            # Send idle infantry to capture cities
+            threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
+            if not threats and unit.unit_type == UnitType.INFANTRY and capturable:
+                if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                    if state.winner:
+                        return
+                    continue
+
             if threats:
                 nearest_threat = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
                 if unit.unit_type == UnitType.RANGER:
@@ -618,7 +797,6 @@ class DefensiveStrategy(Strategy):
                     do_wait(unit)
                 continue
 
-            # Move toward HQ if too far
             if dist_to_hq > 3:
                 dest = find_path_toward(state, unit, own_hq.x, own_hq.y)
                 if dest:
@@ -629,35 +807,62 @@ class DefensiveStrategy(Strategy):
 class RushStrategy(Strategy):
     name = "rush"
 
+    def do_economy(self, state, player, rng):
+        # Infantry only (cheap, fast capture)
+        for fac in state.player_factories(player):
+            if fac.production_queue is not None:
+                continue
+            if state.gold[player] >= 1:
+                build_unit(state, player, fac, UnitType.INFANTRY)
+
     def play_turn(self, state, player, rng):
+        self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
         units = state.player_units(player)
+        capturable = _uncaptured_cities(state, player)
 
-        # Infantry rush to enemy HQ; others provide cover
         infantry = [u for u in units if u.unit_type == UnitType.INFANTRY and u.alive and not u.has_acted]
         others = [u for u in units if u.unit_type != UnitType.INFANTRY and u.alive and not u.has_acted]
 
-        # Move infantry toward enemy HQ
-        for unit in infantry:
-            # On enemy HQ? Capture!
-            if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+        # Split infantry: some rush HQ, some capture cities
+        hq_rushers = []
+        city_capturers = []
+        if capturable and infantry:
+            # Send up to half infantry to capture cities, rest rush HQ
+            n_cap = max(1, len(infantry) // 2)
+            # Sort by distance to nearest city
+            for_cities = sorted(infantry, key=lambda u: min(manhattan(u.x, u.y, b.x, b.y) for b in capturable))
+            city_capturers = for_cities[:n_cap]
+            hq_rushers = for_cities[n_cap:]
+        else:
+            hq_rushers = infantry
+
+        for unit in city_capturers:
+            if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                if state.winner:
+                    return
+                continue
+            hq_rushers.append(unit)  # fallback to rushing
+
+        for unit in hq_rushers:
+            if not unit.alive or unit.has_acted:
+                continue
+            if enemy_hq and unit.x == enemy_hq.x and unit.y == enemy_hq.y:
                 if do_capture(state, unit):
                     state.winner = player
                     return
                 continue
 
-            dest = find_path_toward(state, unit, enemy_hq.x, enemy_hq.y)
-            if dest:
-                do_move(state, unit, dest[0], dest[1])
+            if enemy_hq:
+                dest = find_path_toward(state, unit, enemy_hq.x, enemy_hq.y)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    if do_capture(state, unit):
+                        state.winner = player
+                        return
+                    continue
 
-            # If on HQ now, capture
-            if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
-                if do_capture(state, unit):
-                    state.winner = player
-                    return
-                continue
-
-            # Otherwise attack if possible, else wait
             targets = get_attack_targets(state, unit)
             if targets:
                 target = min(targets, key=lambda t: t.hp)
@@ -667,7 +872,6 @@ class RushStrategy(Strategy):
             else:
                 do_wait(unit)
 
-        # Others: attack nearest enemy
         for unit in others:
             if not unit.alive or unit.has_acted:
                 continue
@@ -706,30 +910,60 @@ class RushStrategy(Strategy):
 class BalancedStrategy(Strategy):
     name = "balanced"
 
+    def do_economy(self, state, player, rng):
+        # Adapt: Infantry early for city capture, Tanks/Rangers mid-game
+        for fac in state.player_factories(player):
+            if fac.production_queue is not None:
+                continue
+            owned_cities = len(state.player_cities(player))
+            if state.round_num <= 8 or owned_cities < 2:
+                # Early game: infantry for captures
+                if state.gold[player] >= 1:
+                    build_unit(state, player, fac, UnitType.INFANTRY)
+            else:
+                # Mid-game: Tanks if affordable, else Rangers
+                if state.gold[player] >= 3:
+                    build_unit(state, player, fac, UnitType.TANK)
+                elif state.gold[player] >= 2:
+                    build_unit(state, player, fac, UnitType.RANGER)
+                elif state.gold[player] >= 1:
+                    build_unit(state, player, fac, UnitType.INFANTRY)
+
     def play_turn(self, state, player, rng):
+        self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
         own_hq = state.player_hq(player)
         units = state.player_units(player)
         enemies = state.player_units(state.other_player(player))
+        capturable = _uncaptured_cities(state, player)
 
-        # Assign roles: 1 infantry to rush, rest fight
         infantry = [u for u in units if u.unit_type == UnitType.INFANTRY and u.alive and not u.has_acted]
         others = [u for u in units if u.unit_type != UnitType.INFANTRY and u.alive and not u.has_acted]
 
         # Pick closest infantry to enemy HQ as rusher
         rusher = None
         fighters = list(infantry)
-        if infantry:
+        if infantry and enemy_hq:
             rusher = min(infantry, key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
             fighters = [u for u in infantry if u.uid != rusher.uid]
 
+        # Send idle fighters to capture cities first
+        remaining_fighters = []
+        for unit in fighters:
+            if capturable and not any(e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3):
+                if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                    if state.winner:
+                        return
+                    continue
+            remaining_fighters.append(unit)
+
         # Rusher goes for HQ
         if rusher and not rusher.has_acted:
-            if rusher.x == enemy_hq.x and rusher.y == enemy_hq.y:
+            if enemy_hq and rusher.x == enemy_hq.x and rusher.y == enemy_hq.y:
                 if do_capture(state, rusher):
                     state.winner = player
                     return
-            else:
+            elif enemy_hq:
                 dest = find_path_toward(state, rusher, enemy_hq.x, enemy_hq.y)
                 if dest:
                     do_move(state, rusher, dest[0], dest[1])
@@ -746,16 +980,16 @@ class BalancedStrategy(Strategy):
                             return
                     else:
                         do_wait(rusher)
+            else:
+                do_wait(rusher)
 
-        # Others fight using matchup awareness
-        for unit in fighters + others:
+        # Others fight
+        for unit in remaining_fighters + others:
             if not unit.alive or unit.has_acted:
                 continue
 
-            # Attack without moving first
             targets = get_attack_targets(state, unit)
             if targets:
-                # Prefer killing blows, then best expected damage
                 def score(t):
                     dt = state.terrain_at(t.x, t.y)
                     ed = expected_damage_to(unit, t, dt, unit.has_moved)
@@ -771,7 +1005,6 @@ class BalancedStrategy(Strategy):
                 do_wait(unit)
                 continue
 
-            # Move toward best target
             if unit.unit_type == UnitType.RANGER:
                 nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
                 best_tile = _best_ranger_tile(state, unit, nearest)
@@ -799,9 +1032,7 @@ def _best_ranger_tile(state, unit, target):
     tiles = reachable_tiles(state, unit)
     candidates = [(x, y) for (x, y) in tiles if 2 <= manhattan(x, y, target.x, target.y) <= 3]
     if not candidates:
-        # Just get closer
         return find_path_toward(state, unit, target.x, target.y)
-    # Prefer range 2 (no penalty), then defensive terrain
     def score(p):
         d = manhattan(p[0], p[1], target.x, target.y)
         t = state.terrain_at(p[0], p[1])
@@ -822,16 +1053,20 @@ STRATEGIES = {
 
 @dataclass
 class GameResult:
-    winner: int  # 1 or 2
+    winner: int
     rounds: int
     p1_kills: int
     p2_kills: int
     win_type: str  # "hq_capture", "elimination", "timeout"
+    gold_earned: dict = field(default_factory=dict)  # {1: int, 2: int}
+    units_produced: dict = field(default_factory=dict)  # {1: int, 2: int}
 
-def run_game(p1_strategy, p2_strategy, seed, verbose=False):
+def run_game(p1_strategy, p2_strategy, seed, verbose=False, coin_flip=False):
     """Run a single game. Returns GameResult."""
     rng = random.Random(seed)
-    state = create_game(width=12, height=12, rng_seed=seed)
+    state = create_game(width=14, height=14, rng_seed=seed)
+    if coin_flip:
+        state.current_player = rng.choice([1, 2])
     strategies = {1: p1_strategy, 2: p2_strategy}
 
     initial_units = {1: len(state.player_units(1)), 2: len(state.player_units(2))}
@@ -859,27 +1094,30 @@ def run_game(p1_strategy, p2_strategy, seed, verbose=False):
                 if killed:
                     log.append(f"  Round {state.round_num} P{player}: killed {len(killed)} P{p} unit(s)")
 
-    # Count kills
-    p1_kills = initial_units[2] - len(state.player_units(2))
-    p2_kills = initial_units[1] - len(state.player_units(1))
+    # Count kills (include produced units)
+    p1_final = len(state.player_units(1))
+    p2_final = len(state.player_units(2))
+    p1_total = initial_units[1] + state.units_produced[1]
+    p2_total = initial_units[2] + state.units_produced[2]
+    p1_kills = p2_total - p2_final
+    p2_kills = p1_total - p1_final
 
     # Determine win type
-    win_type = "elimination"
-    for b in state.buildings:
-        if b.owner != 1 and b.owner != 2:
-            continue
-        # Check if HQ was captured (owner changed from original)
-    # Simple heuristic: if loser still has units, it was HQ capture
     loser = 1 if state.winner == 2 else 2
-    if state.player_units(loser):
-        win_type = "hq_capture"
-    elif state.round_num > MAX_ROUNDS:
+    if state.round_num > MAX_ROUNDS:
         win_type = "timeout"
+    elif state.player_units(loser):
+        win_type = "hq_capture"
+    else:
+        win_type = "elimination"
 
     if verbose:
         for line in log:
             print(line)
-        print(f"  → P{state.winner} wins ({win_type}) in {state.round_num} rounds | kills: P1={p1_kills} P2={p2_kills}")
+        print(f"  → P{state.winner} wins ({win_type}) in {state.round_num} rounds | "
+              f"kills: P1={p1_kills} P2={p2_kills} | "
+              f"gold: P1={state.gold_earned[1]} P2={state.gold_earned[2]} | "
+              f"produced: P1={state.units_produced[1]} P2={state.units_produced[2]}")
 
     return GameResult(
         winner=state.winner,
@@ -887,13 +1125,15 @@ def run_game(p1_strategy, p2_strategy, seed, verbose=False):
         p1_kills=p1_kills,
         p2_kills=p2_kills,
         win_type=win_type,
+        gold_earned={1: state.gold_earned[1], 2: state.gold_earned[2]},
+        units_produced={1: state.units_produced[1], 2: state.units_produced[2]},
     )
 
 # ============================================================================
 # Simulation
 # ============================================================================
 
-def run_simulation(strategy_names, num_games, base_seed, verbose=False):
+def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_flip=False):
     """Run all matchups and print results."""
     results = {}
 
@@ -908,15 +1148,15 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False):
                 seed = base_seed + hash(key) + i
                 if verbose:
                     print(f"\n--- {s1_name} vs {s2_name} game {i+1} (seed={seed}) ---")
-                result = run_game(s1, s2, seed, verbose)
+                result = run_game(s1, s2, seed, verbose, coin_flip=coin_flip)
                 game_results.append(result)
 
             results[key] = game_results
 
     # Print summary
-    print(f"\n{'='*80}")
+    print(f"\n{'='*90}")
     print(f"  HASHFRONT SIMULATION RESULTS — {num_games} games per matchup")
-    print(f"{'='*80}\n")
+    print(f"{'='*90}\n")
 
     # Win rate matrix
     print("WIN RATE MATRIX (row = P1, col = P2, value = P1 win %)")
@@ -938,8 +1178,10 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False):
     print()
 
     # Detailed matchup stats
-    print(f"\n{'MATCHUP':<30} {'P1 Win%':>8} {'Avg Rnd':>8} {'P1 Kills':>9} {'P2 Kills':>9} {'HQ Cap%':>8}")
-    print("-" * 82)
+    header = (f"{'MATCHUP':<30} {'P1 Win%':>8} {'Avg Rnd':>8} {'P1 Kills':>9} {'P2 Kills':>9} "
+              f"{'HQ Cap%':>8} {'Avg Gold':>9} {'Avg Prod':>9}")
+    print(f"\n{header}")
+    print("-" * len(header))
 
     for s1 in strategy_names:
         for s2 in strategy_names:
@@ -950,12 +1192,15 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False):
             avg_p1k = sum(r.p1_kills for r in gr) / n
             avg_p2k = sum(r.p2_kills for r in gr) / n
             hq_caps = sum(1 for r in gr if r.win_type == "hq_capture") / n * 100
+            avg_gold = sum(r.gold_earned[1] + r.gold_earned[2] for r in gr) / n / 2
+            avg_prod = sum(r.units_produced[1] + r.units_produced[2] for r in gr) / n / 2
             label = f"{s1} vs {s2}"
-            print(f"{label:<30} {p1w/n*100:>7.1f}% {avg_rnd:>8.1f} {avg_p1k:>9.2f} {avg_p2k:>9.2f} {hq_caps:>7.1f}%")
+            print(f"{label:<30} {p1w/n*100:>7.1f}% {avg_rnd:>8.1f} {avg_p1k:>9.2f} {avg_p2k:>9.2f} "
+                  f"{hq_caps:>7.1f}% {avg_gold:>9.1f} {avg_prod:>9.1f}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'='*90}")
     print("  DONE")
-    print(f"{'='*80}")
+    print(f"{'='*90}")
 
 # ============================================================================
 # CLI
@@ -966,14 +1211,16 @@ def main():
     parser.add_argument("--games", type=int, default=100, help="Games per matchup (default: 100)")
     parser.add_argument("--seed", type=int, default=42, help="Base RNG seed (default: 42)")
     parser.add_argument("--verbose", action="store_true", help="Print per-game logs")
+    parser.add_argument("--coin-flip", action="store_true", help="Randomize first player each game")
     parser.add_argument("--strategies", nargs="+", choices=list(STRATEGIES.keys()),
                         default=list(STRATEGIES.keys()),
                         help="Strategies to test (default: all)")
     args = parser.parse_args()
 
     print(f"Hashfront Game Simulator")
-    print(f"Games per matchup: {args.games} | Seed: {args.seed} | Strategies: {', '.join(args.strategies)}")
-    run_simulation(args.strategies, args.games, args.seed, args.verbose)
+    flip_str = " | Coin flip: ON" if args.coin_flip else ""
+    print(f"Games per matchup: {args.games} | Seed: {args.seed} | Strategies: {', '.join(args.strategies)}{flip_str}")
+    run_simulation(args.strategies, args.games, args.seed, args.verbose, coin_flip=args.coin_flip)
 
 if __name__ == "__main__":
     main()
