@@ -34,6 +34,8 @@ interface ErrorModal {
 interface ToastContextType {
   toast: (message: string, type?: ToastType, options?: ToastOptions) => void;
   toasts: ToastItem[];
+  onHoverStart: (id: string) => void;
+  onHoverEnd: (id: string) => void;
   showErrorModal: (title: string, message: string, rawError?: string) => void;
   dismissErrorModal: () => void;
 }
@@ -115,6 +117,48 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [errorModal, setErrorModal] = useState<ErrorModal | null>(null);
+  const hoveredRef = useRef<Set<string>>(new Set());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+    timersRef.current.delete(id);
+  }, []);
+
+  const startDismissTimer = useCallback(
+    (id: string, delay = 3000) => {
+      const existing = timersRef.current.get(id);
+      if (existing) clearTimeout(existing);
+      timersRef.current.set(
+        id,
+        setTimeout(() => {
+          if (!hoveredRef.current.has(id)) {
+            removeToast(id);
+          }
+        }, delay),
+      );
+    },
+    [removeToast],
+  );
+
+  const onHoverStart = useCallback((id: string) => {
+    hoveredRef.current.add(id);
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+  }, []);
+
+  const onHoverEnd = useCallback(
+    (id: string) => {
+      hoveredRef.current.delete(id);
+      startDismissTimer(id, 1000);
+    },
+    [startDismissTimer],
+  );
 
   const toast = useCallback(
     (message: string, type: ToastType = "info", options: ToastOptions = {}) => {
@@ -130,12 +174,9 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
         },
       ]);
 
-      // Auto-remove after 3 seconds
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 3000);
+      startDismissTimer(id);
     },
-    [],
+    [startDismissTimer],
   );
 
   const showErrorModal = useCallback(
@@ -151,7 +192,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
 
   return (
     <ToastContext.Provider
-      value={{ toast, toasts, showErrorModal, dismissErrorModal }}
+      value={{ toast, toasts, onHoverStart, onHoverEnd, showErrorModal, dismissErrorModal }}
     >
       {children}
       {errorModal && (
@@ -175,14 +216,19 @@ export const useToast = () => {
 };
 
 export const ToastContainer: React.FC = () => {
-  const { toasts } = useToast();
+  const { toasts, onHoverStart, onHoverEnd } = useToast();
 
   if (toasts.length === 0) return null;
 
   return (
     <div className="absolute bottom-8 right-8 z-50 flex flex-col gap-4 pointer-events-none">
       {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto animate-fade-in-up">
+        <div
+          key={t.id}
+          className="pointer-events-auto animate-fade-in-up"
+          onMouseEnter={() => onHoverStart(t.id)}
+          onMouseLeave={() => onHoverEnd(t.id)}
+        >
           <PixelPanel
             title={t.type === "info" ? "SYSTEM_MSG" : t.type.toUpperCase()}
             className="!min-w-[250px] shadow-lg bg-blueprint-dark/95 backdrop-blur-md"

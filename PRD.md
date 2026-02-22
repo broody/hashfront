@@ -61,9 +61,9 @@ Player 1 always goes first. The first player to create the game picks their slot
 | **City** | `C` | 1 | +1 | Building: capturable, generates income |
 | **Factory** | `F` | 1 | +1 | Building: capturable, produces units |
 | **HQ** | `H` | 1 | +2 | Building: lose if captured |
-| **Road** | `R` | 1 | 0 | |
+| **Road** | `R` | 1 | 0 | Vehicle units get +1 move when starting here |
 | **Tree** | `T` | 1 | +1 | |
-| **DirtRoad** | `D` | 1 | 0 | |
+| **DirtRoad** | `D` | 1 | 0 | Vehicle units get +1 move when starting here |
 
 ### Buildings
 
@@ -77,21 +77,63 @@ Building ownership is defined in the map template and copied into each game inst
 
 ## Units
 
-Three unit types with rock-paper-scissors dynamics:
+Three unit types with asymmetric combat roles (designed to expand with additional unit classes like air and navy):
 
 | Unit | HP | Attack | Move | Range | Cost | Special |
 |------|-----|--------|------|-------|------|---------|
-| **Infantry** | 3 | 2 | 3 | 1 | 1 | Captures buildings, traverses mountains |
+| **Infantry** | 3 | 2 | 4 | 1 | 1 | Captures buildings, traverses mountains |
 | **Tank** | 5 | 4 | 2 | 1 | 3 | Raw combat power |
-| **Ranger** | 2 | 3 | 2 | 2–3 | 2 | Cannot attack adjacent (min range 2) |
+| **Ranger** | 4 | 3 | 3 | 2–3 | 2 | Cannot attack adjacent (min range 2), cannot attack after moving |
 
 ### Combat Resolution
 
-- Attacker deals `attack_power - defender_terrain_defense` damage (minimum 1)
-- If defender survives **and** attacker is within defender's attack range, defender counterattacks at full attack power (no terrain defense applied to attacker)
+- Attack first rolls for hit chance; on hit, attacker deals `attack_power - defender_terrain_defense` damage (minimum 1)
+- If defender survives **and** attacker is within defender's attack range, defender counterattacks using the same hit chance and damage rules (`move_penalty` = 0 for the counterattacker; attacker's terrain evasion, terrain defense, and `range_penalty` all apply normally)
 - Ranger attacks at range 2–3 are one-directional — melee units cannot counter
+- Rangers **cannot attack after moving** — they must choose to move or attack each turn (like indirect fire units). If a Ranger moves, it can only wait.
 - Unit dies at 0 HP, removed immediately
 - After a kill, the system checks for player elimination
+
+### Accuracy & Miss Mechanics
+
+Combat includes bounded hit chance to reduce deterministic outcomes while preserving skill expression.
+
+- Formula: `hit_chance = clamp(75, 95, base_accuracy - terrain_evasion - move_penalty - range_penalty)`
+- Roll once per attack and once per counterattack (separate rolls). Counterattacks use the same formula — `terrain_evasion` is the **attacker's terrain** (since the attacker is now the target), `terrain_defense` is the attacker's terrain defense, and `move_penalty` is 0 (the defender did not move this turn). The defender's only inherent edge is skipping the move penalty.
+- If hit: apply normal combat damage formula
+- If miss: **graze** — deals 1 damage, but only if `hit_damage >= 2`, where `hit_damage = max(attack_power - terrain_defense, 1)`. If `hit_damage` is 1 (i.e., terrain defense >= attack power), a miss deals 0 (true whiff). This avoids zero-damage feel-bad streaks while keeping heavily fortified positions meaningful.
+
+#### Base Accuracy by Unit
+
+| Unit | Base Accuracy |
+|------|---------------|
+| **Infantry** | 90 |
+| **Tank** | 85 |
+| **Ranger** | 88 |
+
+#### Terrain Evasion
+
+| Terrain | Evasion |
+|---------|---------|
+| **Grass** | 0 |
+| **Road** | 0 |
+| **DirtRoad** | 0 |
+| **Tree** | 5 |
+| **City** | 8 |
+| **Factory** | 8 |
+| **HQ** | 10 |
+| **Mountain** | 12 |
+
+#### Context Modifiers
+
+- `move_penalty`: 5 if the attacker moved this turn, otherwise 0
+- `range_penalty`: 0 by default
+- Ranger only: `range_penalty = 5` when attacking at range 3
+
+#### Randomness Source
+
+- PvP must use verifiable randomness (VRF or commit-reveal), not client-side RNG
+- In local/dev test mode, deterministic seeded RNG is acceptable for repeatable tests
 
 ### Movement
 
@@ -100,6 +142,9 @@ Three unit types with rock-paper-scissors dynamics:
 - Total movement cost must not exceed the unit's move range
 - Path tiles (except destination) must be unoccupied
 - Mountains cost 2 movement and are infantry-only
+- Vehicle road bonus: vehicle units (currently **Tank**) gain +2 temporary movement when they **start their move** on **Road** or **DirtRoad**. A vehicle that starts on non-road terrain does not gain the bonus, even if it enters road tiles mid-move.
+- This +2 can only be spent on contiguous Road/DirtRoad tiles; once a vehicle leaves road terrain, any unused road bonus is lost
+- Infantry and Ranger do not receive road bonus movement
 
 ### Unit Flags
 
