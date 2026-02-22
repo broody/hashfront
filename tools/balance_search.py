@@ -288,42 +288,29 @@ def log_result(iteration, config, results, score, improved):
 
 
 def pick_tweak(state):
-    """Pick a parameter to tweak. Returns (param_name, new_value) or None if exhausted."""
+    """Randomly tweak 2-3 params at once. Returns (description, new_config) or (None, None)."""
+    rng = random.Random(time.time())
     params = list(PARAM_SPACE.keys())
-    config = state["current_config"]
+    config = copy.deepcopy(state["best_config"])
 
-    # Rotate through parameters
-    attempts = 0
-    while attempts < len(params) * 2:
-        idx = state["param_index"] % len(params)
-        param = params[idx]
-        lo, hi = PARAM_SPACE[param]
-        current = config[param]
-        direction = state["direction"]
+    for _ in range(50):
+        candidate = copy.deepcopy(config)
+        num_tweaks = rng.randint(2, 3)
+        tweaked_params = rng.sample(params, min(num_tweaks, len(params)))
+        changes = []
 
-        new_val = current + direction
-        if lo <= new_val <= hi and param not in state.get("params_tried_this_round", []):
-            test_config = copy.deepcopy(config)
-            test_config[param] = new_val
-            if validate_config(test_config):
-                return param, new_val
+        for param in tweaked_params:
+            lo, hi = PARAM_SPACE[param]
+            current = candidate[param]
+            delta = rng.choice([-2, -1, 1, 2])
+            new_val = max(lo, min(hi, current + delta))
+            if new_val != current:
+                candidate[param] = new_val
+                changes.append(f"{param}: {current}->{new_val}")
 
-        # Try other direction
-        new_val = current - direction
-        if lo <= new_val <= hi and param not in state.get("params_tried_this_round", []):
-            test_config = copy.deepcopy(config)
-            test_config[param] = new_val
-            if validate_config(test_config):
-                state["direction"] = -direction
-                return param, new_val
+        if changes and validate_config(candidate):
+            return ", ".join(changes), candidate
 
-        # This param is at boundary or already tried, move to next
-        state["param_index"] = (idx + 1) % len(params)
-        attempts += 1
-
-    # All params exhausted this round, reset
-    state["params_tried_this_round"] = []
-    state["param_index"] = 0
     return None, None
 
 

@@ -1,7 +1,7 @@
 [
   {
-    "timestamp": "2026-02-22T08:39:07.568356+00:00",
-    "iteration": 5,
+    "timestamp": "2026-02-22T08:51:26.404057+00:00",
+    "iteration": 0,
     "config": {
       "infantry_hp": 3,
       "infantry_atk": 2,
@@ -11,7 +11,7 @@
       "tank_hp": 5,
       "tank_atk": 4,
       "tank_move": 2,
-      "tank_cost": 5,
+      "tank_cost": 4,
       "tank_accuracy": 85,
       "ranger_hp": 3,
       "ranger_atk": 3,
@@ -25,14 +25,50 @@
       "max_rounds": 30
     },
     "results": {
-      "aggressive_vs_rush": "89.5%",
-      "aggressive_vs_balanced": "55.5%",
-      "rush_vs_aggressive": "11.0%",
-      "rush_vs_balanced": "33.0%",
-      "balanced_vs_aggressive": "40.5%",
-      "balanced_vs_rush": "73.5%"
+      "aggressive_vs_rush": "84.0%",
+      "aggressive_vs_balanced": "48.0%",
+      "rush_vs_aggressive": "14.0%",
+      "rush_vs_balanced": "28.0%",
+      "balanced_vs_aggressive": "41.0%",
+      "balanced_vs_rush": "64.5%"
     },
-    "score": 1335.875,
-    "improved": false
+    "score": 990.3125,
+    "improved": true
+  },
+  {
+    "timestamp": "2026-02-22T08:52:06.518183+00:00",
+    "iteration": 1,
+    "config": {
+      "infantry_hp": 3,
+      "infantry_atk": 2,
+      "infantry_move": 4,
+      "infantry_cost": 1,
+      "infantry_accuracy": 90,
+      "tank_hp": 5,
+      "tank_atk": 6,
+      "tank_move": 3,
+      "tank_cost": 4,
+      "tank_accuracy": 85,
+      "ranger_hp": 3,
+      "ranger_atk": 3,
+      "ranger_move": 3,
+      "ranger_cost": 2,
+      "ranger_accuracy": 88,
+      "ranger_can_capture": 1,
+      "starting_gold": 5,
+      "hq_income": 1,
+      "capture_threshold": 2,
+      "max_rounds": 28
+    },
+    "results": {
+      "aggressive_vs_rush": "75.5%",
+      "aggressive_vs_balanced": "54.0%",
+      "rush_vs_aggressive": "22.0%",
+      "rush_vs_balanced": "37.0%",
+      "balanced_vs_aggressive": "41.0%",
+      "balanced_vs_rush": "62.0%"
+    },
+    "score": 653.0625,
+    "improved": true
   }
 ]

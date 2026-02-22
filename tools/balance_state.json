@@ -6,8 +6,8 @@
     "infantry_cost": 1,
     "infantry_accuracy": 90,
     "tank_hp": 5,
-    "tank_atk": 4,
-    "tank_move": 2,
+    "tank_atk": 6,
+    "tank_move": 3,
     "tank_cost": 4,
     "tank_accuracy": 85,
     "ranger_hp": 3,
@@ -19,7 +19,7 @@
     "starting_gold": 5,
     "hq_income": 1,
     "capture_threshold": 2,
-    "max_rounds": 30
+    "max_rounds": 28
   },
   "best_config": {
     "infantry_hp": 3,
@@ -28,8 +28,8 @@
     "infantry_cost": 1,
     "infantry_accuracy": 90,
     "tank_hp": 5,
-    "tank_atk": 4,
-    "tank_move": 2,
+    "tank_atk": 6,
+    "tank_move": 3,
     "tank_cost": 4,
     "tank_accuracy": 85,
     "ranger_hp": 3,
@@ -41,17 +41,11 @@
     "starting_gold": 5,
     "hq_income": 1,
     "capture_threshold": 2,
-    "max_rounds": 30
+    "max_rounds": 28
   },
-  "best_score": 1039.8125,
-  "iteration": 6,
-  "param_index": 5,
+  "best_score": 653.0625,
+  "iteration": 2,
+  "param_index": 0,
   "direction": 1,
-  "params_tried_this_round": [
-    "infantry_accuracy",
-    "tank_hp",
-    "tank_atk",
-    "tank_move",
-    "tank_cost"
-  ]
+  "params_tried_this_round": []
 }
