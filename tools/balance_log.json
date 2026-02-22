@@ -106,5 +106,41 @@
     },
     "score": 677.625,
     "improved": false
+  },
+  {
+    "timestamp": "2026-02-22T08:58:57.961654+00:00",
+    "iteration": 3,
+    "config": {
+      "infantry_hp": 3,
+      "infantry_atk": 2,
+      "infantry_move": 4,
+      "infantry_cost": 1,
+      "infantry_accuracy": 90,
+      "tank_hp": 5,
+      "tank_atk": 6,
+      "tank_move": 3,
+      "tank_cost": 5,
+      "tank_accuracy": 85,
+      "ranger_hp": 3,
+      "ranger_atk": 2,
+      "ranger_move": 3,
+      "ranger_cost": 2,
+      "ranger_accuracy": 90,
+      "ranger_can_capture": 1,
+      "starting_gold": 5,
+      "hq_income": 1,
+      "capture_threshold": 2,
+      "max_rounds": 28
+    },
+    "results": {
+      "aggressive_vs_rush": "39.0%",
+      "aggressive_vs_balanced": "53.5%",
+      "rush_vs_aggressive": "42.5%",
+      "rush_vs_balanced": "41.0%",
+      "balanced_vs_aggressive": "54.0%",
+      "balanced_vs_rush": "57.0%"
+    },
+    "score": 411.125,
+    "improved": true
   }
 ]
