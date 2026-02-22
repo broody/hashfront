@@ -83,7 +83,7 @@ Three unit types with asymmetric combat roles (designed to expand with additiona
 |------|-----|--------|------|-------|------|---------|
 | **Infantry** | 3 | 2 | 4 | 1 | 1 | Captures buildings, traverses mountains |
 | **Tank** | 5 | 4 | 2 | 1 | 3 | Raw combat power |
-| **Ranger** | 4 | 3 | 3 | 2–3 | 2 | Cannot attack adjacent (min range 2), cannot attack after moving |
+| **Ranger** | 3 | 3 | 3 | 2–3 | 2 | Cannot attack adjacent (min range 2), cannot attack after moving, can capture buildings |
 
 ### Combat Resolution
 
@@ -160,10 +160,11 @@ Flags reset at the start of the owning player's next turn.
 | Constant | Value |
 |----------|-------|
 | Starting gold | 5 |
+| HQ base income | 1 gold/turn |
 | Income per city | 1 gold/turn |
 | Capture threshold | 2 turns |
 
-- **Income** runs at the start of each player's turn: `cities_owned × 1 gold`
+- **Income** runs at the start of each player's turn: `1 (HQ base) + cities_owned × 1 gold`
 - **Production** runs at the start of each player's turn: queued units spawn at their factory if the tile is unoccupied
 - Produced units spawn with `has_moved = true, has_acted = true` (cannot act on the turn they spawn)
 - Units are queued at Factories via `build_unit` — gold is deducted immediately
@@ -182,7 +183,7 @@ Flags reset at the start of the owning player's next turn.
 
 ### Capture Mechanics
 
-- Only **Infantry** can capture
+- Only **Infantry** and **Ranger** can capture
 - Standing on an enemy/neutral building increments capture progress
 - If a different player starts capturing, progress resets to 1 for the new player
 - At threshold (2), ownership transfers — old owner loses building counts, new owner gains them
