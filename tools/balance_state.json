@@ -44,10 +44,11 @@
     "max_rounds": 30
   },
   "best_score": 1039.8125,
-  "iteration": 2,
-  "param_index": 1,
+  "iteration": 3,
+  "param_index": 2,
   "direction": 1,
   "params_tried_this_round": [
-    "infantry_accuracy"
+    "infantry_accuracy",
+    "tank_hp"
   ]
 }
