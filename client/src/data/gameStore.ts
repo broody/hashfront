@@ -123,6 +123,8 @@ interface GameStore {
   dequeueMove: (unitId: number) => void;
   clearQueue: (opts?: { fade?: boolean }) => void;
   _trailFadeRequested: boolean;
+  selectedUnitId: number | null;
+  setSelectedUnitId: (id: number | null) => void;
   _deselectRequested: boolean;
   requestDeselect: () => void;
   isEndingTurn: boolean;
@@ -201,8 +203,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   _trailFadeRequested: false,
   clearQueue: (opts) =>
     set({ moveQueue: [], _trailFadeRequested: !!opts?.fade }),
+  selectedUnitId: null,
+  setSelectedUnitId: (id) => set({ selectedUnitId: id }),
   _deselectRequested: false,
-  requestDeselect: () => set({ _deselectRequested: true }),
+  requestDeselect: () =>
+    set({ _deselectRequested: true, selectedUnitId: null }),
   isEndingTurn: false,
   setIsEndingTurn: (v) => set({ isEndingTurn: v }),
 }));

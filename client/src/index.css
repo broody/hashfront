@@ -245,7 +245,7 @@ a {
   }
 
   .blueprint-panel {
-    @apply border-2 border-white p-5 bg-blueprint-blue/50 relative overflow-y-auto;
+    @apply border-2 border-white p-5 bg-blueprint-blue/80 relative overflow-y-auto;
     box-shadow: inset 0 0 15px rgba(255, 255, 255, 0.05);
   }
 

@@ -239,11 +239,10 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       vp.addChild(anim);
     }
 
-    // Draw water under the full outer border ring.
-    for (let y = -1; y <= GRID_SIZE; y++) {
-      for (let x = -1; x <= GRID_SIZE; x++) {
-        const isOuterRing =
-          x === -1 || x === GRID_SIZE || y === -1 || y === GRID_SIZE;
+    // Draw water under the outer border rings (2 layers).
+    for (let y = -2; y <= GRID_SIZE + 1; y++) {
+      for (let x = -2; x <= GRID_SIZE + 1; x++) {
+        const isOuterRing = x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE;
         if (isOuterRing) {
           addTileSprite("border_water", x, y);
         }
@@ -413,6 +412,10 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
 
     // --- Selection state ---
     let selectedUnit: Unit | null = null;
+    function setSelectedUnit(unit: Unit | null) {
+      selectedUnit = unit;
+      useGameStore.getState().setSelectedUnitId(unit?.id ?? null);
+    }
     const pendingMoveTransactions = new Set<number>();
     const selectGfx = new Graphics();
     vp.addChild(selectGfx);
@@ -424,13 +427,24 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       const sprite = unitSprites.get(selectedUnit.id);
       if (!sprite) return;
 
+      // Skip selection brackets if this unit is already a queued attack target
+      const { moveQueue: mq, units: su } = useGameStore.getState();
+      for (const m of mq) {
+        for (const call of m.calls) {
+          if (call.entrypoint !== "attack") continue;
+          const tid = parseInt(call.calldata[2], 10);
+          const t = su.find((u) => u.onchainId === tid);
+          if (t && t.id === selectedUnit.id) return;
+        }
+      }
+
       const pulse = 1 + Math.sin(selectPulse) * 0.12;
       const pad = 3; // pixels outside the tile
       const half = (TILE_PX / 2 + pad) * pulse;
       const cx = sprite.x;
       const cy = sprite.y;
       const len = 6 * pulse; // corner arm length
-      const color = 0x00bb00; // Tactical darker green for selection
+      const color = isControllableUnit(selectedUnit) ? 0x00bb00 : 0xff4a4a;
       const width = 2;
 
       // Top-left corner
@@ -708,11 +722,26 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       return false;
     }
 
+    function isControllableUnit(unit: Unit | null): boolean {
+      if (!unit) return false;
+      const { game } = useGameStore.getState();
+      if (!game) return false;
+      const currentTeam =
+        game.currentPlayer !== undefined
+          ? (TEAMS[game.currentPlayer] ?? null)
+          : null;
+      const allowedTeam = game.isTestMode
+        ? currentTeam
+        : getMyTeam(addressRef.current);
+      return unit.team === allowedTeam;
+    }
+
     function drawMoveRange() {
       rangeGfx.clear();
       attackableTargets = [];
       if (!selectedUnit || activeMovements.has(selectedUnit.id)) return;
       if (useGameStore.getState().game?.state !== "Playing") return;
+      if (!isControllableUnit(selectedUnit)) return;
 
       // If unit has a queued move without attack, show attack targets from destination
       const queued = useGameStore
@@ -970,12 +999,8 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
             units.find((u) => u.id === queuedAtDest.unitId) ?? undefined;
         }
       }
-      // Only allow selecting units of the current turn's team
-      if (!isMyTurn || (clicked && clicked.team !== allowedTeam)) {
-        selectedUnit = null;
-      } else {
-        selectedUnit = clicked ?? null;
-      }
+      // Allow selecting any unit for intel display
+      setSelectedUnit(clicked ?? null);
       drawSelection();
       drawMoveRange();
     }
@@ -1067,7 +1092,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         if (sprite) {
           setUnitAnim(selectedUnit, sprite, "attack");
         }
-        selectedUnit = null;
+        setSelectedUnit(null);
         rangeGfx.clear();
         attackableTargets = [];
         drawTrails();
@@ -1176,7 +1201,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
           ]);
         }
 
-        selectedUnit = null;
+        setSelectedUnit(null);
         rangeGfx.clear();
         attackableTargets = [];
         drawTrails();
@@ -1217,7 +1242,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         // Keep selected — drawMoveRange will show attack targets from destination
         drawMoveRange();
       } else {
-        selectedUnit = null;
+        setSelectedUnit(null);
         rangeGfx.clear();
         attackableTargets = [];
       }
@@ -1432,7 +1457,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     const storeUnsub = useGameStore.subscribe((state, prevState) => {
       // Deselect when requested (e.g. end turn)
       if (state._deselectRequested && !prevState._deselectRequested) {
-        selectedUnit = null;
+        setSelectedUnit(null);
         rangeGfx.clear();
         attackableTargets = [];
         drawSelection();
@@ -1485,7 +1510,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
           const prevUnit = prevState.units.find((u) => u.id === id);
           unitSprites.delete(id);
           activeMovements.delete(id);
-          if (selectedUnit?.id === id) selectedUnit = null;
+          if (selectedUnit?.id === id) setSelectedUnit(null);
 
           if (prevUnit) {
             const sheet = unitSheets[prevUnit.team];

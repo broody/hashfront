@@ -14,7 +14,8 @@ import { useToast } from "./Toast";
 import { parseTransactionError } from "../utils/parseTransactionError";
 import { PixelButton } from "./PixelButton";
 import { PixelPanel } from "./PixelPanel";
-import { useGameStore, TEAMS } from "../data/gameStore";
+import { useGameStore, TEAMS, UNIT_MAX_HP } from "../data/gameStore";
+import { GRID_SIZE, TileType } from "../game/types";
 
 const PLAYER_COLORS: Record<string, string> = {
   red: "#ef4444",
@@ -23,15 +24,67 @@ const PLAYER_COLORS: Record<string, string> = {
   yellow: "#eab308",
 };
 
-const TILE_PX = 24;
-const TERRAIN_IMAGE = "/tilesets/terrain.png";
+const UNIT_SPRITE_IMAGE: Record<string, string> = {
+  blue: "/tilesets/units_blue.png",
+  red: "/tilesets/units_red.png",
+  green: "/tilesets/units_green.png",
+  yellow: "/tilesets/units_yellow.png",
+};
 
-const LEGEND: { label: string; x: number; y: number }[] = [
-  { label: "Grass", x: 0, y: TILE_PX * 4 },
-  { label: "Mountain", x: TILE_PX * 6, y: 0 },
-  { label: "Road", x: TILE_PX * 6, y: TILE_PX * 8 },
-  { label: "Tree", x: TILE_PX * 6, y: TILE_PX * 4 },
-];
+// First idle frame (x, y) in the 32x32 spritesheet (896x1328)
+const UNIT_SPRITE_OFFSET: Record<string, { x: number; y: number }> = {
+  rifle: { x: 0, y: 48 },
+  tank: { x: 0, y: 432 },
+  artillery: { x: 0, y: 336 },
+};
+
+const UNIT_DISPLAY_NAMES: Record<string, string> = {
+  rifle: "Infantry",
+  tank: "Tank",
+  artillery: "Ranger",
+};
+
+const UNIT_ATTACK_POWER: Record<string, number> = {
+  rifle: 2,
+  tank: 4,
+  artillery: 3,
+};
+
+const UNIT_ATTACK_RANGE: Record<string, [number, number]> = {
+  rifle: [1, 1],
+  tank: [1, 1],
+  artillery: [2, 3],
+};
+
+const UNIT_MOVE_RANGE: Record<string, number> = {
+  rifle: 4,
+  tank: 2,
+  artillery: 3,
+};
+
+const TERRAIN_DEFENSE: Record<number, number> = {
+  [TileType.Grass]: 0,
+  [TileType.Mountain]: 2,
+  [TileType.City]: 1,
+  [TileType.Factory]: 1,
+  [TileType.HQ]: 2,
+  [TileType.Road]: 0,
+  [TileType.Tree]: 1,
+  [TileType.DirtRoad]: 0,
+  [TileType.Barracks]: 0,
+};
+
+const TERRAIN_NAMES: Record<number, string> = {
+  [TileType.Grass]: "Grass",
+  [TileType.Mountain]: "Mountain",
+  [TileType.City]: "City",
+  [TileType.Factory]: "Factory",
+  [TileType.HQ]: "HQ",
+  [TileType.Road]: "Road",
+  [TileType.Tree]: "Forest",
+  [TileType.DirtRoad]: "Dirt Road",
+  [TileType.Barracks]: "Barracks",
+};
 
 function normalizeAddressHex(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -72,6 +125,29 @@ export default function HUD() {
   const game = useGameStore((s) => s.game);
   const players = useGameStore((s) => s.players);
   const moveQueue = useGameStore((s) => s.moveQueue);
+  const selectedUnitId = useGameStore((s) => s.selectedUnitId);
+  const units = useGameStore((s) => s.units);
+  const tileMap = useGameStore((s) => s.tileMap);
+
+  const selectedUnit = useMemo(() => {
+    if (selectedUnitId === null) return null;
+    return units.find((u) => u.id === selectedUnitId) ?? null;
+  }, [selectedUnitId, units]);
+
+  const selectedUnitTerrain = useMemo(() => {
+    if (!selectedUnit || tileMap.length === 0) return null;
+    // Check if unit has a queued move — use destination tile
+    const queued = moveQueue.find((m) => m.unitId === selectedUnit.id);
+    const ux = queued ? queued.destX : selectedUnit.x;
+    const uy = queued ? queued.destY : selectedUnit.y;
+    if (ux < 0 || ux >= GRID_SIZE || uy < 0 || uy >= GRID_SIZE) return null;
+    const tileType = tileMap[uy * GRID_SIZE + ux] as TileType;
+    return {
+      type: tileType,
+      name: TERRAIN_NAMES[tileType] ?? "Unknown",
+      defense: TERRAIN_DEFENSE[tileType] ?? 0,
+    };
+  }, [selectedUnit, tileMap, moveQueue]);
 
   const currentPlayer = game?.currentPlayer ?? null;
   const gameName = game?.name ?? "";
@@ -332,30 +408,127 @@ export default function HUD() {
         )}
       </div>
 
-      <div className="absolute top-24 left-8 z-10">
-        <PixelPanel title="TERRAIN_INTEL" className="!p-4 min-w-[200px]">
-          <div className="flex flex-col gap-3 mt-2">
-            {LEGEND.map((item) => (
-              <div key={item.label} className="flex items-center gap-4">
-                <span
-                  className="inline-block"
+      {selectedUnit && (
+        <div className="absolute top-24 left-8 z-10">
+          <PixelPanel title="UNIT_INTEL" className="!p-5 min-w-[260px]">
+            <div className="flex flex-col gap-4 mt-2">
+              {/* Unit portrait */}
+              <div className="flex items-center gap-4">
+                <div
+                  className="border border-white/30 bg-white/5 shrink-0"
                   style={{
-                    width: 32,
-                    height: 32,
-                    backgroundImage: `url(${TERRAIN_IMAGE})`,
-                    backgroundPosition: `-${item.x * (32 / TILE_PX)}px -${item.y * (32 / TILE_PX)}px`,
-                    backgroundSize: `${240 * (32 / TILE_PX)}px ${384 * (32 / TILE_PX)}px`,
+                    width: 96,
+                    height: 96,
                     imageRendering: "pixelated",
+                    backgroundImage: `url(${UNIT_SPRITE_IMAGE[selectedUnit.team] ?? UNIT_SPRITE_IMAGE.blue})`,
+                    backgroundPosition: (() => {
+                      const off = UNIT_SPRITE_OFFSET[selectedUnit.type] ?? {
+                        x: 0,
+                        y: 48,
+                      };
+                      return `-${off.x * 3}px -${off.y * 3}px`;
+                    })(),
+                    backgroundSize: `${896 * 3}px ${1328 * 3}px`,
+                    opacity: 0.8,
                   }}
                 />
-                <span className="text-sm uppercase tracking-widest">
-                  {item.label}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-lg font-bold uppercase tracking-widest">
+                    {UNIT_DISPLAY_NAMES[selectedUnit.type] ?? selectedUnit.type}
+                  </span>
+                  <span
+                    className="text-sm uppercase tracking-widest"
+                    style={{
+                      color: PLAYER_COLORS[selectedUnit.team] ?? "#ffffff",
+                    }}
+                  >
+                    {selectedUnit.team}
+                  </span>
+                </div>
               </div>
-            ))}
-          </div>
-        </PixelPanel>
-      </div>
+
+              {/* Stats */}
+              <div className="flex flex-col gap-2 text-sm uppercase tracking-widest">
+                <div className="flex justify-between">
+                  <span className="text-white/60">HP</span>
+                  <span>
+                    {selectedUnit.hp} / {UNIT_MAX_HP[selectedUnit.type] ?? 3}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">ATK</span>
+                  <span>{UNIT_ATTACK_POWER[selectedUnit.type] ?? 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">RANGE</span>
+                  <span>
+                    {(() => {
+                      const [min, max] = UNIT_ATTACK_RANGE[
+                        selectedUnit.type
+                      ] ?? [1, 1];
+                      return min === max ? `${min}` : `${min}-${max}`;
+                    })()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/60">MOVE</span>
+                  <span>{UNIT_MOVE_RANGE[selectedUnit.type] ?? 0}</span>
+                </div>
+
+                {/* Terrain info */}
+                {selectedUnitTerrain && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-white/60">TERRAIN</span>
+                      <span>{selectedUnitTerrain.name}</span>
+                    </div>
+                    {selectedUnitTerrain.defense > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-white/60">DEF BONUS</span>
+                        <span>+{selectedUnitTerrain.defense}</span>
+                      </div>
+                    )}
+                    {(selectedUnit.type === "tank" ||
+                      selectedUnit.type === "artillery") &&
+                      (selectedUnitTerrain.type === TileType.Road ||
+                        selectedUnitTerrain.type === TileType.DirtRoad) && (
+                        <div className="flex justify-between">
+                          <span className="text-white/60">ROAD BONUS</span>
+                          <span>+2 MOVE</span>
+                        </div>
+                      )}
+                  </>
+                )}
+
+                {/* Status */}
+                <div className="flex justify-between">
+                  <span className="text-white/60">STATUS</span>
+                  <span>
+                    {(() => {
+                      const g = game;
+                      if (!g) return "—";
+                      const currentTeam =
+                        g.currentPlayer !== undefined
+                          ? (TEAMS[g.currentPlayer] ?? null)
+                          : null;
+                      if (selectedUnit.team !== currentTeam) return "STANDBY";
+                      const queued = moveQueue.some(
+                        (m) => m.unitId === selectedUnit.id,
+                      );
+                      if (queued) return "QUEUED";
+                      if (selectedUnit.lastActedRound >= g.round)
+                        return "ACTED";
+                      if (selectedUnit.lastMovedRound >= g.round)
+                        return "MOVED";
+                      return "READY";
+                    })()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </PixelPanel>
+        </div>
+      )}
 
       <div className="absolute top-24 right-8 z-10">
         <PixelPanel title="COMMAND_STATUS" className="!p-4 min-w-[200px]">
