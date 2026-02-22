@@ -363,21 +363,14 @@ def main():
             print(f"Balance Search — Iteration 0 (baseline)")
             config = state["current_config"]
         else:
-            # Pick a parameter to tweak
-            param, new_val = pick_tweak(state)
-            if param is None:
-                # All params tried, start new round from best
-                state["current_config"] = copy.deepcopy(state["best_config"])
-                state["params_tried_this_round"] = []
-                param, new_val = pick_tweak(state)
-                if param is None:
-                    print("Search converged — no more improvements possible")
-                    save_state(state)
-                    return "converged"
+            # Random multi-param tweak from best known config
+            desc, config = pick_tweak(state)
+            if desc is None:
+                print("Search failed to find valid random config after 50 attempts")
+                save_state(state)
+                return "stuck"
 
-            config = copy.deepcopy(state["current_config"])
-            config[param] = new_val
-            print(f"Balance Search — Iteration {iteration}: tweaking {param} = {new_val}")
+            print(f"Balance Search — Iteration {iteration}: {desc}")
 
         if dry_run:
             print(f"Config: {format_config_diff(config)}")
@@ -405,11 +398,7 @@ def main():
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }, f, indent=2)
         else:
-            # Revert — mark param as tried
-            if iteration > 0:
-                param_tried = [k for k in config if config[k] != state["current_config"][k]]
-                state["params_tried_this_round"].extend(param_tried)
-                state["param_index"] = (state["param_index"] + 1) % len(PARAM_SPACE)
+            pass  # Random search — no revert tracking needed, always starts from best
 
         entry = log_result(iteration, config, results, score, improved)
 
