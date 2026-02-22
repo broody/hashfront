@@ -27,12 +27,13 @@ from typing import Optional
 # ============================================================================
 
 CAPTURE_THRESHOLD = 2
-MAX_ROUNDS = 30  # matches on-chain limit
+MAX_ROUNDS = 100
 STARTING_GOLD = 5
+P2_STARTING_GOLD = 7
 
 UNIT_COST = {
     "INFANTRY": 1,
-    "TANK": 3,
+    "TANK": 4,
     "RANGER": 2,
 }
 
@@ -355,17 +356,21 @@ def generate_map(width, height, rng):
     city_positions = []
     # 2-3 pairs of symmetric cities
     city_ys = [height // 4, height // 2, 3 * height // 4]
-    city_x = width // 2  # center
-    for cy in city_ys:
-        terrain[cy][city_x] = Terrain.CITY
-        city_positions.append((city_x, cy))
-    # If even width, also use left-center
-    if width % 2 == 0:
-        cx2 = mid_x - 1
-        terrain[height // 4][cx2] = Terrain.CITY
-        city_positions.append((cx2, height // 4))
-        terrain[3 * height // 4][cx2] = Terrain.CITY
-        city_positions.append((cx2, 3 * height // 4))
+    
+    if width % 2 != 0:
+        city_x = width // 2
+        for cy in city_ys:
+            terrain[cy][city_x] = Terrain.CITY
+            city_positions.append((city_x, cy))
+    else:
+        # Perfectly symmetric cities for even width
+        x1 = width // 2
+        x2 = x1 - 1
+        for cy in city_ys:
+            terrain[cy][x1] = Terrain.CITY
+            city_positions.append((x1, cy))
+            terrain[cy][x2] = Terrain.CITY
+            city_positions.append((x2, cy))
 
     buildings_info = {
         "hq1": (hq1_x, hq1_y),
@@ -384,7 +389,7 @@ def create_game(width=14, height=14, rng_seed=42):
     state = GameState(
         width=width, height=height, terrain=terrain,
         units=[], buildings=[], _next_uid=0,
-        gold={1: STARTING_GOLD, 2: STARTING_GOLD},
+        gold={1: STARTING_GOLD, 2: P2_STARTING_GOLD},
         gold_earned={1: 0, 2: 0},
         units_produced={1: 0, 2: 0},
     )
@@ -1051,7 +1056,7 @@ class DefensiveStrategy(Strategy):
                 if nearby_cities:
                     # Don't send into danger
                     safe_cities = [b for b in nearby_cities
-                                   if not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 2)]
+                                   if not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 1)]
                     if safe_cities:
                         if _try_send_infantry_to_capture(state, unit, player, rng, safe_cities):
                             if state.winner:

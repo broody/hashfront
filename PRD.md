@@ -82,7 +82,7 @@ Three unit types with asymmetric combat roles (designed to expand with additiona
 | Unit | HP | Attack | Move | Range | Cost | Special |
 |------|-----|--------|------|-------|------|---------|
 | **Infantry** | 3 | 2 | 4 | 1 | 1 | Captures buildings, traverses mountains |
-| **Tank** | 5 | 4 | 2 | 1 | 3 | Raw combat power |
+| **Tank** | 5 | 4 | 2 | 1 | 4 | Raw combat power |
 | **Ranger** | 3 | 3 | 3 | 2–3 | 2 | Cannot attack adjacent (min range 2), cannot attack after moving, can capture buildings |
 
 ### Combat Resolution
@@ -160,7 +160,8 @@ Flags reset at the start of the owning player's next turn.
 
 | Constant | Value |
 |----------|-------|
-| Starting gold | 5 |
+| Starting gold (P1) | 5 |
+| Starting gold (P2–P4) | 7 |
 | HQ base income | 1 gold/turn |
 | Income per city | 1 gold/turn |
 | Capture threshold | 2 turns |

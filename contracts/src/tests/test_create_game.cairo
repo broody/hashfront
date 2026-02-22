@@ -1,5 +1,5 @@
 use dojo::model::ModelStorage;
-use hashfront::consts::STARTING_GOLD;
+use hashfront::consts::{NON_P1_STARTING_GOLD_BONUS, STARTING_GOLD};
 use hashfront::models::building::Building;
 use hashfront::models::game::Game;
 use hashfront::models::map::MapTile;
@@ -74,6 +74,27 @@ fn test_create_game_invalid_map() {
 
     let (actions_dispatcher, _) = setup();
     actions_dispatcher.create_game("test", 99, 1, false);
+}
+
+#[test]
+#[available_gas(200000000)]
+fn test_create_game_non_p1_starts_with_bonus_gold() {
+    let caller = PLAYER1();
+    set_contract_address(caller);
+    set_account_contract_address(caller);
+
+    let (actions_dispatcher, mut world) = setup();
+
+    let map_id = actions_dispatcher
+        .register_map(
+            "test", 20, 20, build_test_tiles(), build_test_buildings(), build_test_units(),
+        );
+
+    let game_id = actions_dispatcher.create_game("test", map_id, 2, false);
+
+    let ps2: PlayerState = world.read_model((game_id, 2_u8));
+    assert(ps2.address == caller, 'wrong address');
+    assert(ps2.gold == STARTING_GOLD + NON_P1_STARTING_GOLD_BONUS, 'wrong starting gold');
 }
 
 #[test]

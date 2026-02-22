@@ -30,7 +30,9 @@ pub trait IActions<T> {
 pub mod actions {
     use dojo::event::EventStorage;
     use dojo::model::ModelStorage;
-    use hashfront::consts::{CAPTURE_THRESHOLD, MAX_ROUNDS, STARTING_GOLD};
+    use hashfront::consts::{
+        CAPTURE_THRESHOLD, MAX_ROUNDS, NON_P1_STARTING_GOLD_BONUS, STARTING_GOLD,
+    };
     use hashfront::events::{
         BuildingCaptured, GameCreated, GameOver, GameStarted, PlayerJoined, TurnEnded, UnitAttacked,
         UnitBuilt, UnitDied, UnitMoved,
@@ -238,7 +240,11 @@ pub mod actions {
                         game_id,
                         player_id,
                         address: caller,
-                        gold: STARTING_GOLD,
+                        gold: if player_id == 1 {
+                            STARTING_GOLD
+                        } else {
+                            STARTING_GOLD + NON_P1_STARTING_GOLD_BONUS
+                        },
                         unit_count: 0,
                         factory_count: 0,
                         city_count: 0,
@@ -291,7 +297,11 @@ pub mod actions {
                         game_id,
                         player_id,
                         address: caller,
-                        gold: STARTING_GOLD,
+                        gold: if player_id == 1 {
+                            STARTING_GOLD
+                        } else {
+                            STARTING_GOLD + NON_P1_STARTING_GOLD_BONUS
+                        },
                         unit_count: 0,
                         factory_count: 0,
                         city_count: 0,

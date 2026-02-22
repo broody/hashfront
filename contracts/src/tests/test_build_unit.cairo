@@ -73,14 +73,14 @@ fn test_build_infantry() {
 fn test_build_tank() {
     let (actions_dispatcher, mut world, game_id) = setup_with_factory();
 
-    // Tank costs 3 gold
+    // Tank costs 4 gold
     actions_dispatcher.build_unit(game_id, 10, 10, UnitType::Tank);
 
     let building: Building = world.read_model((game_id, 10_u8, 10_u8));
     assert(building.queued_unit == 2, 'should queue tank (2)');
 
     let ps1: PlayerState = world.read_model((game_id, 1_u8));
-    assert(ps1.gold == 7, 'gold should be 7');
+    assert(ps1.gold == 6, 'gold should be 6');
 }
 
 #[test]

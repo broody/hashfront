@@ -1,5 +1,5 @@
 use dojo::model::ModelStorage;
-use hashfront::consts::STARTING_GOLD;
+use hashfront::consts::{NON_P1_STARTING_GOLD_BONUS, STARTING_GOLD};
 use hashfront::models::building::Building;
 use hashfront::models::game::Game;
 use hashfront::models::player::PlayerState;
@@ -47,7 +47,7 @@ fn test_join_game() {
     // Player 2 state
     let ps2: PlayerState = world.read_model((game_id, 2_u8));
     assert(ps2.address == p2, 'wrong p2 address');
-    assert(ps2.gold == STARTING_GOLD, 'wrong p2 gold');
+    assert(ps2.gold == STARTING_GOLD + NON_P1_STARTING_GOLD_BONUS, 'wrong p2 gold');
     assert(ps2.is_alive, 'p2 should be alive');
 }
 

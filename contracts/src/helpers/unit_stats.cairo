@@ -49,7 +49,7 @@ pub fn cost(unit_type: UnitType) -> u8 {
     match unit_type {
         UnitType::None => 0,
         UnitType::Infantry => 1,
-        UnitType::Tank => 3,
+        UnitType::Tank => 4,
         UnitType::Ranger => 2,
     }
 }
