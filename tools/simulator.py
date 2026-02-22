@@ -27,7 +27,7 @@ from typing import Optional
 # ============================================================================
 
 CAPTURE_THRESHOLD = 2
-MAX_ROUNDS = 60  # higher than on-chain 30 to let sims finish
+MAX_ROUNDS = 30  # matches on-chain limit
 STARTING_GOLD = 5
 
 UNIT_COST = {
@@ -70,7 +70,7 @@ class UnitType(Enum):
 UNIT_STATS = {
     UnitType.INFANTRY: {"hp": 3, "atk": 2, "move": 4, "range": (1, 1), "accuracy": 90, "can_attack_after_move": True},
     UnitType.TANK:     {"hp": 5, "atk": 4, "move": 2, "range": (1, 1), "accuracy": 85, "can_attack_after_move": True},
-    UnitType.RANGER:   {"hp": 4, "atk": 3, "move": 3, "range": (2, 3), "accuracy": 88, "can_attack_after_move": False},
+    UnitType.RANGER:   {"hp": 3, "atk": 3, "move": 3, "range": (2, 3), "accuracy": 88, "can_attack_after_move": False},
 }
 
 # Vehicle types get road bonus
@@ -186,9 +186,11 @@ def resolve_attack(rng, attacker, defender, attacker_moved, def_terrain, atk_ter
     a_stats = attacker.stats
     d_stats = defender.stats
 
-    # Ranger can't attack after moving
+    # Ranger can't attack after moving (unless within move_attack_max_range)
     if not a_stats["can_attack_after_move"] and attacker_moved:
-        return 0, 0
+        mar = a_stats.get("move_attack_max_range", 0)
+        if mar == 0 or distance > mar:
+            return 0, 0
 
     a_min, a_max = a_stats["range"]
     if not (a_min <= distance <= a_max):
@@ -483,7 +485,7 @@ def do_attack(state, rng, attacker, defender):
 
 def do_capture(state, unit):
     """Attempt to capture building at unit's position."""
-    if unit.unit_type != UnitType.INFANTRY:
+    if unit.unit_type not in (UnitType.INFANTRY, UnitType.RANGER):
         return False
     for b in state.buildings:
         if b.x == unit.x and b.y == unit.y and b.owner != unit.player:
@@ -559,22 +561,27 @@ def end_turn(state):
 
 def get_attack_targets(state, unit):
     stats = unit.stats
-    if not stats["can_attack_after_move"] and unit.has_moved:
+    mar = stats.get("move_attack_max_range", 0)
+    if not stats["can_attack_after_move"] and unit.has_moved and mar == 0:
         return []
     a_min, a_max = stats["range"]
+    # If moved and has move_attack_max_range, cap effective max range
+    eff_max = mar if (not stats["can_attack_after_move"] and unit.has_moved and mar > 0) else a_max
     targets = []
     enemy = state.other_player(unit.player)
     for e in state.player_units(enemy):
         d = manhattan(unit.x, unit.y, e.x, e.y)
-        if a_min <= d <= a_max:
+        if a_min <= d <= eff_max:
             targets.append(e)
     return targets
 
 def expected_damage_to(attacker, defender, def_terrain, moved):
     stats = attacker.stats
-    if not stats["can_attack_after_move"] and moved:
-        return 0
+    mar = stats.get("move_attack_max_range", 0)
     dist = manhattan(attacker.x, attacker.y, defender.x, defender.y)
+    if not stats["can_attack_after_move"] and moved:
+        if mar == 0 or dist > mar:
+            return 0
     a_min, a_max = stats["range"]
     if not (a_min <= dist <= a_max):
         return 0
@@ -596,8 +603,8 @@ def _uncaptured_cities(state, player):
     return [b for b in state.buildings if b.building_type == "city" and b.owner != player]
 
 def _try_send_infantry_to_capture(state, unit, player, rng, targets_buildings):
-    """Try to move infantry toward a capturable building. Returns True if handled."""
-    if unit.unit_type != UnitType.INFANTRY:
+    """Try to move infantry/ranger toward a capturable building. Returns True if handled."""
+    if unit.unit_type not in (UnitType.INFANTRY, UnitType.RANGER):
         return False
     if not targets_buildings:
         return False
@@ -634,6 +641,232 @@ def _try_send_infantry_to_capture(state, unit, player, rng, targets_buildings):
     return False
 
 
+# ---- Shared tactical helpers ----
+
+def _count_enemy_units(state, player):
+    """Count enemy units by type."""
+    enemy = state.other_player(player)
+    counts = {UnitType.INFANTRY: 0, UnitType.TANK: 0, UnitType.RANGER: 0}
+    for u in state.player_units(enemy):
+        counts[u.unit_type] += 1
+    return counts
+
+def _count_own_units(state, player):
+    """Count own units by type."""
+    counts = {UnitType.INFANTRY: 0, UnitType.TANK: 0, UnitType.RANGER: 0}
+    for u in state.player_units(player):
+        counts[u.unit_type] += 1
+    return counts
+
+def _focus_fire_target(state, unit, targets):
+    """Pick best focus fire target: prioritize killable > lowest HP > highest value."""
+    if not targets:
+        return None
+    def score(t):
+        dt = state.terrain_at(t.x, t.y)
+        ed = expected_damage_to(unit, t, dt, unit.has_moved)
+        killable = 1 if ed >= t.hp else 0
+        # Value: tanks > rangers > infantry
+        value = {UnitType.TANK: 3, UnitType.RANGER: 2, UnitType.INFANTRY: 1}.get(t.unit_type, 1)
+        return (-killable, t.hp, -value)
+    return min(targets, key=score)
+
+def _should_retreat(unit, state, player):
+    """Unit at 1 HP should retreat toward own buildings."""
+    if unit.hp > 1:
+        return False
+    return True
+
+def _retreat_toward_hq(state, unit, player):
+    """Move damaged unit toward own HQ/buildings."""
+    own_hq = state.player_hq(player)
+    if not own_hq:
+        return False
+    # Find own buildings to retreat to
+    own_buildings = state.player_buildings(player)
+    if not own_buildings:
+        return False
+    nearest = min(own_buildings, key=lambda b: manhattan(unit.x, unit.y, b.x, b.y))
+    if manhattan(unit.x, unit.y, nearest.x, nearest.y) <= 1:
+        # Already near safety
+        return False
+    dest = find_path_toward(state, unit, nearest.x, nearest.y)
+    if dest:
+        do_move(state, unit, dest[0], dest[1])
+        do_wait(unit)
+        return True
+    return False
+
+def _hq_needs_protection(state, player):
+    """Check if HQ has no friendly units within 3 tiles."""
+    own_hq = state.player_hq(player)
+    if not own_hq:
+        return False
+    for u in state.player_units(player):
+        if u.alive and manhattan(u.x, u.y, own_hq.x, own_hq.y) <= 3:
+            return False
+    return True
+
+def _nearest_enemy_to_hq(state, player):
+    """Find the nearest enemy unit to our HQ."""
+    own_hq = state.player_hq(player)
+    if not own_hq:
+        return None
+    enemies = state.player_units(state.other_player(player))
+    if not enemies:
+        return None
+    return min(enemies, key=lambda e: manhattan(e.x, e.y, own_hq.x, own_hq.y))
+
+def _ranger_move_and_attack(state, unit, target, rng):
+    """Move ranger toward target, try to attack at range 2 after moving. Returns True if attacked."""
+    best_tile = _best_ranger_tile(state, unit, target)
+    if best_tile:
+        do_move(state, unit, best_tile[0], best_tile[1])
+    targets = get_attack_targets(state, unit)
+    if targets:
+        t = _focus_fire_target(state, unit, targets)
+        do_attack(state, rng, unit, t)
+        return True
+    do_wait(unit)
+    return False
+
+def _best_ranger_tile(state, unit, target):
+    """Find best reachable tile at range 2-3 from target, prefer range 2."""
+    tiles = reachable_tiles(state, unit)
+    candidates = [(x, y) for (x, y) in tiles if 2 <= manhattan(x, y, target.x, target.y) <= 3]
+    if not candidates:
+        return find_path_toward(state, unit, target.x, target.y)
+    def score(p):
+        d = manhattan(p[0], p[1], target.x, target.y)
+        t = state.terrain_at(p[0], p[1])
+        return (0 if d == 2 else 1, -TERRAIN_DEFENSE[t])
+    return min(candidates, key=score)
+
+def _ranger_retreat_tile(state, unit, enemies):
+    """Find a tile that keeps ranger at range 2+ from all nearby enemies, on good terrain."""
+    tiles = reachable_tiles(state, unit)
+    # Also consider staying put
+    all_positions = list(tiles.keys()) + [(unit.x, unit.y)]
+    
+    def score(p):
+        min_dist = min(manhattan(p[0], p[1], e.x, e.y) for e in enemies) if enemies else 99
+        t = state.terrain_at(p[0], p[1])
+        # Want distance >= 2, prefer defensive terrain
+        too_close = 1 if min_dist < 2 else 0
+        return (too_close, -TERRAIN_DEFENSE[t], -min_dist)
+    
+    return min(all_positions, key=score)
+
+def _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                       own_hq, aggressive=False, rush_hq=False, defend_radius=99):
+    """Unified smart action for a unit. Returns True if unit was handled."""
+    if not unit.alive or unit.has_acted:
+        return True
+
+    # 1. Retreat if at 1 HP (unless rushing)
+    if not rush_hq and _should_retreat(unit, state, player):
+        if _retreat_toward_hq(state, unit, player):
+            return True
+
+    # 2. Try attack first without moving (focus fire)
+    targets = get_attack_targets(state, unit)
+    if targets:
+        target = _focus_fire_target(state, unit, targets)
+        do_attack(state, rng, unit, target)
+        return True
+
+    # 3. Ranger special handling
+    if unit.unit_type == UnitType.RANGER:
+        # Check if enemies are too close (range 1) - retreat
+        close_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
+        if close_enemies and not aggressive:
+            retreat_pos = _ranger_retreat_tile(state, unit, enemies)
+            if retreat_pos != (unit.x, unit.y):
+                do_move(state, unit, retreat_pos[0], retreat_pos[1])
+                targets = get_attack_targets(state, unit)
+                if targets:
+                    target = _focus_fire_target(state, unit, targets)
+                    do_attack(state, rng, unit, target)
+                    return True
+                do_wait(unit)
+                return True
+
+        if enemies:
+            # Pick best target to engage
+            nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+            _ranger_move_and_attack(state, unit, nearest, rng)
+            return True
+        # No enemies - capture or wait
+        if capturable and unit.unit_type == UnitType.RANGER:
+            if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                return True
+        do_wait(unit)
+        return True
+
+    # 4. Rush HQ mode
+    if rush_hq and unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and enemy_hq:
+        if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+            if do_capture(state, unit):
+                state.winner = player
+            return True
+        dest = find_path_toward(state, unit, enemy_hq.x, enemy_hq.y)
+        if dest:
+            do_move(state, unit, dest[0], dest[1])
+        if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+            if do_capture(state, unit):
+                state.winner = player
+            return True
+        targets = get_attack_targets(state, unit)
+        if targets:
+            target = _focus_fire_target(state, unit, targets)
+            do_attack(state, rng, unit, target)
+            return True
+        do_wait(unit)
+        return True
+
+    # 5. Capture cities (infantry/ranger, if safe)
+    if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and capturable:
+        nearby_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3]
+        # Filter cities by safety - don't send lone units deep into enemy territory
+        if own_hq:
+            safe_cities = [b for b in capturable
+                           if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= defend_radius
+                           or not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 2)]
+        else:
+            safe_cities = capturable
+        if safe_cities and (not nearby_enemies or aggressive):
+            if _try_send_infantry_to_capture(state, unit, player, rng, safe_cities):
+                return True
+
+    # 6. Move toward enemies and attack
+    if enemies:
+        nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+        dest = find_path_toward(state, unit, nearest.x, nearest.y)
+        if dest:
+            do_move(state, unit, dest[0], dest[1])
+        targets = get_attack_targets(state, unit)
+        if targets:
+            target = _focus_fire_target(state, unit, targets)
+            do_attack(state, rng, unit, target)
+            return True
+        # Try capture if on a building
+        if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER):
+            if do_capture(state, unit):
+                for b in state.buildings:
+                    if b.x == unit.x and b.y == unit.y and b.building_type == "hq":
+                        state.winner = player
+                        return True
+        do_wait(unit)
+        return True
+
+    # 7. No enemies - capture HQ or cities
+    if enemy_hq and unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER):
+        if _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq]):
+            return True
+    do_wait(unit)
+    return True
+
+
 class Strategy:
     """Base strategy class."""
     name = "base"
@@ -642,171 +875,224 @@ class Strategy:
         raise NotImplementedError
 
     def do_economy(self, state, player, rng):
-        """Override to implement build orders."""
         pass
 
 
 class AggressiveStrategy(Strategy):
+    """Pushes map control, trades aggressively, mixes Tanks and Rangers adaptively."""
     name = "aggressive"
 
     def do_economy(self, state, player, rng):
-        # Build Tanks when affordable, Infantry as filler
+        enemy_counts = _count_enemy_units(state, player)
         for fac in state.player_factories(player):
             if fac.production_queue is not None:
                 continue
-            if state.gold[player] >= 3:
+            gold = state.gold[player]
+            # If enemy has lots of infantry, Rangers outrange them
+            if enemy_counts[UnitType.INFANTRY] >= 3 and gold >= 2:
+                build_unit(state, player, fac, UnitType.RANGER)
+            # If enemy has tanks, match with tanks
+            elif enemy_counts[UnitType.TANK] >= 2 and gold >= 3:
                 build_unit(state, player, fac, UnitType.TANK)
-            elif state.gold[player] >= 1:
+            # Default: tank > ranger > infantry
+            elif gold >= 3:
+                build_unit(state, player, fac, UnitType.TANK)
+            elif gold >= 2:
+                build_unit(state, player, fac, UnitType.RANGER)
+            elif gold >= 1:
                 build_unit(state, player, fac, UnitType.INFANTRY)
 
     def play_turn(self, state, player, rng):
         self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
+        own_hq = state.player_hq(player)
         units = state.player_units(player)
-        capturable = _uncaptured_cities(state, player)
         enemies = state.player_units(state.other_player(player))
-        units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y) if enemy_hq else 0)
+        capturable = _uncaptured_cities(state, player)
+
+        # Sort: closest to enemy first (aggressive push)
+        if enemy_hq:
+            units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
+
+        # HQ protection: if HQ exposed and enemy nearby, redirect closest unit
+        if own_hq and _hq_needs_protection(state, player):
+            nearest_threat = _nearest_enemy_to_hq(state, player)
+            if nearest_threat and manhattan(nearest_threat.x, nearest_threat.y, own_hq.x, own_hq.y) <= 5:
+                # Find closest available unit to defend
+                available = [u for u in units if u.alive and not u.has_acted]
+                if available:
+                    defender = min(available, key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
+                    dest = find_path_toward(state, defender, own_hq.x, own_hq.y)
+                    if dest:
+                        do_move(state, defender, dest[0], dest[1])
+                    targets = get_attack_targets(state, defender)
+                    if targets:
+                        t = _focus_fire_target(state, defender, targets)
+                        do_attack(state, rng, defender, t)
+                    else:
+                        do_wait(defender)
 
         for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
-
-            # Try attack first without moving
-            targets = get_attack_targets(state, unit)
-            if targets:
-                target = min(targets, key=lambda t: t.hp)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
-                continue
-
-            # Infantry: capture cities if no immediate threats nearby
-            if unit.unit_type == UnitType.INFANTRY and capturable:
-                nearby_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3]
-                if not nearby_enemies:
-                    if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
-                        if state.winner:
-                            return
-                        continue
-
-            # Move toward nearest enemy
-            if not enemies:
-                # Try capture enemy HQ
-                if enemy_hq and unit.unit_type == UnitType.INFANTRY:
-                    _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq])
-                    if state.winner:
-                        return
-                    continue
-                do_wait(unit)
-                continue
-
-            if unit.unit_type == UnitType.RANGER:
-                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                dist = manhattan(unit.x, unit.y, nearest.x, nearest.y)
-                if 2 <= dist <= 3:
-                    do_wait(unit)
-                    continue
-                best_tile = _best_ranger_tile(state, unit, nearest)
-                if best_tile:
-                    do_move(state, unit, best_tile[0], best_tile[1])
-                do_wait(unit)
-                continue
-
-            nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-            dest = find_path_toward(state, unit, nearest.x, nearest.y)
-            if dest:
-                do_move(state, unit, dest[0], dest[1])
-
-            targets = get_attack_targets(state, unit)
-            if targets:
-                target = min(targets, key=lambda t: t.hp)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
-            else:
-                if unit.unit_type == UnitType.INFANTRY:
-                    if do_capture(state, unit):
-                        for b in state.buildings:
-                            if b.x == unit.x and b.y == unit.y and b.building_type == "hq":
-                                state.winner = player
-                                return
-                do_wait(unit)
+            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                               own_hq, aggressive=True, defend_radius=99)
+            if state.winner:
+                return
 
 
 class DefensiveStrategy(Strategy):
+    """Secures nearby cities, Rangers for area denial, only pushes when ahead."""
     name = "defensive"
 
     def do_economy(self, state, player, rng):
-        # Build Rangers for zone control, Infantry for captures
+        enemy_counts = _count_enemy_units(state, player)
+        own_counts = _count_own_units(state, player)
+        owned_cities = len(state.player_cities(player))
         for fac in state.player_factories(player):
             if fac.production_queue is not None:
                 continue
-            if state.gold[player] >= 2:
+            gold = state.gold[player]
+            # Need infantry for city captures early
+            if owned_cities < 2 and gold >= 1 and own_counts[UnitType.INFANTRY] < 3:
+                build_unit(state, player, fac, UnitType.INFANTRY)
+            # Build tank as wall if enemy is pushing hard (lots of melee units nearby)
+            elif enemy_counts[UnitType.INFANTRY] + enemy_counts[UnitType.TANK] >= 4 and gold >= 3:
+                build_unit(state, player, fac, UnitType.TANK)
+            # Rangers for zone control (primary defensive unit)
+            elif gold >= 2:
                 build_unit(state, player, fac, UnitType.RANGER)
-            elif state.gold[player] >= 1:
+            elif gold >= 1:
                 build_unit(state, player, fac, UnitType.INFANTRY)
 
     def play_turn(self, state, player, rng):
         self.do_economy(state, player, rng)
         own_hq = state.player_hq(player)
+        enemy_hq = state.player_hq(state.other_player(player))
         units = state.player_units(player)
-        capturable = _uncaptured_cities(state, player)
         enemies = state.player_units(state.other_player(player))
+        capturable = _uncaptured_cities(state, player)
+
+        # Defensive: sort by distance to own HQ (handle closest first)
+        if own_hq:
+            units.sort(key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
+
+        # Check if we're ahead (more units + cities) - if so, push
+        own_count = len(units)
+        enemy_count = len(enemies)
+        own_cities = len(state.player_cities(player))
+        enemy_cities = len(state.player_cities(state.other_player(player)))
+        pushing = own_count > enemy_count + 2 and own_cities >= enemy_cities
 
         for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
 
+            # Always try to attack first (focus fire)
             targets = get_attack_targets(state, unit)
             if targets:
-                killable = [t for t in targets if t.hp <= hit_damage(unit.stats["atk"], TERRAIN_DEFENSE[state.terrain_at(t.x, t.y)])]
-                target = min(killable if killable else targets, key=lambda t: t.hp)
+                target = _focus_fire_target(state, unit, targets)
                 do_attack(state, rng, unit, target)
                 if state.winner:
                     return
                 continue
 
-            dist_to_hq = manhattan(unit.x, unit.y, own_hq.x, own_hq.y) if own_hq else 99
+            # Retreat damaged units
+            if _should_retreat(unit, state, player):
+                if _retreat_toward_hq(state, unit, player):
+                    continue
 
-            # Early game (rounds 1-4): aggressively capture nearby cities to build a defensive perimeter
-            if state.round_num <= 4 and unit.unit_type == UnitType.INFANTRY and own_hq:
-                nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 5]
-                if nearby_cities:
-                    if _try_send_infantry_to_capture(state, unit, player, rng, nearby_cities):
-                        if state.winner:
-                            return
+            # Rangers: position defensively near HQ at range 2 from threats
+            if unit.unit_type == UnitType.RANGER:
+                threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 6]
+                close_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
+                if close_enemies:
+                    retreat_pos = _ranger_retreat_tile(state, unit, enemies)
+                    if retreat_pos != (unit.x, unit.y):
+                        do_move(state, unit, retreat_pos[0], retreat_pos[1])
+                        targets = get_attack_targets(state, unit)
+                        if targets:
+                            t = _focus_fire_target(state, unit, targets)
+                            do_attack(state, rng, unit, t)
+                            if state.winner:
+                                return
+                            continue
+                        do_wait(unit)
                         continue
-
-            # Send idle infantry to capture cities when no threats
-            threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
-            if not threats and unit.unit_type == UnitType.INFANTRY and capturable:
-                if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
+                if threats:
+                    nearest_threat = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                    _ranger_move_and_attack(state, unit, nearest_threat, rng)
                     if state.winner:
                         return
                     continue
+                # No threats near HQ - capture or hold position
+                if capturable:
+                    nearby_cities = [b for b in capturable if own_hq and manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 7]
+                    if nearby_cities:
+                        if _try_send_infantry_to_capture(state, unit, player, rng, nearby_cities):
+                            if state.winner:
+                                return
+                            continue
+                if pushing and enemies:
+                    nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                    _ranger_move_and_attack(state, unit, nearest, rng)
+                    if state.winner:
+                        return
+                    continue
+                do_wait(unit)
+                continue
 
+            # Early game: capture nearby cities
+            if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and capturable:
+                if own_hq:
+                    nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 7]
+                else:
+                    nearby_cities = capturable
+                if nearby_cities:
+                    # Don't send into danger
+                    safe_cities = [b for b in nearby_cities
+                                   if not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 2)]
+                    if safe_cities:
+                        if _try_send_infantry_to_capture(state, unit, player, rng, safe_cities):
+                            if state.winner:
+                                return
+                            continue
+
+            # Threats near HQ - intercept
+            threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
             if threats:
                 nearest_threat = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                if unit.unit_type == UnitType.RANGER:
-                    best_tile = _best_ranger_tile(state, unit, nearest_threat)
-                    if best_tile:
-                        do_move(state, unit, best_tile[0], best_tile[1])
-                    do_wait(unit)
-                    continue
                 dest = find_path_toward(state, unit, nearest_threat.x, nearest_threat.y)
                 if dest:
                     do_move(state, unit, dest[0], dest[1])
                 targets = get_attack_targets(state, unit)
                 if targets:
-                    target = min(targets, key=lambda t: t.hp)
-                    do_attack(state, rng, unit, target)
+                    t = _focus_fire_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
                     if state.winner:
                         return
                 else:
                     do_wait(unit)
                 continue
 
-            if dist_to_hq > 3:
+            # If pushing, advance
+            if pushing and enemies:
+                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                dest = find_path_toward(state, unit, nearest.x, nearest.y)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                targets = get_attack_targets(state, unit)
+                if targets:
+                    t = _focus_fire_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
+                    if state.winner:
+                        return
+                else:
+                    do_wait(unit)
+                continue
+
+            # Fall back toward HQ if too far
+            if own_hq and manhattan(unit.x, unit.y, own_hq.x, own_hq.y) > 4:
                 dest = find_path_toward(state, unit, own_hq.x, own_hq.y)
                 if dest:
                     do_move(state, unit, dest[0], dest[1])
@@ -814,48 +1100,111 @@ class DefensiveStrategy(Strategy):
 
 
 class RushStrategy(Strategy):
+    """Fast infantry/ranger push to enemy HQ, sacrifices economy for speed."""
     name = "rush"
 
     def do_economy(self, state, player, rng):
-        # Infantry only (cheap, fast capture)
         for fac in state.player_factories(player):
             if fac.production_queue is not None:
                 continue
-            if state.gold[player] >= 1:
+            gold = state.gold[player]
+            own_counts = _count_own_units(state, player)
+            # Mix in rangers every 3rd unit for covering fire
+            total = own_counts[UnitType.INFANTRY] + own_counts[UnitType.RANGER]
+            if own_counts[UnitType.RANGER] < max(1, total // 3) and gold >= 2:
+                build_unit(state, player, fac, UnitType.RANGER)
+            elif gold >= 1:
                 build_unit(state, player, fac, UnitType.INFANTRY)
 
     def play_turn(self, state, player, rng):
         self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
+        own_hq = state.player_hq(player)
         units = state.player_units(player)
+        enemies = state.player_units(state.other_player(player))
         capturable = _uncaptured_cities(state, player)
 
-        infantry = [u for u in units if u.unit_type == UnitType.INFANTRY and u.alive and not u.has_acted]
-        others = [u for u in units if u.unit_type != UnitType.INFANTRY and u.alive and not u.has_acted]
+        capturers = [u for u in units if u.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and u.alive and not u.has_acted]
+        tanks = [u for u in units if u.unit_type == UnitType.TANK and u.alive and not u.has_acted]
 
-        # Split infantry: some rush HQ, some capture cities
-        hq_rushers = []
+        # Rangers provide covering fire, infantry rush
+        rangers = [u for u in capturers if u.unit_type == UnitType.RANGER]
+        infantry = [u for u in capturers if u.unit_type == UnitType.INFANTRY]
+
+        # Split infantry: 1-2 capture nearby cities, rest rush
+        hq_rushers = list(infantry)
         city_capturers = []
         if capturable and infantry:
-            # Send up to half infantry to capture cities, rest rush HQ
-            n_cap = max(1, len(infantry) // 2)
-            # Sort by distance to nearest city
-            for_cities = sorted(infantry, key=lambda u: min(manhattan(u.x, u.y, b.x, b.y) for b in capturable))
-            city_capturers = for_cities[:n_cap]
-            hq_rushers = for_cities[n_cap:]
-        else:
-            hq_rushers = infantry
+            n_cap = min(2, max(1, len(infantry) // 3))
+            if own_hq:
+                nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 6]
+            else:
+                nearby_cities = capturable
+            if nearby_cities:
+                for_cities = sorted(infantry, key=lambda u: min(manhattan(u.x, u.y, b.x, b.y) for b in nearby_cities))
+                city_capturers = for_cities[:n_cap]
+                hq_rushers = for_cities[n_cap:]
 
         for unit in city_capturers:
             if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
                 if state.winner:
                     return
                 continue
-            hq_rushers.append(unit)  # fallback to rushing
+            hq_rushers.append(unit)
 
+        # Rangers: provide covering fire by attacking enemies near the rush path
+        for unit in rangers:
+            if not unit.alive or unit.has_acted:
+                continue
+            targets = get_attack_targets(state, unit)
+            if targets:
+                target = _focus_fire_target(state, unit, targets)
+                do_attack(state, rng, unit, target)
+                if state.winner:
+                    return
+                continue
+            # Move toward enemy HQ area but stay at range
+            if enemies:
+                # Target enemies blocking the rush path
+                if enemy_hq:
+                    blocking = sorted(enemies, key=lambda e: manhattan(e.x, e.y, enemy_hq.x, enemy_hq.y))
+                    target_enemy = blocking[0]
+                else:
+                    target_enemy = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                _ranger_move_and_attack(state, unit, target_enemy, rng)
+                if state.winner:
+                    return
+                continue
+            # No enemies, rush HQ too
+            if enemy_hq:
+                _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq])
+                if state.winner:
+                    return
+                continue
+            do_wait(unit)
+
+        # Infantry rush HQ
         for unit in hq_rushers:
             if not unit.alive or unit.has_acted:
                 continue
+            # Attack targets of opportunity while rushing
+            targets = get_attack_targets(state, unit)
+            if targets:
+                # Only attack if enemy is blocking path or killable
+                killable = [t for t in targets if t.hp <= hit_damage(unit.stats["atk"], TERRAIN_DEFENSE[state.terrain_at(t.x, t.y)])]
+                if killable:
+                    do_attack(state, rng, unit, killable[0])
+                    if state.winner:
+                        return
+                    continue
+                # If enemy is on the HQ, we must fight
+                if enemy_hq and any(t.x == enemy_hq.x and t.y == enemy_hq.y for t in targets):
+                    t = [t for t in targets if t.x == enemy_hq.x and t.y == enemy_hq.y][0]
+                    do_attack(state, rng, unit, t)
+                    if state.winner:
+                        return
+                    continue
+
             if enemy_hq and unit.x == enemy_hq.x and unit.y == enemy_hq.y:
                 if do_capture(state, unit):
                     state.winner = player
@@ -871,43 +1220,10 @@ class RushStrategy(Strategy):
                         state.winner = player
                         return
                     continue
-
-            targets = get_attack_targets(state, unit)
-            if targets:
-                target = min(targets, key=lambda t: t.hp)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
-            else:
-                do_wait(unit)
-
-        for unit in others:
-            if not unit.alive or unit.has_acted:
-                continue
-            targets = get_attack_targets(state, unit)
-            if targets:
-                target = min(targets, key=lambda t: t.hp)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
-                continue
-
-            enemies = state.player_units(state.other_player(player))
-            if enemies:
-                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                if unit.unit_type == UnitType.RANGER:
-                    best_tile = _best_ranger_tile(state, unit, nearest)
-                    if best_tile:
-                        do_move(state, unit, best_tile[0], best_tile[1])
-                    do_wait(unit)
-                    continue
-                dest = find_path_toward(state, unit, nearest.x, nearest.y)
-                if dest:
-                    do_move(state, unit, dest[0], dest[1])
                 targets = get_attack_targets(state, unit)
                 if targets:
-                    target = min(targets, key=lambda t: t.hp)
-                    do_attack(state, rng, unit, target)
+                    t = _focus_fire_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
                     if state.winner:
                         return
                 else:
@@ -915,28 +1231,75 @@ class RushStrategy(Strategy):
             else:
                 do_wait(unit)
 
+        # Tanks: fight nearest enemy
+        for unit in tanks:
+            if not unit.alive or unit.has_acted:
+                continue
+            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                               own_hq, aggressive=True, defend_radius=99)
+            if state.winner:
+                return
+
 
 class BalancedStrategy(Strategy):
+    """Evaluates board state, counter-builds, plays for economic advantage."""
     name = "balanced"
 
     def do_economy(self, state, player, rng):
-        # Adapt: Infantry early for city capture, Tanks/Rangers mid-game
+        enemy_counts = _count_enemy_units(state, player)
+        own_counts = _count_own_units(state, player)
+        owned_cities = len(state.player_cities(player))
+
         for fac in state.player_factories(player):
             if fac.production_queue is not None:
                 continue
-            owned_cities = len(state.player_cities(player))
-            if state.round_num <= 8 or owned_cities < 2:
-                # Early game: infantry for captures
-                if state.gold[player] >= 1:
-                    build_unit(state, player, fac, UnitType.INFANTRY)
-            else:
-                # Mid-game: Tanks if affordable, else Rangers
-                if state.gold[player] >= 3:
-                    build_unit(state, player, fac, UnitType.TANK)
-                elif state.gold[player] >= 2:
+            gold = state.gold[player]
+
+            # Early game: infantry for city captures
+            if state.round_num <= 4 and owned_cities < 2 and gold >= 1:
+                build_unit(state, player, fac, UnitType.INFANTRY)
+                continue
+
+            # Counter-build based on enemy composition
+            enemy_inf = enemy_counts[UnitType.INFANTRY]
+            enemy_tank = enemy_counts[UnitType.TANK]
+            enemy_ranger = enemy_counts[UnitType.RANGER]
+            enemy_total = enemy_inf + enemy_tank + enemy_ranger
+
+            if enemy_total > 0:
+                # Enemy heavy infantry → Rangers (outrange)
+                if enemy_inf / enemy_total > 0.5 and gold >= 2:
                     build_unit(state, player, fac, UnitType.RANGER)
-                elif state.gold[player] >= 1:
+                    continue
+                # Enemy heavy rangers → Tanks (can close distance, high HP survives)
+                if enemy_ranger / enemy_total > 0.4 and gold >= 3:
+                    build_unit(state, player, fac, UnitType.TANK)
+                    continue
+                # Enemy heavy tanks → Rangers (kite at range) or more tanks
+                if enemy_tank / enemy_total > 0.4:
+                    if gold >= 2:
+                        build_unit(state, player, fac, UnitType.RANGER)
+                        continue
+
+            # Default balanced mix based on what we lack
+            own_total = own_counts[UnitType.INFANTRY] + own_counts[UnitType.TANK] + own_counts[UnitType.RANGER]
+            if own_total > 0:
+                inf_ratio = own_counts[UnitType.INFANTRY] / own_total
+                ranger_ratio = own_counts[UnitType.RANGER] / own_total
+                # Keep roughly 30% infantry, 30% ranger, 40% tank
+                if inf_ratio < 0.25 and gold >= 1:
                     build_unit(state, player, fac, UnitType.INFANTRY)
+                    continue
+                if ranger_ratio < 0.25 and gold >= 2:
+                    build_unit(state, player, fac, UnitType.RANGER)
+                    continue
+
+            if gold >= 3:
+                build_unit(state, player, fac, UnitType.TANK)
+            elif gold >= 2:
+                build_unit(state, player, fac, UnitType.RANGER)
+            elif gold >= 1:
+                build_unit(state, player, fac, UnitType.INFANTRY)
 
     def play_turn(self, state, player, rng):
         self.do_economy(state, player, rng)
@@ -946,107 +1309,56 @@ class BalancedStrategy(Strategy):
         enemies = state.player_units(state.other_player(player))
         capturable = _uncaptured_cities(state, player)
 
-        infantry = [u for u in units if u.unit_type == UnitType.INFANTRY and u.alive and not u.has_acted]
-        others = [u for u in units if u.unit_type != UnitType.INFANTRY and u.alive and not u.has_acted]
-
-        # Pick closest infantry to enemy HQ as rusher
-        rusher = None
-        fighters = list(infantry)
-        if infantry and enemy_hq:
-            rusher = min(infantry, key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
-            fighters = [u for u in infantry if u.uid != rusher.uid]
-
-        # Send idle fighters to capture cities first
-        remaining_fighters = []
-        for unit in fighters:
-            if capturable and not any(e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3):
-                if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
-                    if state.winner:
-                        return
-                    continue
-            remaining_fighters.append(unit)
-
-        # Rusher goes for HQ
-        if rusher and not rusher.has_acted:
-            if enemy_hq and rusher.x == enemy_hq.x and rusher.y == enemy_hq.y:
-                if do_capture(state, rusher):
-                    state.winner = player
-                    return
-            elif enemy_hq:
-                dest = find_path_toward(state, rusher, enemy_hq.x, enemy_hq.y)
-                if dest:
-                    do_move(state, rusher, dest[0], dest[1])
-                if rusher.x == enemy_hq.x and rusher.y == enemy_hq.y:
-                    if do_capture(state, rusher):
-                        state.winner = player
-                        return
-                else:
-                    targets = get_attack_targets(state, rusher)
+        # HQ protection check
+        if own_hq and _hq_needs_protection(state, player):
+            nearest_threat = _nearest_enemy_to_hq(state, player)
+            if nearest_threat and manhattan(nearest_threat.x, nearest_threat.y, own_hq.x, own_hq.y) <= 5:
+                available = [u for u in units if u.alive and not u.has_acted]
+                if available:
+                    defender = min(available, key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
+                    dest = find_path_toward(state, defender, own_hq.x, own_hq.y)
+                    if dest:
+                        do_move(state, defender, dest[0], dest[1])
+                    targets = get_attack_targets(state, defender)
                     if targets:
-                        target = min(targets, key=lambda t: t.hp)
-                        do_attack(state, rng, rusher, target)
-                        if state.winner:
-                            return
+                        t = _focus_fire_target(state, defender, targets)
+                        do_attack(state, rng, defender, t)
                     else:
-                        do_wait(rusher)
-            else:
-                do_wait(rusher)
+                        do_wait(defender)
 
-        # Others fight
-        for unit in remaining_fighters + others:
+        # Separate capturers and fighters
+        capturers = [u for u in units if u.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and u.alive and not u.has_acted]
+        fighters = [u for u in units if u.unit_type == UnitType.TANK and u.alive and not u.has_acted]
+
+        # Send 1 infantry to rush enemy HQ if close enough
+        rusher = None
+        if capturers and enemy_hq:
+            rusher = min(capturers, key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
+            if manhattan(rusher.x, rusher.y, enemy_hq.x, enemy_hq.y) > 8:
+                rusher = None  # too far, don't bother
+
+        # Capturers: cities first, then fight
+        for unit in capturers:
             if not unit.alive or unit.has_acted:
                 continue
-
-            targets = get_attack_targets(state, unit)
-            if targets:
-                def score(t):
-                    dt = state.terrain_at(t.x, t.y)
-                    ed = expected_damage_to(unit, t, dt, unit.has_moved)
-                    kill = 1 if ed >= t.hp else 0
-                    return (-kill, -ed)
-                target = min(targets, key=score)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
-                continue
-
-            if not enemies:
-                do_wait(unit)
-                continue
-
-            if unit.unit_type == UnitType.RANGER:
-                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                best_tile = _best_ranger_tile(state, unit, nearest)
-                if best_tile:
-                    do_move(state, unit, best_tile[0], best_tile[1])
-                do_wait(unit)
-                continue
-
-            nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-            dest = find_path_toward(state, unit, nearest.x, nearest.y)
-            if dest:
-                do_move(state, unit, dest[0], dest[1])
-            targets = get_attack_targets(state, unit)
-            if targets:
-                target = min(targets, key=lambda t: t.hp)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
+            is_rusher = (rusher and unit.uid == rusher.uid)
+            if is_rusher:
+                _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                                   own_hq, rush_hq=True, defend_radius=8)
             else:
-                do_wait(unit)
+                _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                                   own_hq, defend_radius=8)
+            if state.winner:
+                return
 
-
-def _best_ranger_tile(state, unit, target):
-    """Find best reachable tile at range 2-3 from target."""
-    tiles = reachable_tiles(state, unit)
-    candidates = [(x, y) for (x, y) in tiles if 2 <= manhattan(x, y, target.x, target.y) <= 3]
-    if not candidates:
-        return find_path_toward(state, unit, target.x, target.y)
-    def score(p):
-        d = manhattan(p[0], p[1], target.x, target.y)
-        t = state.terrain_at(p[0], p[1])
-        return (0 if d == 2 else 1, -TERRAIN_DEFENSE[t])
-    return min(candidates, key=score)
+        # Fighters: engage
+        for unit in fighters:
+            if not unit.alive or unit.has_acted:
+                continue
+            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
+                               own_hq, aggressive=False, defend_radius=8)
+            if state.winner:
+                return
 
 
 STRATEGIES = {
