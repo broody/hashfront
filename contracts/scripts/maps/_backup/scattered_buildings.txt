@@ -1,0 +1,9 @@
+# type player x y
+HQ 1 0 0
+HQ 2 19 19
+Factory 1 2 3
+Factory 2 17 16
+City 0 9 6
+City 0 10 13
+City 0 4 9
+City 0 15 10

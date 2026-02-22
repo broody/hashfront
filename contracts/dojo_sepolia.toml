@@ -6,7 +6,8 @@ seed = "hashfront_sepolia3"
 [env]
 rpc_url = "https://api.cartridge.gg/x/starknet/sepolia"
 account_address = "0x54f2b25070d70d49f1c1f7c10ef2639889fdac15894d3fba1a03caf5603eca3"
-keystore_path = "/home/broody/.starkli_accounts/sepolia/keystore.json"
+#keystore_path = "/home/broody/.starkli_accounts/sepolia/keystore.json"
+keystore_path = "/Users/broody/.starkli_accounts/sepolia/keystore.json"
 
 [namespace]
 default = "hashfront"

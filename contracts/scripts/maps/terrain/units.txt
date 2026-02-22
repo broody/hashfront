@@ -1,0 +1,17 @@
+# type player x y
+# P1 - near HQ (0,0)
+Infantry 1 1 0
+Infantry 1 0 1
+Infantry 1 2 1
+Infantry 1 1 2
+Ranger 1 0 2
+Ranger 1 2 0
+Tank 1 1 1
+# P2 - near HQ (19,19)
+Infantry 2 18 19
+Infantry 2 19 18
+Infantry 2 17 18
+Infantry 2 18 17
+Ranger 2 19 17
+Ranger 2 17 17
+Tank 2 18 18

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAPS_DIR="$SCRIPT_DIR/maps"
+
 PROFILE="sepolia"
-MAP_FILE=""
 MAP_NAME=""
 
 while [[ $# -gt 0 ]]; do
@@ -11,15 +13,11 @@ while [[ $# -gt 0 ]]; do
       PROFILE="$2"
       shift 2
       ;;
-    --name)
-      MAP_NAME="$2"
-      shift 2
-      ;;
     *)
-      if [ -z "$MAP_FILE" ]; then
-        MAP_FILE="$1"
+      if [ -z "$MAP_NAME" ]; then
+        MAP_NAME="$1"
       else
-        echo "Usage: $0 [--profile <profile>] [--name <name>] <terrain.txt> (default profile: sepolia)" >&2
+        echo "Usage: $0 [--profile <profile>] <map_name> (default profile: sepolia)" >&2
         exit 1
       fi
       shift
@@ -27,35 +25,47 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ -z "$MAP_FILE" ]; then
-  echo "Usage: $0 [--profile <profile>] [--name <name>] <terrain.txt> (default profile: sepolia)" >&2
-  exit 1
-fi
-
-# Default name from filename (without extension)
 if [ -z "$MAP_NAME" ]; then
-  MAP_NAME="$(basename "$MAP_FILE" .txt)"
-fi
-
-if [ ! -f "$MAP_FILE" ]; then
-  echo "Error: file not found: $MAP_FILE" >&2
+  echo "Usage: $0 [--profile <profile>] <map_name> (default profile: sepolia)" >&2
+  echo "Available maps:" >&2
+  for d in "$MAPS_DIR"/*/; do
+    name="$(basename "$d")"
+    [[ "$name" == _* ]] && continue
+    echo "  $name" >&2
+  done
   exit 1
 fi
 
-# Read non-empty lines into array
+MAP_DIR="$MAPS_DIR/$MAP_NAME"
+TERRAIN_FILE="$MAP_DIR/terrain.txt"
+BUILDINGS_FILE="$MAP_DIR/buildings.txt"
+UNITS_FILE="$MAP_DIR/units.txt"
+
+if [ ! -d "$MAP_DIR" ]; then
+  echo "Error: map directory not found: $MAP_DIR" >&2
+  exit 1
+fi
+
+if [ ! -f "$TERRAIN_FILE" ]; then
+  echo "Error: terrain.txt required but not found in $MAP_DIR" >&2
+  exit 1
+fi
+
+# ============================================================================
+# Parse terrain
+# ============================================================================
+
 ROWS=()
 while IFS= read -r line; do
   ROWS+=("$line")
-done < <(sed '/^[[:space:]]*$/d' "$MAP_FILE")
+done < <(sed '/^[[:space:]]*$/d' "$TERRAIN_FILE")
 
 HEIGHT=${#ROWS[@]}
 if [ "$HEIGHT" -eq 0 ]; then
-  echo "Error: map file is empty" >&2
+  echo "Error: terrain.txt is empty" >&2
   exit 1
 fi
 
-# Parse double-spaced format: "T T T . . M M"
-# Split first row to determine width
 read -ra FIRST_CELLS <<< "${ROWS[0]}"
 WIDTH=${#FIRST_CELLS[@]}
 
@@ -66,13 +76,13 @@ TILE_COUNT=0
 for (( y=0; y<HEIGHT; y++ )); do
   read -ra CELLS <<< "${ROWS[$y]}"
   if [ ${#CELLS[@]} -ne "$WIDTH" ]; then
-    echo "Error: row $y has ${#CELLS[@]} cells, expected $WIDTH" >&2
+    echo "Error: terrain row $y has ${#CELLS[@]} cells, expected $WIDTH" >&2
     exit 1
   fi
   for (( x=0; x<WIDTH; x++ )); do
     CH="${CELLS[$x]}"
     case "$CH" in
-      '.') continue ;;  # Skip grass
+      '.') continue ;;
       'M') V=1 ;;
       'C') V=2 ;;
       'F') V=3 ;;
@@ -93,31 +103,82 @@ for (( y=0; y<HEIGHT; y++ )); do
   done
 done
 
-# Buildings: HQ at opposite corners
+# ============================================================================
+# Parse buildings (optional)
+# ============================================================================
+
 # packed u32 = (player_id << 24) | (building_type << 16) | (x << 8) | y
-# BuildingType::HQ = 3
-LAST_X=$(( WIDTH - 1 ))
-LAST_Y=$(( HEIGHT - 1 ))
-B1=$(( 1 * 16777216 + 3 * 65536 + 0 * 256 + 0 ))               # P1 HQ @ (0, 0)
-B2=$(( 2 * 16777216 + 3 * 65536 + LAST_X * 256 + LAST_Y ))      # P2 HQ @ (W-1, H-1)
-BUILDING_COUNT=2
-BUILDINGS="$B1 $B2"
+# BuildingType: City=1, Factory=2, HQ=3
 
-# Units: 1 infantry + 1 tank + 1 ranger per player near the center
+BUILDINGS=""
+BUILDING_COUNT=0
+
+if [ -f "$BUILDINGS_FILE" ]; then
+  while IFS= read -r line; do
+    # Skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// /}" ]] && continue
+
+    read -r TYPE PLAYER X Y <<< "$line"
+    case "$TYPE" in
+      City)    BT=1 ;;
+      Factory) BT=2 ;;
+      HQ)      BT=3 ;;
+      *) echo "Error: unknown building type '$TYPE'" >&2; exit 1 ;;
+    esac
+    PACKED=$(( PLAYER * 16777216 + BT * 65536 + X * 256 + Y ))
+    if [ -z "$BUILDINGS" ]; then
+      BUILDINGS="$PACKED"
+    else
+      BUILDINGS="$BUILDINGS $PACKED"
+    fi
+    BUILDING_COUNT=$(( BUILDING_COUNT + 1 ))
+  done < "$BUILDINGS_FILE"
+  echo "  buildings.txt: ${BUILDING_COUNT} buildings"
+else
+  echo "  buildings.txt: not found, skipping"
+fi
+
+# ============================================================================
+# Parse units (optional)
+# ============================================================================
+
 # packed u32 = (player_id << 24) | (unit_type << 16) | (x << 8) | y
-# UnitType::Infantry = 1, UnitType::Tank = 2, UnitType::Ranger = 3
-MID_X=$(( WIDTH / 2 ))
-MID_Y=$(( HEIGHT / 2 ))
-U1=$(( 1 * 16777216 + 1 * 65536 + (MID_X - 1) * 256 + MID_Y ))         # P1 Infantry @ (mid-1, mid)
-U2=$(( 2 * 16777216 + 1 * 65536 + (MID_X + 1) * 256 + MID_Y ))         # P2 Infantry @ (mid+1, mid)
-U3=$(( 1 * 16777216 + 2 * 65536 + (MID_X - 1) * 256 + (MID_Y - 1) ))   # P1 Tank @ (mid-1, mid-1)
-U4=$(( 2 * 16777216 + 2 * 65536 + (MID_X + 1) * 256 + (MID_Y + 1) ))   # P2 Tank @ (mid+1, mid+1)
-U5=$(( 1 * 16777216 + 3 * 65536 + (MID_X - 2) * 256 + MID_Y ))         # P1 Ranger @ (mid-2, mid)
-U6=$(( 2 * 16777216 + 3 * 65536 + (MID_X + 2) * 256 + MID_Y ))         # P2 Ranger @ (mid+2, mid)
-UNIT_COUNT=6
-UNITS="$U1 $U2 $U3 $U4 $U5 $U6"
+# UnitType: Infantry=1, Tank=2, Ranger=3
 
-echo "Map: ${WIDTH}x${HEIGHT}, ${TILE_COUNT} tiles, ${BUILDING_COUNT} buildings, ${UNIT_COUNT} units"
+UNITS=""
+UNIT_COUNT=0
+
+if [ -f "$UNITS_FILE" ]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// /}" ]] && continue
+
+    read -r TYPE PLAYER X Y <<< "$line"
+    case "$TYPE" in
+      Infantry) UT=1 ;;
+      Tank)     UT=2 ;;
+      Ranger)   UT=3 ;;
+      *) echo "Error: unknown unit type '$TYPE'" >&2; exit 1 ;;
+    esac
+    PACKED=$(( PLAYER * 16777216 + UT * 65536 + X * 256 + Y ))
+    if [ -z "$UNITS" ]; then
+      UNITS="$PACKED"
+    else
+      UNITS="$UNITS $PACKED"
+    fi
+    UNIT_COUNT=$(( UNIT_COUNT + 1 ))
+  done < "$UNITS_FILE"
+  echo "  units.txt: ${UNIT_COUNT} units"
+else
+  echo "  units.txt: not found, skipping"
+fi
+
+# ============================================================================
+# Register
+# ============================================================================
+
+echo "Map '$MAP_NAME': ${WIDTH}x${HEIGHT}, ${TILE_COUNT} tiles, ${BUILDING_COUNT} buildings, ${UNIT_COUNT} units"
 
 PROFILE_ARGS=()
 if [ -n "$PROFILE" ]; then
