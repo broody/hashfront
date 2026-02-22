@@ -428,9 +428,9 @@ def create_game(width=14, height=14, rng_seed=42):
 # ============================================================================
 
 def collect_income(state, player):
-    """Collect 1 gold per owned city at start of turn."""
+    """Collect 1 gold per owned city + 1 base HQ income at start of turn."""
     cities = state.player_cities(player)
-    income = len(cities)
+    income = len(cities) + 1  # +1 base HQ income
     state.gold[player] += income
     state.gold_earned[player] += income
 
@@ -768,7 +768,16 @@ class DefensiveStrategy(Strategy):
 
             dist_to_hq = manhattan(unit.x, unit.y, own_hq.x, own_hq.y) if own_hq else 99
 
-            # Send idle infantry to capture cities
+            # Early game (rounds 1-4): aggressively capture nearby cities to build a defensive perimeter
+            if state.round_num <= 4 and unit.unit_type == UnitType.INFANTRY and own_hq:
+                nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 5]
+                if nearby_cities:
+                    if _try_send_infantry_to_capture(state, unit, player, rng, nearby_cities):
+                        if state.winner:
+                            return
+                        continue
+
+            # Send idle infantry to capture cities when no threats
             threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
             if not threats and unit.unit_type == UnitType.INFANTRY and capturable:
                 if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
