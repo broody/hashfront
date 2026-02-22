@@ -965,18 +965,7 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
         return;
 
       // Find unit at clicked tile — click empty space to deselect
-      const { units, game, moveQueue } = useGameStore.getState();
-      const myTeam = getMyTeam(addressRef.current);
-      const currentTeam =
-        game?.currentPlayer !== undefined
-          ? (TEAMS[game.currentPlayer] ?? null)
-          : null;
-      const isMyTurn =
-        currentTeam !== null &&
-        (game?.isTestMode
-          ? isPlayerInGame(addressRef.current)
-          : myTeam === currentTeam);
-      const allowedTeam = game?.isTestMode ? currentTeam : myTeam;
+      const { units, moveQueue } = useGameStore.getState();
       // Check unmoved units at their store position
       let clicked = units.find(
         (u) =>
