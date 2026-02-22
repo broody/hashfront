@@ -39,23 +39,28 @@ RPS_TARGETS = {
 }
 
 # Parameters and their valid ranges
+# Constraints enforced in validate_config():
+#   Tank HP > Ranger HP >= Infantry HP
+#   Tank ATK > Ranger ATK >= Infantry ATK
+#   Infantry Move > Ranger Move >= Tank Move
+#   Tank Cost > Ranger Cost > Infantry Cost (infantry locked at 1)
 PARAM_SPACE = {
-    "infantry_hp": (2, 5),
-    "infantry_atk": (1, 3),
-    "infantry_move": (3, 5),
-    "infantry_cost": (1, 3),
+    # Infantry: locked stats, only accuracy is tunable
     "infantry_accuracy": (80, 95),
-    "tank_hp": (4, 7),
-    "tank_atk": (3, 5),
-    "tank_move": (2, 4),
-    "tank_cost": (2, 5),
-    "tank_accuracy": (80, 95),
-    "ranger_hp": (2, 5),
+    # Tank: the heavy hitter
+    "tank_hp": (5, 8),
+    "tank_atk": (3, 6),
+    "tank_move": (2, 3),
+    "tank_cost": (3, 5),
+    "tank_accuracy": (75, 95),
+    # Ranger: the skirmisher
+    "ranger_hp": (3, 5),
     "ranger_atk": (2, 4),
-    "ranger_move": (2, 4),
-    "ranger_cost": (1, 3),
+    "ranger_move": (3, 4),
+    "ranger_cost": (2, 3),
     "ranger_accuracy": (80, 95),
     "ranger_can_capture": (0, 1),
+    # Economy
     "starting_gold": (3, 8),
     "hq_income": (0, 2),
     "capture_threshold": (2, 4),
@@ -219,6 +224,23 @@ def score_rps(results):
     return total_penalty
 
 
+def validate_config(config):
+    """Check logical constraints. Returns True if valid."""
+    # Tank HP > Ranger HP >= Infantry HP
+    if not (config["tank_hp"] > config["ranger_hp"] >= config["infantry_hp"]):
+        return False
+    # Tank ATK > Ranger ATK >= Infantry ATK
+    if not (config["tank_atk"] > config["ranger_atk"] >= config["infantry_atk"]):
+        return False
+    # Infantry Move > Ranger Move >= Tank Move
+    if not (config["infantry_move"] > config["ranger_move"] >= config["tank_move"]):
+        return False
+    # Tank Cost > Ranger Cost > Infantry Cost
+    if not (config["tank_cost"] > config["ranger_cost"] > config["infantry_cost"]):
+        return False
+    return True
+
+
 def load_state():
     """Load search state."""
     if STATE_FILE.exists():
@@ -281,13 +303,19 @@ def pick_tweak(state):
 
         new_val = current + direction
         if lo <= new_val <= hi and param not in state.get("params_tried_this_round", []):
-            return param, new_val
+            test_config = copy.deepcopy(config)
+            test_config[param] = new_val
+            if validate_config(test_config):
+                return param, new_val
 
         # Try other direction
         new_val = current - direction
         if lo <= new_val <= hi and param not in state.get("params_tried_this_round", []):
-            state["direction"] = -direction
-            return param, new_val
+            test_config = copy.deepcopy(config)
+            test_config[param] = new_val
+            if validate_config(test_config):
+                state["direction"] = -direction
+                return param, new_val
 
         # This param is at boundary or already tried, move to next
         state["param_index"] = (idx + 1) % len(params)
