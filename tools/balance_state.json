@@ -1,6 +1,6 @@
 {
   "current_config": {
-    "infantry_hp": 4,
+    "infantry_hp": 5,
     "infantry_atk": 2,
     "infantry_move": 4,
     "infantry_cost": 1,
@@ -22,7 +22,7 @@
     "max_rounds": 30
   },
   "best_config": {
-    "infantry_hp": 4,
+    "infantry_hp": 5,
     "infantry_atk": 2,
     "infantry_move": 4,
     "infantry_cost": 1,
@@ -43,8 +43,8 @@
     "capture_threshold": 2,
     "max_rounds": 30
   },
-  "best_score": 289.0625,
-  "iteration": 2,
+  "best_score": 55.125,
+  "iteration": 3,
   "param_index": 0,
   "direction": 1,
   "params_tried_this_round": []

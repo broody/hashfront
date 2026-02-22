@@ -1,6 +1,6 @@
 {
   "config": {
-    "infantry_hp": 4,
+    "infantry_hp": 5,
     "infantry_atk": 2,
     "infantry_move": 4,
     "infantry_cost": 1,
@@ -21,15 +21,15 @@
     "capture_threshold": 2,
     "max_rounds": 30
   },
-  "score": 289.0625,
+  "score": 55.125,
   "results": {
-    "aggressive_vs_rush": "66.5%",
-    "aggressive_vs_balanced": "44.5%",
-    "rush_vs_aggressive": "34.5%",
-    "rush_vs_balanced": "43.0%",
-    "balanced_vs_aggressive": "49.0%",
-    "balanced_vs_rush": "59.0%"
+    "aggressive_vs_rush": "50.5%",
+    "aggressive_vs_balanced": "32.5%",
+    "rush_vs_aggressive": "45.0%",
+    "rush_vs_balanced": "53.5%",
+    "balanced_vs_aggressive": "63.5%",
+    "balanced_vs_rush": "48.0%"
   },
-  "iteration": 1,
-  "timestamp": "2026-02-22T07:59:29.875871+00:00"
+  "iteration": 2,
+  "timestamp": "2026-02-22T08:09:01.376857+00:00"
 }
