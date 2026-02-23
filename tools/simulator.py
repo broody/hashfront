@@ -16,8 +16,10 @@ Usage:
 import argparse
 import collections
 import math
+import os
 import random
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional
@@ -26,13 +28,13 @@ from typing import Optional
 # Constants (from PRD / balance_analyzer.py)
 # ============================================================================
 
-CAPTURE_THRESHOLD = 2
+CAPTURE_THRESHOLD = 3
 MAX_ROUNDS = 100
 STARTING_GOLD = 5
 P2_STARTING_GOLD = 7
 
 UNIT_COST = {
-    "INFANTRY": 1,
+    "INFANTRY": 2,
     "TANK": 4,
     "RANGER": 2,
 }
@@ -69,9 +71,9 @@ class UnitType(Enum):
     RANGER = auto()
 
 UNIT_STATS = {
-    UnitType.INFANTRY: {"hp": 3, "atk": 2, "move": 4, "range": (1, 1), "accuracy": 90, "can_attack_after_move": True},
-    UnitType.TANK:     {"hp": 5, "atk": 4, "move": 2, "range": (1, 1), "accuracy": 85, "can_attack_after_move": True},
-    UnitType.RANGER:   {"hp": 3, "atk": 3, "move": 3, "range": (2, 3), "accuracy": 88, "can_attack_after_move": False},
+    UnitType.INFANTRY: {"hp": 10, "atk": 4, "move": 4, "range": (1, 1), "accuracy": 90, "can_attack_after_move": True},
+    UnitType.TANK:     {"hp": 10, "atk": 7, "move": 3, "range": (1, 1), "accuracy": 85, "can_attack_after_move": True},
+    UnitType.RANGER:   {"hp": 10, "atk": 5, "move": 3, "range": (2, 3), "accuracy": 88, "can_attack_after_move": False},
 }
 
 # Vehicle types get road bonus
@@ -1459,25 +1461,39 @@ def run_game(p1_strategy, p2_strategy, seed, verbose=False, coin_flip=False):
 # Simulation
 # ============================================================================
 
+def _run_single_game(args):
+    """Worker function for parallel game execution."""
+    s1_name, s2_name, seed, coin_flip = args
+    s1 = STRATEGIES[s1_name]()
+    s2 = STRATEGIES[s2_name]()
+    return run_game(s1, s2, seed, verbose=False, coin_flip=coin_flip)
+
+
 def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_flip=False):
-    """Run all matchups and print results."""
+    """Run all games in parallel and print results."""
+    workers = os.cpu_count() or 4
     results = {}
 
+    # Build all game tasks across all matchups
+    all_tasks = []
+    task_keys = []
     for s1_name in strategy_names:
         for s2_name in strategy_names:
             key = (s1_name, s2_name)
-            s1 = STRATEGIES[s1_name]()
-            s2 = STRATEGIES[s2_name]()
-            game_results = []
-
             for i in range(num_games):
-                seed = base_seed + hash(key) + i
-                if verbose:
-                    print(f"\n--- {s1_name} vs {s2_name} game {i+1} (seed={seed}) ---")
-                result = run_game(s1, s2, seed, verbose, coin_flip=coin_flip)
-                game_results.append(result)
+                seed = base_seed + (ord(s1_name[0]) * 256 + ord(s2_name[0])) * 10000 + i
+                all_tasks.append((s1_name, s2_name, seed, coin_flip))
+                task_keys.append(key)
 
-            results[key] = game_results
+    if verbose or workers <= 1:
+        game_results_list = [_run_single_game(t) for t in all_tasks]
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            game_results_list = list(pool.map(_run_single_game, all_tasks, chunksize=max(1, len(all_tasks) // workers)))
+
+    # Group results by matchup
+    for key, result in zip(task_keys, game_results_list):
+        results.setdefault(key, []).append(result)
 
     # Print summary
     print(f"\n{'='*90}")
