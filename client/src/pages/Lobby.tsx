@@ -243,6 +243,7 @@ export default function Lobby() {
   const [statsTransactions, setStatsTransactions] = useState<number | null>(
     null,
   );
+  const [tps, setTps] = useState<number | null>(null);
 
   useEffect(() => {
     if (controllerReady) return;
@@ -660,6 +661,35 @@ export default function Lobby() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const blockTxCounts: number[] = [];
+    let lastBlockNum = -1;
+
+    async function pollBlock() {
+      try {
+        const block = await provider.getBlock("latest");
+        if (!active) return;
+        if (block.block_number !== lastBlockNum) {
+          lastBlockNum = block.block_number;
+          blockTxCounts.push(block.transactions?.length ?? 0);
+          if (blockTxCounts.length > 10) blockTxCounts.shift();
+        }
+        const totalTx = blockTxCounts.reduce((sum, c) => sum + c, 0);
+        setTps(totalTx / (blockTxCounts.length * 2));
+      } catch (error) {
+        console.error("Failed to load TPS:", error);
+      }
+    }
+
+    void pollBlock();
+    const interval = setInterval(pollBlock, 5_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [provider]);
+
   const selectedMapInfo = useMemo(
     () =>
       mapInfos.find((mapInfo) => toNumber(mapInfo.map_id) === selectedMapId) ??
@@ -791,7 +821,7 @@ export default function Lobby() {
               </span>
             </h1>
             <div className="text-sm mt-1 opacity-80 font-mono uppercase">
-              &gt; SYSTEM_READY // TPS: 5.3 // CHAIN: SEPOLIA
+              &gt; SYSTEM_READY // TPS: {tps !== null ? tps.toFixed(1) : "..."} // CHAIN: SEPOLIA
             </div>
           </div>
         </div>
