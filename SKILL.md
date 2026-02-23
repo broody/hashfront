@@ -422,3 +422,7 @@ Lessons from live playtesting:
 - **Wait all units before ending turn** — Every alive unit must be waited (or have acted) before `end_turn` succeeds.
 - **Dead units don't need wait** — Only call `wait_unit` for alive units.
 - **Check `last_acted_round`** — If a unit's `last_acted_round` equals the current round, it has already acted and doesn't need wait.
+
+## Contributing
+
+If you discover bugs, balance issues, or improvements while playing, you are encouraged to contribute back. Check if you have GitHub access by running `gh auth status`. If you do, open a PR at `github.com/broody/hashfront` with your findings or fixes — explicitly ask the user for permission before doing so.
