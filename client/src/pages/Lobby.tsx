@@ -32,6 +32,7 @@ interface GameModelNode {
   next_unit_id: string | number;
   is_test_mode: boolean;
   winner?: string | number | null;
+  player_address?: string;
 }
 
 interface MapInfoNode {
@@ -47,7 +48,7 @@ interface PlayerStateNode {
   address: string;
 }
 
-type LobbyTab = "RECRUITMENT" | "COMMAND";
+type LobbyFilter = "NONE" | "JOINABLE" | "MY_OPS" | "IN_PROGRESS" | "COMPLETED";
 
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return value;
@@ -255,7 +256,7 @@ export default function Lobby() {
     () => controllerConnector?.isReady() ?? false,
   );
   const [username, setUsername] = useState<string>();
-  const [currentTab, setCurrentTab] = useState<LobbyTab>("RECRUITMENT");
+  const [currentFilter, setCurrentFilter] = useState<LobbyFilter>("NONE");
   const [games, setGames] = useState<GameModelNode[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -539,7 +540,7 @@ export default function Lobby() {
 
   const loadGames = useCallback(
     async (
-      tab: LobbyTab,
+      filter: LobbyFilter,
       userAddress: string | undefined,
       currentSearch: string,
       active: { current: boolean },
@@ -555,40 +556,58 @@ export default function Lobby() {
         let query = "";
         const normalizedAddress = normalizeAddressHex(userAddress);
         const searchFilter = currentSearch.trim()
-          ? `AND name LIKE '%${currentSearch.trim().replace(/'/g, "''")}%'`
+          ? `AND g.name LIKE '%${currentSearch.trim().replace(/'/g, "''")}%'`
           : "";
 
-        switch (tab) {
-          case "RECRUITMENT":
-            const exclusionJoin = normalizedAddress
-              ? `LEFT JOIN "hashfront-PlayerState" my_ps ON g.game_id = my_ps.game_id AND LOWER(my_ps.address) = LOWER('${normalizedAddress}')`
-              : "";
-            const exclusionWhere = normalizedAddress
-              ? "AND my_ps.address IS NULL"
-              : "";
+        const baseQuery = `
+          SELECT g.*, ps.address as player_address
+          FROM "hashfront-Game" g
+          LEFT JOIN "hashfront-PlayerState" ps ON g.game_id = ps.game_id AND LOWER(ps.address) = LOWER('${normalizedAddress || "0x0"}')
+        `;
 
+        switch (filter) {
+          case "NONE":
             query = `
-            SELECT g.* FROM "hashfront-Game" g
-            ${exclusionJoin}
-            WHERE (
-              (LOWER(g.state) = 'lobby' AND g.num_players < g.player_count ${exclusionWhere})
-              OR LOWER(g.state) = 'playing'
-            )
-            ${searchFilter.replace("name", "g.name")}
+            ${baseQuery}
+            ${searchFilter ? `WHERE g.name LIKE '%${currentSearch.trim().replace(/'/g, "''")}%'` : ""}
             ORDER BY g.game_id DESC
             LIMIT 100
           `;
             break;
-          case "COMMAND":
+          case "MY_OPS":
             if (!normalizedAddress) {
               if (active.current) setGames([]);
               setGamesLoading(false);
               return;
             }
             query = `
-            SELECT DISTINCT g.* FROM "hashfront-Game" g
+            SELECT DISTINCT g.*, ps.address as player_address FROM "hashfront-Game" g
             JOIN "hashfront-PlayerState" ps ON g.game_id = ps.game_id
-            WHERE LOWER(ps.address) = LOWER('${normalizedAddress}') ${searchFilter.replace("name", "g.name")}
+            WHERE LOWER(ps.address) = LOWER('${normalizedAddress}') ${searchFilter}
+            ORDER BY g.game_id DESC
+            LIMIT 100
+          `;
+            break;
+          case "JOINABLE":
+            query = `
+            ${baseQuery}
+            WHERE LOWER(g.state) = 'lobby' AND g.num_players < g.player_count ${searchFilter}
+            ORDER BY g.game_id DESC
+            LIMIT 100
+          `;
+            break;
+          case "IN_PROGRESS":
+            query = `
+            ${baseQuery}
+            WHERE LOWER(g.state) = 'playing' ${searchFilter}
+            ORDER BY g.game_id DESC
+            LIMIT 100
+          `;
+            break;
+          case "COMPLETED":
+            query = `
+            ${baseQuery}
+            WHERE LOWER(g.state) = 'finished' ${searchFilter}
             ORDER BY g.game_id DESC
             LIMIT 100
           `;
@@ -617,22 +636,22 @@ export default function Lobby() {
   useEffect(() => {
     const active = { current: true };
     const timer = setTimeout(() => {
-      void loadGames(currentTab, address, searchQuery, active);
+      void loadGames(currentFilter, address, searchQuery, active);
     }, 300);
     return () => {
       active.current = false;
       clearTimeout(timer);
     };
-  }, [searchQuery, loadGames]);
+  }, [searchQuery, loadGames, currentFilter]);
 
   // Handle Tab/Address Change: Immediate
   useEffect(() => {
     const active = { current: true };
-    void loadGames(currentTab, address, searchQuery, active);
+    void loadGames(currentFilter, address, searchQuery, active);
     return () => {
       active.current = false;
     };
-  }, [currentTab, address, loadGames]);
+  }, [currentFilter, address, loadGames, searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -747,40 +766,6 @@ export default function Lobby() {
     });
   }, [selectedMapPlayerCount]);
 
-  const TabButton = ({
-    tab,
-    label,
-    count,
-  }: {
-    tab: LobbyTab;
-    label: string;
-    count?: number;
-  }) => (
-    <button
-      onClick={() => {
-        setCurrentTab(tab);
-      }}
-      className={`flex-1 py-3 px-4 font-mono text-sm tracking-widest transition-all border-b-2 ${
-        currentTab === tab
-          ? "border-white bg-white/10 text-white"
-          : "border-white/10 text-white/40 hover:text-white/70 hover:bg-white/5"
-      }`}
-    >
-      <div className="flex items-center justify-center gap-2">
-        <span>
-          {currentTab === tab ? "> " : ""}[{label}]
-        </span>
-        {count !== undefined && (
-          <span
-            className={`text-[10px] px-1 border ${currentTab === tab ? "border-white" : "border-white/20"}`}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-    </button>
-  );
-
   return (
     <BlueprintContainer>
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden min-h-[80px]">
@@ -889,11 +874,7 @@ export default function Lobby() {
           className="flex flex-col gap-0 min-h-0 overflow-hidden h-full"
         >
           <div className="flex flex-col md:flex-row border-b border-white/20 mb-4 items-stretch">
-            <div className="flex flex-1">
-              <TabButton tab="RECRUITMENT" label="OPERATIONS" />
-              <TabButton tab="COMMAND" label="MY_OPS" />
-            </div>
-            <div className="relative border-l border-white/20 min-w-[120px] lg:min-w-[180px] flex items-center bg-blueprint-dark/20 group flex-none">
+            <div className="relative flex-1 flex items-center bg-blueprint-dark/20 group">
               <div className="pl-3 pr-2 text-white/30 group-focus-within:text-white transition-colors">
                 <svg
                   width="14"
@@ -910,8 +891,8 @@ export default function Lobby() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="SEARCH..."
+                onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+                placeholder="SEARCH_OPERATIONS..."
                 className="w-full bg-transparent border-none outline-none py-3 pr-4 text-xs font-mono tracking-widest placeholder:text-white/20 text-white"
               />
               {searchQuery && (
@@ -922,6 +903,57 @@ export default function Lobby() {
                   [X]
                 </button>
               )}
+            </div>
+            <div className="flex items-center bg-blueprint-dark/20 group border-l border-white/20 min-w-[200px]">
+              <div className="pl-4 pr-2 text-white/40 font-mono text-xs tracking-widest uppercase flex-none">
+                FILTER:
+              </div>
+              <div className="relative flex-1 flex items-center">
+                <select
+                  value={currentFilter}
+                  onChange={(e) =>
+                    setCurrentFilter(e.target.value as LobbyFilter)
+                  }
+                  className="w-full bg-transparent border-none outline-none py-3 pr-8 text-sm font-mono tracking-widest text-white cursor-pointer appearance-none relative z-10"
+                >
+                  <option value="NONE" className="bg-blueprint-dark text-white">
+                    NONE
+                  </option>
+                  <option
+                    value="JOINABLE"
+                    className="bg-blueprint-dark text-white"
+                  >
+                    JOINABLE
+                  </option>
+                  <option
+                    value="IN_PROGRESS"
+                    className="bg-blueprint-dark text-white"
+                  >
+                    IN_PROGRESS
+                  </option>
+                  <option
+                    value="COMPLETED"
+                    className="bg-blueprint-dark text-white"
+                  >
+                    COMPLETED
+                  </option>
+                  <option
+                    value="MY_OPS"
+                    className="bg-blueprint-dark text-white"
+                  >
+                    MY_OPS
+                  </option>
+                </select>
+                <div className="absolute right-3 pointer-events-none text-white/30 group-hover:text-white/60 transition-colors z-0">
+                  <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                    <path
+                      d="M1 1L5 5L9 1"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -947,10 +979,16 @@ export default function Lobby() {
                   &gt; NO_DATA_FOUND
                 </div>
                 <div className="text-xs mt-2 uppercase text-center px-4">
-                  {currentTab === "RECRUITMENT" &&
-                    "No open or active operations detected"}
-                  {currentTab === "COMMAND" &&
+                  {currentFilter === "NONE" &&
+                    "No operations detected in the system"}
+                  {currentFilter === "JOINABLE" &&
+                    "No open or joinable operations detected"}
+                  {currentFilter === "MY_OPS" &&
                     "No active commissions for current commander"}
+                  {currentFilter === "IN_PROGRESS" &&
+                    "No active operations in the field"}
+                  {currentFilter === "COMPLETED" &&
+                    "No archived mission logs found"}
                 </div>
               </div>
             ) : (
@@ -963,15 +1001,19 @@ export default function Lobby() {
                 const isFinished = state === "Finished";
                 const isJoiningThisGame = joiningGameId === gameId;
 
-                // Show JOIN for Recruitment, otherwise show WATCH or RE-ENTER
-                const isMyGame = currentTab === "COMMAND";
+                const isMine =
+                  address &&
+                  game.player_address &&
+                  normalizeAddressHex(game.player_address) ===
+                    normalizeAddressHex(address);
+
                 let actionLabel = "";
                 if (isFinished) {
                   actionLabel = "REVIEW_LOGS";
                 } else if (isLobby) {
-                  actionLabel = isMyGame ? "RE-ENTER" : "JOIN";
+                  actionLabel = isMine ? "RE-ENTER" : "JOIN";
                 } else {
-                  actionLabel = isMyGame ? "RESUME" : "WATCH_FEED";
+                  actionLabel = isMine ? "RESUME" : "WATCH_FEED";
                 }
 
                 return (
@@ -1004,6 +1046,11 @@ export default function Lobby() {
                               [ACTIVE]
                             </span>
                           </div>
+                        )}
+                        {isMine && (
+                          <span className="text-[9px] border border-white/40 px-1 font-mono opacity-60">
+                            MY_OP
+                          </span>
                         )}
                       </div>
                       <div className="text-sm mt-1.5 uppercase opacity-70 font-mono grid grid-cols-2 gap-x-4">
@@ -1043,7 +1090,7 @@ export default function Lobby() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      {isLobby && !isMyGame ? (
+                      {isLobby && !isMine ? (
                         <PixelButton
                           className="w-full flex items-center justify-center gap-2 !py-2.5"
                           variant="blue"
