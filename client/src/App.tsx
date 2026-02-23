@@ -8,7 +8,7 @@ import Lobby from "./pages/Lobby";
 import Profile from "./pages/Profile";
 import LogoGallery from "./pages/LogoGallery";
 import { ToastProvider } from "./components/Toast";
-import MusicPlayer from "./components/MusicPlayer";
+
 
 export default function App() {
   return (

@@ -79,7 +79,7 @@ function parseGameState(
 function gameStatusLabel(
   state: "Lobby" | "Playing" | "Finished" | "Other",
 ): string {
-  if (state === "Lobby") return "OPEN_RECRUITMENT";
+  if (state === "Lobby") return "OPEN";
   if (state === "Playing") return "OPERATIONAL";
   if (state === "Finished") return "DECOMMISSIONED";
   return "UNKNOWN";
@@ -105,14 +105,47 @@ const ECGMonitor = ({
   playerCount = 1,
   gameId = 0,
   isFinished = false,
+  isPlaying = false,
+  round = 0,
 }: {
   playerCount: number;
   gameId: number;
   isFinished?: boolean;
+  isPlaying?: boolean;
+  round?: number;
 }) => {
   const pulses = Math.max(1, playerCount);
-  // Slower scroll speed: 1p=6s, 4p=1.5s approx
-  const scrollDuration = Math.max(1.5, 7.5 - pulses * 1.5);
+  // Speed scales with round: base 12s at round 0, min 3s at round 100
+  const BASE_DURATION = 12;
+  const MIN_DURATION = 4;
+  const MAX_ROUND = 100;
+  const roundFactor = Math.min(round, MAX_ROUND) / MAX_ROUND;
+  const baseDuration = BASE_DURATION - (BASE_DURATION - MIN_DURATION) * roundFactor;
+  const variance = (((gameId * 127 + 311) * 997) % 4000) / 1000 - 2;
+  const openSpeedUp = !isPlaying && !isFinished ? 0.1 : 1;
+  const scrollDuration = Math.max(MIN_DURATION, (baseDuration + variance) * openSpeedUp);
+
+  // Generate heartbeat path with smooth amplitude variance for operational games.
+  // Uses 8 unique beats with a sine-wave amplitude curve, duplicated for seamless
+  // -50% scroll tiling. Only ~1 beat is visible at a time so changes happen off-screen.
+  const numBeats = isPlaying ? 8 : 2;
+  const ecgPath = (() => {
+    const beatWidth = 40;
+    const parts: string[] = [];
+    for (let i = 0; i < numBeats * 2; i++) {
+      const x = i * beatWidth;
+      const ampVar = isPlaying
+        ? Math.sin((2 * Math.PI * (i % numBeats)) / numBeats + gameId * 2.3) * 5
+        : 0;
+      const peak = 10 - ampVar;
+      const trough = 30 + ampVar;
+      parts.push(
+        `L${x + 15},20 L${x + 18},${peak.toFixed(1)} L${x + 22},${trough.toFixed(1)} L${x + 25},20`,
+      );
+    }
+    return `M0,20 ${parts.join(" ")} L${numBeats * 2 * beatWidth},20`;
+  })();
+  const ecgViewBox = `0 0 ${numBeats * 2 * 40} 40`;
 
   // Use a more complex prime-based offset for better "randomness"
   // (gameId * a_prime + some_other_prime) % scrollDuration
@@ -146,7 +179,7 @@ const ECGMonitor = ({
             </svg>
           ) : (
             <svg
-              viewBox="0 0 160 40"
+              viewBox={ecgViewBox}
               className="h-full shrink-0 animate-ecg-scroll"
               style={{
                 animationDuration: `${scrollDuration}s`,
@@ -159,7 +192,7 @@ const ECGMonitor = ({
                 style={{ animationDelay: `-${(randomDelay * 0.8) % 5}s` }}
               >
                 <path
-                  d="M0,20 L15,20 L18,10 L22,30 L25,20 L40,20 L55,20 L58,10 L62,30 L65,20 L80,20 L95,20 L98,10 L102,30 L105,20 L120,20 L135,20 L138,10 L142,30 L145,20 L160,20"
+                  d={ecgPath}
                   fill="none"
                   stroke="rgba(255, 255, 255, 0.5)"
                   strokeWidth="1.2"
@@ -958,6 +991,8 @@ export default function Lobby() {
                         playerCount={toNumber(game.num_players)}
                         gameId={gameId}
                         isFinished={isFinished}
+                        isPlaying={isPlaying}
+                        round={toNumber(game.round)}
                       />
                     </div>
                     <div>
