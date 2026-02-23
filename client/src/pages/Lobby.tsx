@@ -769,36 +769,6 @@ export default function Lobby() {
   return (
     <BlueprintContainer>
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b-[3px] border-white pb-3 md:pb-4 lg:pb-5 mb-2 relative overflow-hidden min-h-[80px]">
-        {/* Decorative Background SVG for Header */}
-        <div className="absolute right-0 top-0 h-full w-1/2 opacity-10 pointer-events-none">
-          <svg
-            width="100%"
-            height="100%"
-            viewBox="0 0 400 100"
-            preserveAspectRatio="none"
-          >
-            <path
-              d="M0,50 L400,50 M0,20 L400,20 M0,80 L400,80"
-              stroke="white"
-              strokeWidth="1"
-              strokeDasharray="10,5"
-            />
-            <circle
-              cx="350"
-              cy="50"
-              r="30"
-              stroke="white"
-              strokeWidth="1"
-              fill="none"
-            />
-            <path
-              d="M350,20 L350,80 M320,50 L380,50"
-              stroke="white"
-              strokeWidth="1"
-            />
-          </svg>
-        </div>
-
         <div className="relative z-10 flex items-center gap-3 lg:gap-4">
           <div className="hidden md:block">
             <svg
