@@ -948,16 +948,6 @@ export default function Lobby() {
                   LOCKED
                 </span>
               </a>
-              <a
-                href="#"
-                className="hover:translate-x-2 transition-transform flex items-center gap-2"
-                onClick={(e) => {
-                  e.preventDefault();
-                  toast("Access denied", "error");
-                }}
-              >
-                <span>&gt;</span> SETTINGS
-              </a>
             </div>
           </PixelPanel>
 
