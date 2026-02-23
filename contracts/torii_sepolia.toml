@@ -7,6 +7,14 @@ http_cors_origins = ["*"]
 [grpc]
 optimistic = true
 
+[[sql.model_indices]]
+model_tag = "hashfront-Game"
+fields = ["name"]
+
+[[sql.model_indices]]
+model_tag = "hashfront-PlayerState"
+fields = ["address"]
+
 [indexing]
 world_block = 0
 pending = true
