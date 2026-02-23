@@ -15,6 +15,20 @@ fields = ["name"]
 model_tag = "hashfront-PlayerState"
 fields = ["address"]
 
+[sql]
+historical = [
+    "hashfront-GameCreated",
+    "hashfront-GameStarted",
+    "hashfront-PlayerJoined",
+    "hashfront-UnitMoved",
+    "hashfront-UnitAttacked",
+    "hashfront-UnitDied",
+    "hashfront-BuildingCaptured",
+    "hashfront-UnitBuilt",
+    "hashfront-TurnEnded",
+    "hashfront-GameOver",
+]
+
 [indexing]
 world_block = 0
 pending = true
