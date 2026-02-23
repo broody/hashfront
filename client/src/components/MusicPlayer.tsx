@@ -139,13 +139,32 @@ export default function MusicPlayer() {
           {muted ? (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <polygon points="2,5 5,5 9,2 9,14 5,11 2,11" />
-              <line x1="11" y1="5" x2="15" y2="11" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="15" y1="5" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" />
+              <line
+                x1="11"
+                y1="5"
+                x2="15"
+                y2="11"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <line
+                x1="15"
+                y1="5"
+                x2="11"
+                y2="11"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
             </svg>
           ) : (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <polygon points="2,5 5,5 9,2 9,14 5,11 2,11" />
-              <path d="M11,5 Q14,8 11,11" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <path
+                d="M11,5 Q14,8 11,11"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
             </svg>
           )}
         </button>

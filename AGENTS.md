@@ -10,6 +10,14 @@ pnpm format && pnpm build
 
 If either fails, fix before committing. No exceptions.
 
+## Commit Messages
+
+Use the following commit message format for check-ins:
+
+```text
+feat: <concise description>
+```
+
 ## Stack
 
 - **Client:** Vite + React + TypeScript + PixiJS v8 + pixi-viewport

@@ -35,10 +35,10 @@ pub mod actions {
         CAPTURE_THRESHOLD, MAX_ROUNDS, NON_P1_STARTING_GOLD_BONUS, STARTING_GOLD,
     };
     use hashfront::events::{
-        BuildingCaptured, GameCreated, GameOver, GameStarted, PlayerJoined, TurnEnded, UnitAttacked,
+        BuildingCaptured, GameCreated, GameStarted, PlayerJoined, TurnEnded, UnitAttacked,
         UnitBuilt, UnitDied, UnitMoved,
     };
-    use hashfront::helpers::{combat, game as game_helpers, map as map_helpers, unit_stats};
+    use hashfront::helpers::{combat, game as game_helpers, map as map_helpers, stats, unit_stats};
     use hashfront::models::building::Building;
     use hashfront::models::game::{Game, GameCounter};
     use hashfront::models::map::{MapBuilding, MapInfo, MapTile, MapTileSeq, MapUnit};
@@ -507,6 +507,9 @@ pub mod actions {
                 let mut def_player: PlayerState = world.read_model((game_id, defender.player_id));
                 def_player.unit_count -= 1;
                 world.write_model(@def_player);
+                if !game.is_test_mode {
+                    stats::record_unit_kill(ref world, current_ps.address, def_player.address);
+                }
 
                 game_helpers::check_elimination(ref world, game_id, defender.player_id, ref game);
             } else {
@@ -529,6 +532,11 @@ pub mod actions {
                         .read_model((game_id, game.current_player));
                     atk_player.unit_count -= 1;
                     world.write_model(@atk_player);
+                    if !game.is_test_mode {
+                        let def_player: PlayerState = world
+                            .read_model((game_id, defender.player_id));
+                        stats::record_unit_kill(ref world, def_player.address, atk_player.address);
+                    }
 
                     game_helpers::check_elimination(
                         ref world, game_id, attacker.player_id, ref game,
@@ -611,6 +619,11 @@ pub mod actions {
                     new_ps.city_count += 1;
                 }
                 world.write_model(@new_ps);
+                if !game.is_test_mode {
+                    stats::record_building_capture(
+                        ref world, new_ps.address, building.building_type,
+                    );
+                }
 
                 world
                     .emit_event(
@@ -620,10 +633,13 @@ pub mod actions {
                     );
 
                 if building.building_type == BuildingType::HQ {
-                    game.state = GameState::Finished;
-                    game.winner = game.current_player;
-                    world.write_model(@game);
-                    world.emit_event(@GameOver { game_id, winner: game.current_player });
+                    game_helpers::finish_game(
+                        ref world,
+                        game_id,
+                        ref game,
+                        game.current_player,
+                        stats::WIN_REASON_HQ_CAPTURE,
+                    );
                 }
 
                 if old_owner != 0 {
@@ -736,14 +752,12 @@ pub mod actions {
             assert(found, 'No alive players');
 
             if new_round > MAX_ROUNDS {
-                game.state = GameState::Finished;
-                game
-                    .winner =
-                        game_helpers::timeout_winner(
-                            ref world, game_id, game.player_count, game.next_unit_id,
-                        );
-                world.write_model(@game);
-                world.emit_event(@GameOver { game_id, winner: game.winner });
+                let winner = game_helpers::timeout_winner(
+                    ref world, game_id, game.player_count, game.next_unit_id,
+                );
+                game_helpers::finish_game(
+                    ref world, game_id, ref game, winner, stats::WIN_REASON_TIMEOUT,
+                );
                 return;
             }
 
@@ -784,6 +798,9 @@ pub mod actions {
             let mut resigned_ps: PlayerState = world.read_model((game_id, caller_player));
             resigned_ps.is_alive = false;
             world.write_model(@resigned_ps);
+            if !game.is_test_mode {
+                stats::record_resignation(ref world, resigned_ps.address);
+            }
 
             let mut alive_count: u8 = 0;
             let mut last_alive: u8 = 0;
@@ -800,10 +817,9 @@ pub mod actions {
             assert(alive_count > 0, 'No alive players');
 
             if alive_count == 1 {
-                game.state = GameState::Finished;
-                game.winner = last_alive;
-                world.write_model(@game);
-                world.emit_event(@GameOver { game_id, winner: last_alive });
+                game_helpers::finish_game(
+                    ref world, game_id, ref game, last_alive, stats::WIN_REASON_ELIMINATION,
+                );
                 return;
             }
 
@@ -833,14 +849,12 @@ pub mod actions {
                 assert(found, 'No alive players');
 
                 if new_round > MAX_ROUNDS {
-                    game.state = GameState::Finished;
-                    game
-                        .winner =
-                            game_helpers::timeout_winner(
-                                ref world, game_id, game.player_count, game.next_unit_id,
-                            );
-                    world.write_model(@game);
-                    world.emit_event(@GameOver { game_id, winner: game.winner });
+                    let winner = game_helpers::timeout_winner(
+                        ref world, game_id, game.player_count, game.next_unit_id,
+                    );
+                    game_helpers::finish_game(
+                        ref world, game_id, ref game, winner, stats::WIN_REASON_TIMEOUT,
+                    );
                     return;
                 }
 

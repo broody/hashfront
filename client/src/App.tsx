@@ -9,7 +9,6 @@ import Profile from "./pages/Profile";
 import LogoGallery from "./pages/LogoGallery";
 import { ToastProvider } from "./components/Toast";
 
-
 export default function App() {
   return (
     <StarknetProvider>

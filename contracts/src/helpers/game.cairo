@@ -2,7 +2,7 @@ use dojo::event::EventStorage;
 use dojo::model::ModelStorage;
 use hashfront::consts::{INCOME_BASE, INCOME_PER_CITY};
 use hashfront::events::GameOver;
-use hashfront::helpers::unit_stats;
+use hashfront::helpers::{stats, unit_stats};
 use hashfront::models::building::Building;
 use hashfront::models::game::Game;
 use hashfront::models::map::{MapBuilding, MapInfo, MapUnit};
@@ -121,6 +121,9 @@ pub fn run_production(
         let mut ps: PlayerState = world.read_model((game_id, player_id));
         ps.unit_count += produced;
         world.write_model(@ps);
+        if !game.is_test_mode {
+            stats::record_units_produced(ref world, ps.address, produced);
+        }
     };
 }
 
@@ -148,6 +151,10 @@ pub fn reset_stale_captures(
 pub fn check_elimination(
     ref world: dojo::world::WorldStorage, game_id: u32, player_id: u8, ref game: Game,
 ) {
+    if game.state == GameState::Finished {
+        return;
+    }
+
     let ps: PlayerState = world.read_model((game_id, player_id));
     if !ps.is_alive {
         return;
@@ -177,12 +184,25 @@ pub fn check_elimination(
         }
 
         if alive_count == 1 {
-            game.state = GameState::Finished;
-            game.winner = last_alive;
-            world.write_model(@game);
-            world.emit_event(@GameOver { game_id, winner: last_alive });
+            finish_game(ref world, game_id, ref game, last_alive, stats::WIN_REASON_ELIMINATION);
         }
     }
+}
+
+pub fn finish_game(
+    ref world: dojo::world::WorldStorage, game_id: u32, ref game: Game, winner: u8, reason: u8,
+) {
+    if game.state == GameState::Finished {
+        return;
+    }
+
+    game.state = GameState::Finished;
+    game.winner = winner;
+    world.write_model(@game);
+    world.emit_event(@GameOver { game_id, winner });
+    stats::record_match_result(
+        ref world, game_id, game.player_count, winner, game.is_test_mode, reason,
+    );
 }
 
 pub fn timeout_winner(

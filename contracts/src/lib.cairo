@@ -7,6 +7,7 @@ pub mod models {
     pub mod game;
     pub mod map;
     pub mod player;
+    pub mod stats;
     pub mod unit;
 }
 
@@ -18,6 +19,7 @@ pub mod helpers {
     pub mod combat;
     pub mod game;
     pub mod map;
+    pub mod stats;
     pub mod unit_stats;
 }
 
@@ -33,5 +35,6 @@ mod tests {
     mod test_move_unit;
     mod test_register_map;
     mod test_resign;
+    mod test_stats;
     mod test_wait_unit;
 }

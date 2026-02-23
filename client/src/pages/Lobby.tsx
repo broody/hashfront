@@ -120,10 +120,14 @@ const ECGMonitor = ({
   const MIN_DURATION = 4;
   const MAX_ROUND = 100;
   const roundFactor = Math.min(round, MAX_ROUND) / MAX_ROUND;
-  const baseDuration = BASE_DURATION - (BASE_DURATION - MIN_DURATION) * roundFactor;
+  const baseDuration =
+    BASE_DURATION - (BASE_DURATION - MIN_DURATION) * roundFactor;
   const variance = (((gameId * 127 + 311) * 997) % 4000) / 1000 - 2;
   const openSpeedUp = !isPlaying && !isFinished ? 0.1 : 1;
-  const scrollDuration = Math.max(MIN_DURATION, (baseDuration + variance) * openSpeedUp);
+  const scrollDuration = Math.max(
+    MIN_DURATION,
+    (baseDuration + variance) * openSpeedUp,
+  );
 
   // Generate heartbeat path with smooth amplitude variance for operational games.
   // Uses 8 unique beats with a sine-wave amplitude curve, duplicated for seamless
@@ -155,7 +159,11 @@ const ECGMonitor = ({
     <div className="relative w-16 h-16 border border-white/10 bg-blueprint-dark/40 overflow-hidden rounded group">
       <div
         className={`absolute inset-0 ${isFinished ? "" : "animate-intermittent-glitch"}`}
-        style={isFinished ? undefined : { animationDelay: `-${(gameId * 1.43) % 32}s` }}
+        style={
+          isFinished
+            ? undefined
+            : { animationDelay: `-${(gameId * 1.43) % 32}s` }
+        }
       >
         {/* Background Grid */}
         <div
@@ -854,7 +862,8 @@ export default function Lobby() {
               </span>
             </h1>
             <div className="text-sm mt-1 opacity-80 font-mono uppercase">
-              &gt; SYSTEM_READY // TPS: {tps !== null ? tps.toFixed(1) : "..."} // CHAIN: SEPOLIA
+              &gt; SYSTEM_READY // TPS: {tps !== null ? tps.toFixed(1) : "..."}{" "}
+              // CHAIN: SEPOLIA
             </div>
           </div>
         </div>
