@@ -584,7 +584,6 @@ export default function Lobby() {
   }
 
   useEffect(() => {
-    if (!isCreateModalOpen) return;
     let active = true;
 
     async function loadMaps() {
@@ -628,7 +627,7 @@ export default function Lobby() {
     return () => {
       active = false;
     };
-  }, [graphqlClient, isCreateModalOpen]);
+  }, [graphqlClient]);
 
   const selectedMapInfo = useMemo(
     () =>
@@ -809,7 +808,9 @@ export default function Lobby() {
                           {toNumber(game.player_count)}
                         </div>
                         <div>
-                          MAP: {toNumber(game.map_id)} //{" "}
+                          MAP:{" "}
+                          {mapInfos.find((m) => toNumber(m.map_id) === toNumber(game.map_id))?.name?.toUpperCase().replace(/ /g, "_") || toNumber(game.map_id)}{" "}
+                          //{" "}
                           {isPlaying
                             ? `ROUND: ${toNumber(game.round)}`
                             : "PREPARING..."}
@@ -1254,9 +1255,9 @@ export default function Lobby() {
                         </span>
                       </div>
                       <div>
-                        MAP ID:{" "}
+                        MAP:{" "}
                         <span className="font-bold">
-                          {toNumber(joinTargetGame.map_id)}
+                          {mapInfos.find((m) => toNumber(m.map_id) === toNumber(joinTargetGame.map_id))?.name?.toUpperCase().replace(/ /g, "_") || toNumber(joinTargetGame.map_id)}
                         </span>
                       </div>
                       <div>
