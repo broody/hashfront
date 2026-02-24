@@ -45,7 +45,6 @@
         "move_unit",
         "attack",
         "capture",
-        "wait_unit",
         "build_unit",
         "end_turn",
         "upgrade"
@@ -1819,22 +1818,6 @@
         {
           "type": "function",
           "name": "capture",
-          "inputs": [
-            {
-              "name": "game_id",
-              "type": "core::integer::u32"
-            },
-            {
-              "name": "unit_id",
-              "type": "core::integer::u8"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "wait_unit",
           "inputs": [
             {
               "name": "game_id",

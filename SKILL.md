@@ -36,7 +36,7 @@ Choose how to submit turn actions:
 
 | Mode | Description | When to use |
 |------|-------------|-------------|
-| **Single Transaction** | Each action (move, attack, wait, end_turn) is a separate `controller execute` call | More interactive, easier to debug, lets you react to each result. **Recommended for learning and manual play.** |
+| **Single Transaction** | Each action (move, attack, capture, build, end_turn) is a separate `controller execute` call | More interactive, easier to debug, lets you react to each result. **Recommended for learning and manual play.** |
 | **Multi-call** | Bundle all actions into a JSON file and submit via `controller execute --file calls.json` | Faster, fewer transactions, but atomic — if one call fails the entire batch reverts. Best for scripted/automated play. |
 
 ### Multi-call example
@@ -46,7 +46,6 @@ Choose how to submit turn actions:
   "calls": [
     { "contractAddress": "0x4f2da423297032281e082ce530a876c3754f50bea0cf310a05aca847bfb609e", "entrypoint": "move_unit", "calldata": ["32", "1", "2", "3", "5", "4", "5"] },
     { "contractAddress": "0x4f2da423297032281e082ce530a876c3754f50bea0cf310a05aca847bfb609e", "entrypoint": "attack", "calldata": ["32", "1", "8"] },
-    { "contractAddress": "0x4f2da423297032281e082ce530a876c3754f50bea0cf310a05aca847bfb609e", "entrypoint": "wait_unit", "calldata": ["32", "1"] },
     { "contractAddress": "0x4f2da423297032281e082ce530a876c3754f50bea0cf310a05aca847bfb609e", "entrypoint": "end_turn", "calldata": ["32"] }
   ]
 }
@@ -183,18 +182,6 @@ controller execute \
 - Unit must be standing on an enemy/neutral building
 - Takes 2 turns to capture (capture threshold = 2)
 - Capturing an HQ wins the game instantly
-
-### Wait Unit
-
-```bash
-controller execute \
-  0x4f2da423297032281e082ce530a876c3754f50bea0cf310a05aca847bfb609e \
-  wait_unit \
-  <game_id>,<unit_id> \
-  --json
-```
-
-Ends the unit's turn without acting.
 
 ### Build Unit
 
@@ -405,7 +392,7 @@ Lessons from live playtesting:
 - **Diagonal is not adjacent** — Grid uses 4-directional movement (up/down/left/right). Tiles like (8,9) and (9,10) are NOT adjacent (Manhattan distance 2).
 
 ### Combat
-- **Action order: Move → Attack → Wait** — Once a unit attacks, it cannot move. Once it moves, infantry/tanks can still attack, but Rangers CANNOT.
+- **Action order: Move → Attack** — Once a unit attacks, it cannot move. Once it moves, infantry/tanks can still attack, but Rangers CANNOT.
 - **Rangers cannot attack after moving** — Rangers must choose: move OR attack in a turn. Position them first, attack next turn.
 - **Ranger min range is 2** — Rangers cannot attack adjacent units. This also means adjacent attackers avoid Ranger counterattacks.
 - **Counterattack kills are common** — Tanks (4 attack) will one-shot 3HP infantry on counter. Trading 1-gold infantry into a Tank costs you the unit.
@@ -419,9 +406,8 @@ Lessons from live playtesting:
 - **HQ capture wins instantly** — Even if you're losing the unit war, a sneaky flank to the enemy HQ wins the game.
 
 ### Turn Management
-- **Wait all units before ending turn** — Every alive unit must be waited (or have acted) before `end_turn` succeeds.
-- **Dead units don't need wait** — Only call `wait_unit` for alive units.
-- **Check `last_acted_round`** — If a unit's `last_acted_round` equals the current round, it has already acted and doesn't need wait.
+- **You can end turn any time** — `end_turn` does not require each unit to act first.
+- **Check `last_acted_round`** — If a unit's `last_acted_round` equals the current round, it has already acted.
 
 ## Contributing
 

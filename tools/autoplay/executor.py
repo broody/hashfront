@@ -22,14 +22,14 @@ def encode_game_name(name: str) -> str:
 
 def actions_to_calls(game_id: int, actions: list) -> list:
     """Convert action objects to multicall JSON entries.
-    If a CaptureAction is present, it becomes the final call (no wait/end_turn after)
+    If a CaptureAction is present, it becomes the final call (no end_turn after)
     since capturing HQ ends the game immediately.
     """
     has_capture = any(isinstance(a, CaptureAction) for a in actions)
     calls = []
 
     for action in actions:
-        # Skip end_turn if capture present (game ends on capture)
+        # Skip end_turn entirely if capture is present.
         if has_capture:
             if isinstance(action, EndTurnAction):
                 continue

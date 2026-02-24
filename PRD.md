@@ -179,7 +179,6 @@ Flags reset at the start of the owning player's next turn.
 | **Move** | `move_unit(game_id, unit_id, path)` | Move unit along validated path |
 | **Attack** | `attack(game_id, unit_id, target_id)` | Attack enemy unit in range |
 | **Capture** | `capture(game_id, unit_id)` | Infantry/Ranger captures building at current position |
-| **Wait** | `wait_unit(game_id, unit_id)` | End unit's turn without acting |
 | **Build** | `build_unit(game_id, factory_x, factory_y, unit_type)` | Queue production at owned factory |
 | **End Turn** | `end_turn(game_id)` | Pass control to next player |
 | **Resign** | `resign(game_id)` | Forfeit the game as the calling player |

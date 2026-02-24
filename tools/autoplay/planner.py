@@ -636,7 +636,8 @@ def _plan_capture_march(unit, unit_pos, enemy_hq, game_state, occupied):
             actions.append(CaptureAction(unit.unit_id))
             log.info(f"  #{unit.unit_id} CAPTURING HQ at {enemy_hq}!")
         else:
-            log.info(f"  Tank #{unit.unit_id} on HQ but can't capture, waiting")
+            # Tanks can't capture.
+            log.info(f"  Tank #{unit.unit_id} on HQ but can't capture")
         return actions, new_pos
 
     occ = occupied - {unit_pos}

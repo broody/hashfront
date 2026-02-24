@@ -70,8 +70,11 @@ fn test_end_turn_round_increments() {
 fn test_end_turn_resets_unit_flags() {
     let (actions_dispatcher, mut world, game_id) = setup_playing_game();
 
-    // Mark P1's unit as moved/acted
-    actions_dispatcher.wait_unit(game_id, 1);
+    // Mark P1's unit as moved/acted in round 1.
+    let mut unit: Unit = world.read_model((game_id, 1_u8));
+    unit.last_moved_round = 1;
+    unit.last_acted_round = 1;
+    world.write_model_test(@unit);
 
     let unit: Unit = world.read_model((game_id, 1_u8));
     assert(unit.last_moved_round == 1, 'should be moved');

@@ -100,6 +100,3 @@ in their setup, so they all show the +9.5M (create-only) or +5.7M (create+join) 
 | test_move_unit_one_step | 79,066,195 | 84,782,740 | +5,716,545 |
 | test_move_unit_path_not_adjacent | 74,172,331 | 79,888,876 | +5,716,545 |
 | test_move_unit_steps_not_adjacent | 75,062,089 | 80,778,634 | +5,716,545 |
-| test_wait_unit | 76,175,259 | 81,891,804 | +5,716,545 |
-| test_wait_unit_not_your_turn | 72,702,337 | 78,418,882 | +5,716,545 |
-| test_wait_unit_not_your_unit | 73,730,321 | 79,446,866 | +5,716,545 |

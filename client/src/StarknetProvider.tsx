@@ -19,7 +19,6 @@ const policies: SessionPolicies = {
         { name: "move_unit", entrypoint: "move_unit" },
         { name: "attack", entrypoint: "attack" },
         { name: "capture", entrypoint: "capture" },
-        { name: "wait_unit", entrypoint: "wait_unit" },
         { name: "build_unit", entrypoint: "build_unit" },
         { name: "end_turn", entrypoint: "end_turn" },
       ],

@@ -92,9 +92,11 @@ fn test_move_unit_already_moved() {
 #[test]
 #[should_panic]
 fn test_move_unit_after_act() {
-    let (actions_dispatcher, _, game_id) = setup_playing_game();
+    let (actions_dispatcher, mut world, game_id) = setup_playing_game();
 
-    actions_dispatcher.wait_unit(game_id, 1);
+    let mut unit: Unit = world.read_model((game_id, 1_u8));
+    unit.last_acted_round = 1;
+    world.write_model_test(@unit);
     actions_dispatcher.move_unit(game_id, 1, array![Vec2 { x: 2, y: 0 }]);
 }
 

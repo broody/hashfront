@@ -18,7 +18,6 @@ pub trait IActions<T> {
     fn move_unit(ref self: T, game_id: u32, unit_id: u8, path: Array<Vec2>);
     fn attack(ref self: T, game_id: u32, unit_id: u8, target_id: u8);
     fn capture(ref self: T, game_id: u32, unit_id: u8);
-    fn wait_unit(ref self: T, game_id: u32, unit_id: u8);
     fn build_unit(ref self: T, game_id: u32, factory_x: u8, factory_y: u8, unit_type: UnitType);
     fn end_turn(ref self: T, game_id: u32);
     fn resign(ref self: T, game_id: u32);
@@ -658,26 +657,6 @@ pub mod actions {
             unit.last_acted_round = game.round;
             world.write_model(@unit);
             world.write_model(@game);
-        }
-
-        /// End a unit's turn without acting. Marks both has_moved and has_acted.
-        fn wait_unit(ref self: ContractState, game_id: u32, unit_id: u8) {
-            let mut world = self.world_default();
-            let caller = get_caller_address();
-
-            let game: Game = world.read_model(game_id);
-            assert(game.state == GameState::Playing, 'Game not playing');
-
-            let current_ps: PlayerState = world.read_model((game_id, game.current_player));
-            assert(current_ps.address == caller, 'Not your turn');
-
-            let mut unit: Unit = world.read_model((game_id, unit_id));
-            assert(unit.is_alive, 'Unit is dead');
-            assert(unit.player_id == game.current_player, 'Not your unit');
-
-            unit.last_moved_round = game.round;
-            unit.last_acted_round = game.round;
-            world.write_model(@unit);
         }
 
         /// Queue a unit for production at an owned factory. Deducts gold immediately;

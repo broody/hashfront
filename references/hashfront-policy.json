@@ -8,7 +8,6 @@
         { "name": "Move Unit", "entrypoint": "move_unit", "description": "Move a unit along a path" },
         { "name": "Attack", "entrypoint": "attack", "description": "Attack an enemy unit in range" },
         { "name": "Capture", "entrypoint": "capture", "description": "Capture a building with infantry/ranger" },
-        { "name": "Wait", "entrypoint": "wait_unit", "description": "End a unit's turn without acting" },
         { "name": "Build Unit", "entrypoint": "build_unit", "description": "Queue unit production at an owned factory" },
         { "name": "End Turn", "entrypoint": "end_turn", "description": "Pass control to the next player" },
         { "name": "Resign", "entrypoint": "resign", "description": "Forfeit the game" }
