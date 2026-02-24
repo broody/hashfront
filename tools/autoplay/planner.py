@@ -126,7 +126,12 @@ def plan_turn(game_state: GameState, player_id: int) -> list:
     # Track expected damage dealt to each enemy to avoid overkill
     already_targeted = {}  # {enemy_unit_id: total_expected_damage}
 
+    current_round = game_state.info.round
     for unit in my_units:
+        # Skip units that already acted this round
+        if unit.last_acted_round >= current_round:
+            log.info(f"  #{unit.unit_id} already acted R{unit.last_acted_round}, skipping")
+            continue
         unit_pos = (unit.x, unit.y)
         unit_actions = _plan_unit(unit, unit_pos, enemies, enemy_hq, game_state, occupied, already_targeted)
         actions.extend(unit_actions)

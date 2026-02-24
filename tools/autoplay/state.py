@@ -20,6 +20,8 @@ class Unit:
     y: int
     hp: int
     is_alive: bool
+    last_moved_round: int = 0
+    last_acted_round: int = 0
 
 
 @dataclass
@@ -128,7 +130,7 @@ def fetch_game_state(game_id: int) -> GameState:
         }}
         hashfrontUnitModels(where: {{game_idEQ: {game_id}}}, first: 50) {{
             edges {{ node {{
-                unit_id player_id unit_type x y hp is_alive
+                unit_id player_id unit_type x y hp is_alive last_moved_round last_acted_round
             }} }}
         }}
         hashfrontBuildingModels(where: {{game_idEQ: {game_id}}}, first: 20) {{
@@ -157,6 +159,8 @@ def fetch_game_state(game_id: int) -> GameState:
             unit_id=n["unit_id"], player_id=n["player_id"],
             unit_type=n["unit_type"], x=n["x"], y=n["y"],
             hp=n["hp"], is_alive=n["is_alive"],
+            last_moved_round=n.get("last_moved_round", 0),
+            last_acted_round=n.get("last_acted_round", 0),
         ))
 
     buildings = []
