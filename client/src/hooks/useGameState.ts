@@ -234,6 +234,7 @@ export function useGameState(id: string | undefined): {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const subscriptionRef = useRef<{ free(): void } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadedIdRef = useRef<string | null>(null);
 
   const gameIdNum = Number.parseInt(id || "", 10);
@@ -378,6 +379,47 @@ export function useGameState(id: string | undefined): {
         }
 
         if (!active) return;
+
+        // Polling fallback: periodically fetch entities in case subscription drops
+        const POLL_INTERVAL = 3000;
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(async () => {
+          if (!active) return;
+          try {
+            const [r1, r2] = await Promise.all([
+              sdk!.getEntities({
+                query: new ToriiQueryBuilder<Schema>()
+                  .withClause(
+                    KeysClause<Schema>(
+                      ["hashfront-Game", "hashfront-PlayerState"],
+                      [gameIdHex],
+                      "VariableLen",
+                    ).build(),
+                  )
+                  .withLimit(1000)
+                  .includeHashedKeys(),
+              }),
+              sdk!.getEntities({
+                query: new ToriiQueryBuilder<Schema>()
+                  .withClause(
+                    KeysClause<Schema>(
+                      ["hashfront-Unit", "hashfront-Building"],
+                      [gameIdHex],
+                      "VariableLen",
+                    ).build(),
+                  )
+                  .withLimit(1000)
+                  .includeHashedKeys(),
+              }),
+            ]);
+            if (!active) return;
+            processEntityUpdates(r1.getItems(), gameIdNum);
+            processEntityUpdates(r2.getItems(), gameIdNum);
+          } catch (e) {
+            console.warn("[Torii] Poll failed:", e);
+          }
+        }, POLL_INTERVAL);
+
         loadedIdRef.current = id || null;
         setLoadError(null);
         setLoading(false);
@@ -396,6 +438,10 @@ export function useGameState(id: string | undefined): {
       active = false;
       subscriptionRef.current?.free();
       subscriptionRef.current = null;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
   }, [sdk, gameIdNum, id, isValidGameId]);
 

@@ -612,12 +612,14 @@ export default function Lobby() {
 
         const limitClause = `LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
 
+        const stateOrder = `CASE LOWER(g.state) WHEN 'playing' THEN 0 WHEN 'lobby' THEN 1 ELSE 2 END`;
+
         switch (filter) {
           case "NONE":
             query = `
             ${baseQuery}
             ${searchFilter ? `WHERE g.name LIKE '%${currentSearch.trim().replace(/'/g, "''")}%'` : ""}
-            ORDER BY g.game_id DESC
+            ORDER BY ${stateOrder}, g.game_id DESC
             ${limitClause}
           `;
             break;
@@ -634,7 +636,7 @@ export default function Lobby() {
             SELECT DISTINCT g.*, ps.address as player_address FROM "hashfront-Game" g
             JOIN "hashfront-PlayerState" ps ON g.game_id = ps.game_id
             WHERE LOWER(ps.address) = LOWER('${normalizedAddress}') ${searchFilter}
-            ORDER BY g.game_id DESC
+            ORDER BY ${stateOrder}, g.game_id DESC
             ${limitClause}
           `;
             break;
@@ -1073,11 +1075,13 @@ export default function Lobby() {
                   normalizeAddressHex(game.player_address) ===
                     normalizeAddressHex(address);
 
+                const isBotArena = game.name?.startsWith("BOT_ARENA");
                 let actionLabel = "";
                 if (isFinished) {
                   actionLabel = "REVIEW_LOGS";
                 } else if (isLobby) {
-                  actionLabel = isMine ? "RE-ENTER" : "JOIN";
+                  actionLabel =
+                    isMine ? "RE-ENTER" : isBotArena ? "WATCH_FEED" : "JOIN";
                 } else {
                   actionLabel = isMine ? "RESUME" : "WATCH_FEED";
                 }
@@ -1116,6 +1120,11 @@ export default function Lobby() {
                         {isMine && (
                           <span className="text-[9px] border border-white/40 px-1 font-mono opacity-60">
                             MY_OP
+                          </span>
+                        )}
+                        {isBotArena && (
+                          <span className="text-[9px] border border-white/40 px-1 font-mono opacity-60">
+                            BOTS_ONLY
                           </span>
                         )}
                       </div>
@@ -1172,7 +1181,7 @@ export default function Lobby() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      {isLobby && !isMine ? (
+                      {isLobby && !isMine && !isBotArena ? (
                         <PixelButton
                           className="w-full flex items-center justify-center gap-2 !py-2.5"
                           variant="blue"
@@ -1194,7 +1203,11 @@ export default function Lobby() {
                           <PixelButton
                             className="w-full !py-2.5"
                             variant={
-                              isFinished ? "gray" : isPlaying ? "blue" : "green"
+                              isFinished
+                                ? "gray"
+                                : isPlaying || isBotArena
+                                  ? "blue"
+                                  : "green"
                             }
                           >
                             {actionLabel}
