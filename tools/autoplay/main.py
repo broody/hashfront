@@ -167,16 +167,21 @@ class GameThread:
         my_units = state.alive_units(player)
         enemy_units = state.enemy_units(player)
 
-        if not my_units:
+        # Check if we should resign: no units, or no enemies + no units that can capture
+        from config import INFANTRY, RANGER
+        can_capture = any(u.unit_type in (INFANTRY, RANGER) for u in my_units)
+        should_resign = (not my_units) or (not enemy_units and not can_capture)
+
+        if should_resign:
             if self.only_player:
-                # Human game — resign gracefully
-                glog.info(f"R{state.info.round} P{player}: no units, resigning 🏳️")
+                reason = "no units" if not my_units else "no capturable units"
+                glog.info(f"R{state.info.round} P{player}: {reason}, resigning 🏳️")
                 calls = [{"contractAddress": CONTRACT, "entrypoint": "resign", "calldata": [str(self.game_id)]}]
                 self.tx_queue.submit_and_wait(calls, f"{label} RESIGN")
                 self.finished = True
             else:
-                # Self-play — just end turn so winner can march
-                glog.info(f"R{state.info.round} P{player}: no units, ending turn")
+                reason = "no units" if not my_units else "only tanks left, can't capture"
+                glog.info(f"R{state.info.round} P{player}: {reason}, ending turn")
                 calls = actions_to_calls(self.game_id, [EndTurnAction()])
                 self.tx_queue.submit_and_wait(calls, label)
             return
