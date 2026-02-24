@@ -168,9 +168,17 @@ class GameThread:
         enemy_units = state.enemy_units(player)
 
         if not my_units:
-            glog.info(f"R{state.info.round} P{player}: no units, ending turn")
-            calls = actions_to_calls(self.game_id, [EndTurnAction()])
-            result = self.tx_queue.submit_and_wait(calls, label)
+            if self.only_player:
+                # Human game — resign gracefully
+                glog.info(f"R{state.info.round} P{player}: no units, resigning 🏳️")
+                calls = [{"contractAddress": CONTRACT, "entrypoint": "resign", "calldata": [str(self.game_id)]}]
+                self.tx_queue.submit_and_wait(calls, f"{label} RESIGN")
+                self.finished = True
+            else:
+                # Self-play — just end turn so winner can march
+                glog.info(f"R{state.info.round} P{player}: no units, ending turn")
+                calls = actions_to_calls(self.game_id, [EndTurnAction()])
+                self.tx_queue.submit_and_wait(calls, label)
             return
 
         # Plan
