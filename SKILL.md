@@ -64,7 +64,7 @@ controller execute --file turn.json --json
 3. **Game Starts** — When all slots filled, Player 1 goes first
 4. **Take Turns** — Move units, attack, capture buildings, build units
 5. **End Turn** — Pass to next player
-6. **Win** — Capture enemy HQ, eliminate all opponents, or have highest score at round 30
+6. **Win** — Capture enemy HQ, eliminate all opponents, or have highest score at round 100
 
 ### Self-Play (Test Mode)
 
@@ -345,7 +345,7 @@ Base accuracy: Infantry=90, Tank=85, Ranger=88
 1. **HQ Captured** — Capture enemy HQ with Infantry/Ranger
 2. **Elimination** — Enemy loses HQ + has 0 units + 0 factories + 0 gold
 3. **Resignation** — Player forfeits
-4. **Timeout** — After 30 rounds, highest score (total unit HP + gold) wins
+4. **Timeout** — After 100 rounds, highest score (total unit HP + gold) wins
 
 ## Data Models
 

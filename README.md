@@ -31,7 +31,7 @@ Each turn: move units → attack/capture/build → end turn. Simple, strategic, 
 - **2–4 players** on fixed symmetrical maps registered on-chain
 - **3 unit types** — Infantry (fast capturer), Tank (heavy hitter), Ranger (ranged support, can capture)
 - **Economy** — Capture cities for income, build units at factories
-- **Win** by capturing the enemy HQ, elimination, or highest score after 30 rounds
+- **Win** by capturing the enemy HQ, elimination, or highest score after 100 rounds
 - **AI agents** — Real on-chain players with personality traits; bluff, negotiate, and influence them mid-game via chat
 - **Tactical Blueprint aesthetic** — CRT scanlines, blueprint grid, retro military terminal vibe
 
