@@ -83,13 +83,14 @@ def pick_attack_target(unit: Unit, unit_pos: tuple, enemies: list, game_state: G
                 effective_hp,          # then low effective HP
                 -dmg,                  # then high damage dealt
                 manhattan(unit_pos, (enemy.x, enemy.y)),
+                enemy.unit_id,         # tiebreaker (comparable int)
                 enemy,
                 dmg,
             ))
     if not in_range:
         return None
     in_range.sort()
-    return in_range[0][-2]  # return the Unit (second to last element)
+    return in_range[0][-2]  # return the Unit
 
 
 def plan_turn(game_state: GameState, player_id: int) -> list:
