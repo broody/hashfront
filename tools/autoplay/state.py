@@ -198,17 +198,20 @@ def fetch_player_states(game_id: int) -> list:
 
 
 def fetch_map_ids() -> list:
-    """Fetch all available map IDs."""
+    """Fetch all available map IDs, deduped by name (keeps highest map_id per name)."""
     result = graphql("""{
         hashfrontMapInfoModels(first: 50) {
             edges { node { map_id name } }
         }
     }""")
-    maps = []
+    by_name = {}
     for edge in result["data"]["hashfrontMapInfoModels"]["edges"]:
         n = edge["node"]
-        maps.append(n["map_id"])
-    return maps
+        name = n["name"]
+        mid = n["map_id"]
+        if name not in by_name or mid > by_name[name]:
+            by_name[name] = mid
+    return list(by_name.values())
 
 
 def fetch_all_games() -> list:
