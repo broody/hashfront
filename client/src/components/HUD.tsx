@@ -116,6 +116,9 @@ export default function HUD() {
   >({});
   const isEndingTurn = useGameStore((s) => s.isEndingTurn);
   const setIsEndingTurn = useGameStore((s) => s.setIsEndingTurn);
+  const [isResigning, setIsResigning] = useState(false);
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
+
   const controllerConnector = useMemo(
     () => ControllerConnector.fromConnectors(connectors),
     [connectors],
@@ -306,6 +309,42 @@ export default function HUD() {
       }
     } finally {
       setIsEndingTurn(false);
+    }
+  }
+
+  async function handleResign() {
+    if (!address || isResigning) return;
+
+    setIsResigning(true);
+    setShowResignConfirm(false);
+    try {
+      const tx = await sendTransaction([
+        {
+          contractAddress: ACTIONS_ADDRESS,
+          entrypoint: "resign",
+          calldata: [gameId.toString()],
+        },
+      ]);
+      if (!tx?.transaction_hash) {
+        throw new Error("Missing transaction hash");
+      }
+      await provider.waitForTransaction(tx.transaction_hash, {
+        retryInterval: 250,
+      });
+      toast("Resigned from game.", "info", {
+        linkUrl: explorer.transaction(tx.transaction_hash),
+        linkLabel: `TX ${shortTxHash(tx.transaction_hash)}`,
+      });
+    } catch (error) {
+      console.error("Failed to resign:", error);
+      const parsed = parseTransactionError(error);
+      if (parsed) {
+        showErrorModal("TRANSACTION_REJECTED", parsed.message, parsed.rawError);
+      } else {
+        toast("Failed to resign.", "error");
+      }
+    } finally {
+      setIsResigning(false);
     }
   }
 
@@ -550,32 +589,75 @@ export default function HUD() {
               )}
             </div>
             {canEndTurn && (
-              <div className="flex gap-2 !mt-2">
-                {moveQueue.length > 0 && (
-                  <PixelButton
-                    variant="gray"
-                    onClick={handleUndoMove}
-                    disabled={isEndingTurn}
-                  >
-                    UNDO
-                  </PixelButton>
-                )}
+              <div className="flex flex-col gap-2 !mt-2">
                 <PixelButton
                   variant="blue"
                   onClick={handleEndTurn}
-                  disabled={isEndingTurn || !address}
+                  disabled={isEndingTurn || isResigning || !address}
+                  className="w-full"
                 >
                   {isEndingTurn
                     ? "ENDING..."
                     : moveQueue.length > 0
-                      ? `END TURN (${moveQueue.length})`
-                      : "END TURN"}
+                      ? `END_TURN (${moveQueue.length})`
+                      : "END_TURN"}
                 </PixelButton>
+
+                {moveQueue.length > 0 && (
+                  <PixelButton
+                    variant="gray"
+                    onClick={handleUndoMove}
+                    disabled={isEndingTurn || isResigning}
+                    className="w-full animate-fade-in-up"
+                  >
+                    UNDO_LAST_MOVE
+                  </PixelButton>
+                )}
+
+                <button
+                  onClick={() => setShowResignConfirm(true)}
+                  disabled={isEndingTurn || isResigning}
+                  className="text-[10px] text-white/30 hover:text-red-400 transition-colors uppercase tracking-[0.2em] mt-1 self-center"
+                >
+                  {isResigning ? "RESIGNING..." : "RESIGN_COMMAND"}
+                </button>
               </div>
             )}
           </div>
         </PixelPanel>
       </div>
+
+      {showResignConfirm && (
+        <div className="fixed inset-0 z-[100] bg-blueprint-dark/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm animate-fade-in-up">
+            <PixelPanel title="CONFIRM_RESIGNATION" className="!p-6">
+              <div className="flex flex-col gap-6">
+                <div className="text-sm uppercase tracking-[0.2em] text-blueprint-light text-center leading-relaxed">
+                  ARE YOU SURE YOU WANT TO <span className="text-red-400">ABANDON</span> THE SECTOR? 
+                  <br/>
+                  ALL FORCES WILL BE DECOMMISSIONED.
+                </div>
+                <div className="flex gap-4">
+                  <PixelButton
+                    variant="gray"
+                    onClick={() => setShowResignConfirm(false)}
+                    className="flex-1"
+                  >
+                    CANCEL
+                  </PixelButton>
+                  <PixelButton
+                    variant="blue"
+                    onClick={() => void handleResign()}
+                    className="flex-1 !border-red-500/50 !text-red-400 hover:!bg-red-500/20"
+                  >
+                    RESIGN
+                  </PixelButton>
+                </div>
+              </div>
+            </PixelPanel>
+          </div>
+        </div>
+      )}
     </>
   );
 }
