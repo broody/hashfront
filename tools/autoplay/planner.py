@@ -125,9 +125,10 @@ def _assign_assassin_targets(enemies, game_state):
 
 # ── Main planner ───────────────────────────────────────────────────
 
-def plan_turn(game_state: GameState, player_id: int) -> list:
+def plan_turn(game_state: GameState, player_id: int, strategy_override: str = None) -> list:
     """
     Plan all actions for one turn using strategy-driven decision making.
+    strategy_override: force a specific strategy name (for stalemate escalation).
     """
     actions = []
     my_units = game_state.alive_units(player_id)
@@ -148,8 +149,14 @@ def plan_turn(game_state: GameState, player_id: int) -> list:
         actions.append(EndTurnAction())
         return actions
 
-    # Pick strategy for this game/player/round
-    strat = pick_strategy_adaptive(game_state, player_id)
+    # Pick strategy — override if stalemate escalation is active
+    if strategy_override:
+        from strategy import ALL_STRATEGIES
+        strat = next((s for s in ALL_STRATEGIES if s.name == strategy_override), None)
+        if not strat:
+            strat = pick_strategy_adaptive(game_state, player_id)
+    else:
+        strat = pick_strategy_adaptive(game_state, player_id)
 
     if not enemies:
         # No enemies — capture march (all strategies agree here)
