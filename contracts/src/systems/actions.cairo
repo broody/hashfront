@@ -766,20 +766,28 @@ pub mod actions {
             let mut game: Game = world.read_model(game_id);
             assert(game.state == GameState::Playing, 'Game not playing');
 
-            let mut caller_player: u8 = 0;
-            let mut alive_matches: u8 = 0;
-            let mut p: u8 = 1;
-            while p <= game.player_count {
-                let ps: PlayerState = world.read_model((game_id, p));
-                if ps.address == caller && ps.is_alive {
-                    caller_player = p;
-                    alive_matches += 1;
-                }
-                p += 1;
-            }
+            // Use current turn's player to resolve ambiguity when the same
+            // address controls multiple seats (e.g. self-play / bot games).
+            let current_ps: PlayerState = world.read_model((game_id, game.current_player));
 
-            assert(alive_matches > 0, 'Not an alive player');
-            assert(alive_matches == 1, 'Ambiguous player');
+            let mut caller_player: u8 = 0;
+            if current_ps.address == caller && current_ps.is_alive {
+                caller_player = game.current_player;
+            } else {
+                // Fallback: scan for a unique alive match (original behaviour).
+                let mut matches: u8 = 0;
+                let mut p: u8 = 1;
+                while p <= game.player_count {
+                    let ps: PlayerState = world.read_model((game_id, p));
+                    if ps.address == caller && ps.is_alive {
+                        caller_player = p;
+                        matches += 1;
+                    }
+                    p += 1;
+                };
+                assert(matches > 0, 'Not an alive player');
+                assert(matches == 1, 'Ambiguous player');
+            }
 
             let mut resigned_ps: PlayerState = world.read_model((game_id, caller_player));
             resigned_ps.is_alive = false;
@@ -790,7 +798,7 @@ pub mod actions {
 
             let mut alive_count: u8 = 0;
             let mut last_alive: u8 = 0;
-            p = 1;
+            let mut p: u8 = 1;
             while p <= game.player_count {
                 let ps: PlayerState = world.read_model((game_id, p));
                 if ps.is_alive {
