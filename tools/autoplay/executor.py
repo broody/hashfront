@@ -5,7 +5,7 @@ import subprocess
 import logging
 import time
 
-from config import CONTRACT, TX_WAIT
+from config import CONTRACT
 from planner import (
     MoveAction, AttackAction, CaptureAction, EndTurnAction,
 )
@@ -22,14 +22,14 @@ def encode_game_name(name: str) -> str:
 
 def actions_to_calls(game_id: int, actions: list) -> list:
     """Convert action objects to multicall JSON entries.
-    If a CaptureAction is present, it becomes the final call (no end_turn after)
+    If a CaptureAction is present, it becomes the final call (no wait/end_turn after)
     since capturing HQ ends the game immediately.
     """
     has_capture = any(isinstance(a, CaptureAction) for a in actions)
     calls = []
 
     for action in actions:
-        # Skip end_turn entirely if capture is present.
+        # Skip end_turn if capture present (game ends on capture)
         if has_capture:
             if isinstance(action, EndTurnAction):
                 continue
@@ -126,7 +126,7 @@ def execute_calls(calls: list, label: str = "") -> dict:
             return {"status": "success", "tx_hash": tx_hash}
         elif data.get("status") == "error":
             error_msg = data.get("message", "Unknown error")
-            log.error(f"✗ TX failed {label}: {error_msg[:200]}")
+            log.error(f"✗ TX failed {label}: {error_msg[:500]}")
             return {"status": "error", "message": error_msg}
 
     if result.returncode != 0:
@@ -140,10 +140,6 @@ def execute_turn(game_id: int, actions: list, label: str = "") -> dict:
     """Build and execute a full turn from action objects."""
     calls = actions_to_calls(game_id, actions)
     result = execute_calls(calls, label)
-
-    if result["status"] == "success":
-        # Wait for indexer to catch up
-        time.sleep(TX_WAIT)
 
     return result
 

@@ -7,7 +7,7 @@ TORII_URL = "https://api.cartridge.gg/x/hashfront/torii/graphql"
 MAX_GAMES = 5
 MAP_ID = 1  # bridgehead - best tested map
 TICK_INTERVAL = 15  # seconds between game manager ticks
-TX_WAIT = 4  # seconds to wait after tx submission for indexer
+TX_WAIT = 2  # seconds to wait after tx submission for indexer
 
 # Unit types
 INFANTRY = "Infantry"
@@ -71,9 +71,8 @@ TERRAIN_NAME_MAP = {
 
 # ByteArray encoding for game names
 GAME_NAMES = [
-    "ARENA_01", "ARENA_02", "ARENA_03", "ARENA_04", "ARENA_05",
-    "ARENA_06", "ARENA_07", "ARENA_08", "ARENA_09", "ARENA_10",
-    "BRAWL_01", "BRAWL_02", "BRAWL_03", "BRAWL_04", "BRAWL_05",
+    "BOT_ARENA_01", "BOT_ARENA_02", "BOT_ARENA_03", "BOT_ARENA_04", "BOT_ARENA_05",
+    "BOT_ARENA_06", "BOT_ARENA_07", "BOT_ARENA_08", "BOT_ARENA_09", "BOT_ARENA_10",
 ]
 
 # Human-facing open games — created in Lobby, NOT auto-joined by the bot

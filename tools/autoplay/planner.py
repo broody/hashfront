@@ -140,7 +140,9 @@ def plan_turn(game_state: GameState, player_id: int, strategy_override: str = No
     occupied = game_state.occupied_positions()
     current_round = game_state.info.round
 
-    actionable = [u for u in my_units if u.last_acted_round < current_round]
+    actionable = [u for u in my_units
+                  if u.last_acted_round < current_round
+                  and u.last_moved_round < current_round]
     if not actionable:
         actions.append(EndTurnAction())
         return actions
@@ -486,14 +488,8 @@ def _plan_ranger(unit, unit_pos, enemies, focus_order, game_state,
         tile, path = best_tile
         actions.append(MoveAction(unit.unit_id, path))
         new_pos = tile
-
-        target = _pick_focus_target_in_range(unit, new_pos, focus_order, game_state, already_targeted, strat)
-        if target:
-            actions.append(AttackAction(unit.unit_id, target.unit_id))
-            _record_attack(unit, target, game_state, already_targeted)
-            log.info(f"  🎯 Ranger #{unit.unit_id} repositions {unit_pos}->{new_pos}, snipes #{target.unit_id}")
-        else:
-            log.info(f"  🎯 Ranger #{unit.unit_id} kites {unit_pos}->{new_pos}")
+        # Rangers can NOT attack after moving — just reposition
+        log.info(f"  🎯 Ranger #{unit.unit_id} kites {unit_pos}->{new_pos}")
     else:
         path = best_move_toward(game_state.grid, unit_pos, primary_pos, unit.unit_type, occ)
         if path:
@@ -636,8 +632,7 @@ def _plan_capture_march(unit, unit_pos, enemy_hq, game_state, occupied):
             actions.append(CaptureAction(unit.unit_id))
             log.info(f"  #{unit.unit_id} CAPTURING HQ at {enemy_hq}!")
         else:
-            # Tanks can't capture.
-            log.info(f"  Tank #{unit.unit_id} on HQ but can't capture")
+            log.info(f"  Tank #{unit.unit_id} on HQ but can't capture, waiting")
         return actions, new_pos
 
     occ = occupied - {unit_pos}

@@ -2,82 +2,98 @@
 """
 Hashfront Headless Game Simulator
 
-Runs many games between AI strategies to test unit balance.
-Includes economy: Cities (income), Factories (unit production), gold system.
+Loads real maps from contracts/scripts/maps/, uses contract-accurate combat,
+and renders ASCII battle replays.
 
 Usage:
-    python3 tools/simulator.py                     # 100 games per matchup, seed 42
-    python3 tools/simulator.py --games 500         # 500 games per matchup
-    python3 tools/simulator.py --seed 123          # custom seed
-    python3 tools/simulator.py --verbose           # print per-game logs
-    python3 tools/simulator.py --strategies aggressive defensive  # specific matchup only
+    python3 tools/simulator.py                         # 100 games per matchup
+    python3 tools/simulator.py --games 500             # 500 games
+    python3 tools/simulator.py --map bridgehead        # specific map
+    python3 tools/simulator.py --verbose               # per-game logs
+    python3 tools/simulator.py --replay                # ASCII replay of first game
+    python3 tools/simulator.py --strategies aggressive balanced
 """
 
 import argparse
 import collections
-import math
+import os
 import random
 import sys
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, List, Dict, Tuple
 
 # ============================================================================
-# Constants (from PRD / balance_analyzer.py)
+# Constants — matched to contracts/src/consts.cairo + unit_stats.cairo
 # ============================================================================
 
 CAPTURE_THRESHOLD = 2
-MAX_ROUNDS = 100
-STARTING_GOLD = 5
-P2_STARTING_GOLD = 7
+MAX_ROUNDS = 30
+MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "contracts", "scripts", "maps")
 
-UNIT_COST = {
-    "INFANTRY": 1,
-    "TANK": 4,
-    "RANGER": 2,
-}
+class TileType(Enum):
+    GRASS = "."
+    ROAD = "R"
+    DIRT_ROAD = "D"
+    TREE = "T"
+    MOUNTAIN = "M"
+    HQ = "H"
+    CITY = "C"
+    FACTORY = "F"
 
-class Terrain(Enum):
-    GRASS = auto()
-    ROAD = auto()
-    DIRT_ROAD = auto()
-    TREE = auto()
-    MOUNTAIN = auto()
-    HQ = auto()
-    CITY = auto()
-    FACTORY = auto()
-
-TERRAIN_DEFENSE = {
-    Terrain.GRASS: 0, Terrain.ROAD: 0, Terrain.DIRT_ROAD: 0,
-    Terrain.TREE: 1, Terrain.MOUNTAIN: 2, Terrain.HQ: 2,
-    Terrain.CITY: 1, Terrain.FACTORY: 1,
-}
-TERRAIN_EVASION = {
-    Terrain.GRASS: 0, Terrain.ROAD: 0, Terrain.DIRT_ROAD: 0,
-    Terrain.TREE: 5, Terrain.MOUNTAIN: 12, Terrain.HQ: 10,
-    Terrain.CITY: 8, Terrain.FACTORY: 8,
-}
-TERRAIN_MOVE_COST = {
-    Terrain.GRASS: 1, Terrain.ROAD: 1, Terrain.DIRT_ROAD: 1,
-    Terrain.TREE: 1, Terrain.MOUNTAIN: 2, Terrain.HQ: 1,
-    Terrain.CITY: 1, Terrain.FACTORY: 1,
+# Terrain char mapping from map files
+TILE_CHAR = {
+    ".": TileType.GRASS,
+    "R": TileType.ROAD,
+    "D": TileType.DIRT_ROAD,
+    "T": TileType.TREE,
+    "M": TileType.MOUNTAIN,
+    "H": TileType.HQ,
+    "C": TileType.CITY,
+    "F": TileType.FACTORY,
 }
 
 class UnitType(Enum):
-    INFANTRY = auto()
-    TANK = auto()
-    RANGER = auto()
+    INFANTRY = 1
+    TANK = 2
+    RANGER = 3
 
-UNIT_STATS = {
-    UnitType.INFANTRY: {"hp": 3, "atk": 2, "move": 4, "range": (1, 1), "accuracy": 90, "can_attack_after_move": True},
-    UnitType.TANK:     {"hp": 5, "atk": 4, "move": 2, "range": (1, 1), "accuracy": 85, "can_attack_after_move": True},
-    UnitType.RANGER:   {"hp": 3, "atk": 3, "move": 3, "range": (2, 3), "accuracy": 88, "can_attack_after_move": False},
+# Contract-accurate stats
+UNIT_HP =    {UnitType.INFANTRY: 3, UnitType.TANK: 5, UnitType.RANGER: 3}
+UNIT_ATK =   {UnitType.INFANTRY: 2, UnitType.TANK: 4, UnitType.RANGER: 3}
+UNIT_MOVE =  {UnitType.INFANTRY: 4, UnitType.TANK: 2, UnitType.RANGER: 3}
+UNIT_MIN_RANGE = {UnitType.INFANTRY: 1, UnitType.TANK: 1, UnitType.RANGER: 2}
+UNIT_MAX_RANGE = {UnitType.INFANTRY: 1, UnitType.TANK: 1, UnitType.RANGER: 3}
+UNIT_ACCURACY =  {UnitType.INFANTRY: 90, UnitType.TANK: 85, UnitType.RANGER: 88}
+
+MOVE_COST = {
+    TileType.GRASS: 1, TileType.ROAD: 1, TileType.DIRT_ROAD: 1,
+    TileType.TREE: 1, TileType.MOUNTAIN: 2, TileType.HQ: 1,
+    TileType.CITY: 1, TileType.FACTORY: 1,
+}
+DEFENSE_BONUS = {
+    TileType.GRASS: 0, TileType.ROAD: 0, TileType.DIRT_ROAD: 0,
+    TileType.TREE: 1, TileType.MOUNTAIN: 2, TileType.HQ: 2,
+    TileType.CITY: 1, TileType.FACTORY: 1,
+}
+TERRAIN_EVASION = {
+    TileType.GRASS: 0, TileType.ROAD: 0, TileType.DIRT_ROAD: 0,
+    TileType.TREE: 5, TileType.MOUNTAIN: 12, TileType.HQ: 10,
+    TileType.CITY: 8, TileType.FACTORY: 8,
 }
 
-# Vehicle types get road bonus
-VEHICLE_TYPES = {UnitType.TANK}
-ROAD_BONUS = 2
-ROAD_TERRAINS = {Terrain.ROAD, Terrain.DIRT_ROAD}
+ROAD_TILES = {TileType.ROAD, TileType.DIRT_ROAD}
+
+def gets_road_bonus(ut: UnitType) -> bool:
+    return ut in (UnitType.TANK, UnitType.RANGER)
+
+def can_traverse(ut: UnitType, tile: TileType) -> bool:
+    if tile == TileType.MOUNTAIN:
+        return ut == UnitType.INFANTRY
+    return True
+
+def can_capture(ut: UnitType) -> bool:
+    return ut in (UnitType.INFANTRY, UnitType.RANGER)
 
 # ============================================================================
 # Data structures
@@ -95,200 +111,313 @@ class Unit:
     has_acted: bool = False
 
     @property
-    def alive(self):
-        return self.hp > 0
-
-    @property
-    def stats(self):
-        return UNIT_STATS[self.unit_type]
+    def alive(self): return self.hp > 0
 
 @dataclass
 class Building:
     x: int
     y: int
-    owner: int  # 1, 2, or 0 (neutral)
-    building_type: str = "hq"  # "hq", "city", or "factory"
+    owner: int
+    building_type: str  # "hq"
     capture_player: int = 0
     capture_progress: int = 0
-    production_queue: Optional[UnitType] = None  # for factories
 
 @dataclass
 class GameState:
     width: int
     height: int
-    terrain: list  # 2D list of Terrain
-    units: list  # list of Unit
-    buildings: list  # list of Building
+    terrain: List[List[TileType]]
+    units: List[Unit]
+    buildings: List[Building]
     current_player: int = 1
     round_num: int = 1
     winner: Optional[int] = None
-    gold: dict = field(default_factory=lambda: {1: STARTING_GOLD, 2: STARTING_GOLD})
-    gold_earned: dict = field(default_factory=lambda: {1: 0, 2: 0})
-    units_produced: dict = field(default_factory=lambda: {1: 0, 2: 0})
     _next_uid: int = 0
+    map_name: str = ""
 
     def next_uid(self):
         self._next_uid += 1
         return self._next_uid
 
-    def terrain_at(self, x, y):
+    def tile_at(self, x, y) -> Optional[TileType]:
         if 0 <= x < self.width and 0 <= y < self.height:
             return self.terrain[y][x]
         return None
 
-    def unit_at(self, x, y):
+    def unit_at(self, x, y) -> Optional[Unit]:
         for u in self.units:
             if u.alive and u.x == x and u.y == y:
                 return u
         return None
 
-    def player_units(self, player):
+    def player_units(self, player) -> List[Unit]:
         return [u for u in self.units if u.alive and u.player == player]
 
-    def player_hq(self, player):
+    def enemy_units(self, player) -> List[Unit]:
+        return [u for u in self.units if u.alive and u.player != player]
+
+    def player_hq(self, player) -> Optional[Building]:
         for b in self.buildings:
             if b.owner == player and b.building_type == "hq":
                 return b
         return None
 
-    def player_buildings(self, player, building_type=None):
-        return [b for b in self.buildings
-                if b.owner == player and (building_type is None or b.building_type == building_type)]
-
-    def player_factories(self, player):
-        return self.player_buildings(player, "factory")
-
-    def player_cities(self, player):
-        return self.player_buildings(player, "city")
-
-    def other_player(self, player):
-        return 2 if player == 1 else 1
+    def other_player(self, p): return 2 if p == 1 else 1
 
 # ============================================================================
-# Combat math (from PRD / balance_analyzer.py)
+# Map loading
 # ============================================================================
 
-def clamp(lo, hi, val):
-    return max(lo, min(hi, val))
+def list_maps() -> List[str]:
+    """List available map names."""
+    maps = []
+    for d in sorted(os.listdir(MAPS_DIR)):
+        if d.startswith("_"):
+            continue
+        terrain_path = os.path.join(MAPS_DIR, d, "terrain.txt")
+        if os.path.isfile(terrain_path):
+            maps.append(d)
+    return maps
 
-def hit_chance(accuracy, terrain_evasion, moved, range_penalty=0):
-    move_pen = 5 if moved else 0
-    return clamp(75, 95, accuracy - terrain_evasion - move_pen - range_penalty) / 100.0
+def load_map(name: str) -> GameState:
+    """Load a map from contracts/scripts/maps/<name>/."""
+    base = os.path.join(MAPS_DIR, name)
+    # Terrain
+    with open(os.path.join(base, "terrain.txt")) as f:
+        rows = []
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            cells = line.split()
+            rows.append([TILE_CHAR.get(c, TileType.GRASS) for c in cells])
+    height = len(rows)
+    width = len(rows[0]) if rows else 0
 
-def hit_damage(atk, terrain_defense):
-    return max(atk - terrain_defense, 1)
+    # Buildings
+    buildings = []
+    bpath = os.path.join(base, "buildings.txt")
+    if os.path.isfile(bpath):
+        with open(bpath) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                btype = parts[0].lower()
+                owner = int(parts[1])
+                bx, by = int(parts[2]), int(parts[3])
+                buildings.append(Building(x=bx, y=by, owner=owner, building_type=btype))
+                # Mark terrain
+                if 0 <= by < height and 0 <= bx < width:
+                    if btype == "hq":
+                        rows[by][bx] = TileType.HQ
 
-def graze_damage(atk, terrain_defense):
-    hd = hit_damage(atk, terrain_defense)
-    return 1 if hd >= 2 else 0
+    # Units
+    units = []
+    uid = 0
+    upath = os.path.join(base, "units.txt")
+    if os.path.isfile(upath):
+        with open(upath) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                ut_name = parts[0]
+                player = int(parts[1])
+                ux, uy = int(parts[2]), int(parts[3])
+                ut = UnitType[ut_name.upper()]
+                uid += 1
+                units.append(Unit(uid=uid, unit_type=ut, player=player,
+                                  x=ux, y=uy, hp=UNIT_HP[ut]))
 
-def resolve_attack(rng, attacker, defender, attacker_moved, def_terrain, atk_terrain, distance):
-    """Resolve one attack exchange. Returns (dmg_to_defender, dmg_to_attacker)."""
-    a_stats = attacker.stats
-    d_stats = defender.stats
+    return GameState(width=width, height=height, terrain=rows,
+                     units=units, buildings=buildings, _next_uid=uid,
+                     map_name=name)
 
-    # Ranger can't attack after moving (unless within move_attack_max_range)
-    if not a_stats["can_attack_after_move"] and attacker_moved:
-        mar = a_stats.get("move_attack_max_range", 0)
-        if mar == 0 or distance > mar:
-            return 0, 0
+# ============================================================================
+# ASCII renderer
+# ============================================================================
 
-    a_min, a_max = a_stats["range"]
-    if not (a_min <= distance <= a_max):
-        return 0, 0
+TILE_DISPLAY = {
+    TileType.GRASS: "·", TileType.ROAD: "═", TileType.DIRT_ROAD: "─",
+    TileType.TREE: "♣", TileType.MOUNTAIN: "▲", TileType.HQ: "★",
+    TileType.CITY: "◆", TileType.FACTORY: "⚙",
+}
+UNIT_DISPLAY = {
+    (UnitType.INFANTRY, 1): "\033[94mI\033[0m",  # blue
+    (UnitType.INFANTRY, 2): "\033[91mI\033[0m",  # red
+    (UnitType.TANK, 1): "\033[94mT\033[0m",
+    (UnitType.TANK, 2): "\033[91mT\033[0m",
+    (UnitType.RANGER, 1): "\033[94mR\033[0m",
+    (UnitType.RANGER, 2): "\033[91mR\033[0m",
+}
 
-    def_def = TERRAIN_DEFENSE[def_terrain]
-    def_eva = TERRAIN_EVASION[def_terrain]
-    range_pen = 5 if attacker.unit_type == UnitType.RANGER and distance == 3 else 0
+def render_map(state: GameState, show_hp=True) -> str:
+    """Render the game state as colored ASCII art."""
+    lines = []
+    # Header
+    lines.append(f"  Map: {state.map_name}  Round: {state.round_num}  Turn: P{state.current_player}")
+    p1u = state.player_units(1)
+    p2u = state.player_units(2)
+    lines.append(f"  \033[94mP1: {len(p1u)} units ({sum(u.hp for u in p1u)} HP)\033[0m  "
+                 f"\033[91mP2: {len(p2u)} units ({sum(u.hp for u in p2u)} HP)\033[0m")
+    lines.append("")
 
-    # Attacker roll
-    hc = hit_chance(a_stats["accuracy"], def_eva, attacker_moved, range_pen)
-    if rng.random() < hc:
-        dmg_to_def = hit_damage(a_stats["atk"], def_def)
-    else:
-        dmg_to_def = graze_damage(a_stats["atk"], def_def)
+    # Column numbers
+    col_nums = "   " + "".join(f"{x:2d}" for x in range(state.width))
+    lines.append(col_nums)
 
-    # Check defender survival for counterattack
-    defender_survives = defender.hp - dmg_to_def > 0
-    dmg_to_atk = 0
-
-    if defender_survives:
-        d_min, d_max = d_stats["range"]
-        if d_min <= distance <= d_max:
-            atk_def = TERRAIN_DEFENSE[atk_terrain]
-            atk_eva = TERRAIN_EVASION[atk_terrain]
-            counter_range_pen = 5 if defender.unit_type == UnitType.RANGER and distance == 3 else 0
-            counter_hc = hit_chance(d_stats["accuracy"], atk_eva, False, counter_range_pen)
-            if rng.random() < counter_hc:
-                dmg_to_atk = hit_damage(d_stats["atk"], atk_def)
+    for y in range(state.height):
+        row = f"{y:2d} "
+        for x in range(state.width):
+            unit = state.unit_at(x, y)
+            if unit:
+                sym = UNIT_DISPLAY.get((unit.unit_type, unit.player), "?")
+                if show_hp and unit.hp < UNIT_HP[unit.unit_type]:
+                    # Show damaged units with hp suffix
+                    row += sym + str(unit.hp)
+                else:
+                    row += sym + " "
             else:
-                dmg_to_atk = graze_damage(d_stats["atk"], atk_def)
+                tile = state.tile_at(x, y)
+                # Check if building here
+                is_hq = any(b.x == x and b.y == y and b.building_type == "hq" for b in state.buildings)
+                if is_hq:
+                    owner = next((b.owner for b in state.buildings if b.x == x and b.y == y), 0)
+                    if owner == 1:
+                        row += "\033[94m★\033[0m "
+                    elif owner == 2:
+                        row += "\033[91m★\033[0m "
+                    else:
+                        row += "★ "
+                else:
+                    row += TILE_DISPLAY.get(tile, "?") + " "
+        lines.append(row)
 
-    return dmg_to_def, dmg_to_atk
+    lines.append("")
+    # Legend
+    lines.append("  ·=grass ═=road ─=dirt ♣=tree ▲=mountain ★=HQ  "
+                 "\033[94mBlue=P1\033[0m \033[91mRed=P2\033[0m  I=Infantry T=Tank R=Ranger")
+    return "\n".join(lines)
 
 # ============================================================================
-# Movement (BFS pathfinding)
+# Combat — exact contract logic
 # ============================================================================
 
 def manhattan(x1, y1, x2, y2):
     return abs(x1 - x2) + abs(y1 - y2)
 
-def reachable_tiles(state, unit):
-    """BFS to find all reachable tiles for a unit. Returns dict {(x,y): cost}."""
-    stats = unit.stats
-    base_move = stats["move"]
+def compute_hit_chance(attacker_type: UnitType, def_tile: TileType,
+                       moved: bool, distance: int) -> int:
+    """Returns hit chance 75-95 (roll <= this = hit)."""
+    chance = UNIT_ACCURACY[attacker_type]
+    chance -= TERRAIN_EVASION[def_tile]
+    if moved:
+        chance -= 5
+    if attacker_type == UnitType.RANGER and distance == 3:
+        chance -= 5
+    return max(75, min(95, chance))
 
-    # Road bonus for vehicles starting on road
-    bonus = 0
-    start_terrain = state.terrain_at(unit.x, unit.y)
-    if unit.unit_type in VEHICLE_TYPES and start_terrain in ROAD_TERRAINS:
-        bonus = ROAD_BONUS
+def resolve_strike(rng: random.Random, atk_type: UnitType, def_tile: TileType,
+                   moved: bool, distance: int) -> int:
+    """Resolve a single strike. Returns damage dealt."""
+    atk = UNIT_ATK[atk_type]
+    defense = DEFENSE_BONUS[def_tile]
+    hit_dmg = max(atk - defense, 1)
+    hit_ch = compute_hit_chance(atk_type, def_tile, moved, distance)
+    roll = rng.randint(1, 100)
+    if roll <= hit_ch:
+        return hit_dmg  # Hit
+    elif hit_dmg >= 2:
+        return 1  # Graze
+    else:
+        return 0  # Whiff
 
-    total_move = base_move + bonus
-    reached = {(unit.x, unit.y): 0}
-    queue = collections.deque([(unit.x, unit.y, 0, bonus)])
+def resolve_combat(rng: random.Random, attacker: Unit, defender: Unit,
+                   atk_tile: TileType, def_tile: TileType,
+                   distance: int, attacker_moved: bool) -> Tuple[int, int]:
+    """Contract-accurate combat. Returns (dmg_to_defender, dmg_to_attacker)."""
+    dmg_to_def = resolve_strike(rng, attacker.unit_type, def_tile,
+                                attacker_moved, distance)
+    dmg_to_atk = 0
+    defender_survives = defender.hp > dmg_to_def
+    if defender_survives:
+        d_min = UNIT_MIN_RANGE[defender.unit_type]
+        d_max = UNIT_MAX_RANGE[defender.unit_type]
+        if d_min <= distance <= d_max:
+            dmg_to_atk = resolve_strike(rng, defender.unit_type, atk_tile,
+                                        False, distance)
+    return dmg_to_def, dmg_to_atk
 
-    while queue:
-        cx, cy, cost, rb = queue.popleft()
-        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            nx, ny = cx + dx, cy + dy
-            t = state.terrain_at(nx, ny)
-            if t is None:
+# ============================================================================
+# Movement — Dijkstra with road bonus (contract-accurate)
+# ============================================================================
+
+def reachable_tiles(state: GameState, unit: Unit,
+                    occupied: set = None) -> Dict[Tuple[int,int], int]:
+    """Dijkstra BFS. Returns {(x,y): cost}. Matches contract move logic."""
+    base_move = UNIT_MOVE[unit.unit_type]
+    start_tile = state.tile_at(unit.x, unit.y)
+
+    # Road bonus: +2 if unit gets_road_bonus and starts on road
+    road_bonus = 0
+    if gets_road_bonus(unit.unit_type) and start_tile in ROAD_TILES:
+        road_bonus = 2
+    total_budget = base_move + road_bonus
+
+    # Dijkstra: state = (cost, road_bonus_remaining, x, y)
+    reached = {}  # (x,y) -> min cost
+    heap = [(0, road_bonus, unit.x, unit.y)]
+    visited = set()
+    if occupied is None:
+        occupied = set()
+
+    import heapq
+    while heap:
+        cost, rb, cx, cy = heapq.heappop(heap)
+        if (cx, cy) in visited:
+            continue
+        visited.add((cx, cy))
+        if (cx, cy) != (unit.x, unit.y):
+            reached[(cx, cy)] = cost
+
+        for dx, dy in [(0,1),(0,-1),(1,0),(-1,0)]:
+            nx, ny = cx+dx, cy+dy
+            tile = state.tile_at(nx, ny)
+            if tile is None:
                 continue
-            if t == Terrain.MOUNTAIN and unit.unit_type != UnitType.INFANTRY:
+            if not can_traverse(unit.unit_type, tile):
                 continue
-            occupant = state.unit_at(nx, ny)
-            if occupant and occupant.uid != unit.uid:
+            # Can't move through other units
+            occ = state.unit_at(nx, ny)
+            if occ and occ.uid != unit.uid:
+                continue
+            if (nx, ny) in occupied:
                 continue
 
-            move_cost = TERRAIN_MOVE_COST[t]
+            step_cost = MOVE_COST[tile]
             new_rb = rb
-            if rb > 0 and t in ROAD_TERRAINS:
-                if move_cost <= new_rb:
-                    new_rb -= move_cost
-                    move_cost = 0
-                else:
-                    move_cost -= new_rb
-                    new_rb = 0
-            elif rb > 0 and t not in ROAD_TERRAINS:
+            if new_rb > 0 and tile in ROAD_TILES:
+                spend = min(step_cost, new_rb)
+                step_cost -= spend
+                new_rb -= spend
+            elif new_rb > 0 and tile not in ROAD_TILES:
                 new_rb = 0
 
-            new_cost = cost + move_cost
-            if new_cost > base_move + bonus - new_rb and new_cost > total_move:
+            new_cost = cost + step_cost
+            if new_cost > total_budget:
                 continue
-            if new_cost > total_move:
-                continue
+            if (nx, ny) not in visited:
+                heapq.heappush(heap, (new_cost, new_rb, nx, ny))
 
-            if (nx, ny) not in reached or reached[(nx, ny)] > new_cost:
-                reached[(nx, ny)] = new_cost
-                queue.append((nx, ny, new_cost, new_rb))
-
-    del reached[(unit.x, unit.y)]
     return reached
 
-def find_path_toward(state, unit, tx, ty):
-    """Find the reachable tile closest to (tx,ty) using BFS. Returns (x,y) or None."""
-    tiles = reachable_tiles(state, unit)
+def best_move_toward(state: GameState, unit: Unit, tx: int, ty: int,
+                     occupied: set = None) -> Optional[Tuple[int,int]]:
+    """Find reachable tile closest to target."""
+    tiles = reachable_tiles(state, unit, occupied)
     if not tiles:
         return None
     if (tx, ty) in tiles:
@@ -299,198 +428,41 @@ def find_path_toward(state, unit, tx, ty):
     return None
 
 # ============================================================================
-# Map generation
-# ============================================================================
-
-def generate_map(width, height, rng):
-    """Generate a symmetric 2-player map with terrain variety, cities, and factories."""
-    terrain = [[Terrain.GRASS] * width for _ in range(height)]
-
-    # Add some roads through the center
-    mid_y = height // 2
-    for x in range(width):
-        terrain[mid_y][x] = Terrain.ROAD
-
-    # Vertical roads
-    mid_x = width // 2
-    for y in range(height):
-        terrain[y][mid_x] = Terrain.ROAD
-    # Second vertical road for even-width maps
-    if width % 2 == 0:
-        for y in range(height):
-            terrain[y][mid_x - 1] = Terrain.ROAD
-
-    # Scatter trees symmetrically
-    for _ in range(width * height // 8):
-        x = rng.randint(0, width // 2)
-        y = rng.randint(0, height - 1)
-        if terrain[y][x] == Terrain.GRASS:
-            terrain[y][x] = Terrain.TREE
-            mx = width - 1 - x
-            if terrain[y][mx] == Terrain.GRASS:
-                terrain[y][mx] = Terrain.TREE
-
-    # A few mountains symmetrically
-    for _ in range(width * height // 20):
-        x = rng.randint(1, width // 2 - 1)
-        y = rng.randint(1, height - 2)
-        if terrain[y][x] == Terrain.GRASS:
-            terrain[y][x] = Terrain.MOUNTAIN
-            mx = width - 1 - x
-            if terrain[y][mx] == Terrain.GRASS:
-                terrain[y][mx] = Terrain.MOUNTAIN
-
-    # HQ positions
-    hq1_x, hq1_y = 1, height // 2
-    hq2_x, hq2_y = width - 2, height // 2
-    terrain[hq1_y][hq1_x] = Terrain.HQ
-    terrain[hq2_y][hq2_x] = Terrain.HQ
-
-    # Factory positions (near each HQ)
-    fac1_x, fac1_y = 2, height // 2 - 2
-    fac2_x, fac2_y = width - 3, height // 2 - 2
-    terrain[fac1_y][fac1_x] = Terrain.FACTORY
-    terrain[fac2_y][fac2_x] = Terrain.FACTORY
-
-    # City positions (contestable, in the middle area)
-    city_positions = []
-    # 2-3 pairs of symmetric cities
-    city_ys = [height // 4, height // 2, 3 * height // 4]
-    
-    if width % 2 != 0:
-        city_x = width // 2
-        for cy in city_ys:
-            terrain[cy][city_x] = Terrain.CITY
-            city_positions.append((city_x, cy))
-    else:
-        # Perfectly symmetric cities for even width
-        x1 = width // 2
-        x2 = x1 - 1
-        for cy in city_ys:
-            terrain[cy][x1] = Terrain.CITY
-            city_positions.append((x1, cy))
-            terrain[cy][x2] = Terrain.CITY
-            city_positions.append((x2, cy))
-
-    buildings_info = {
-        "hq1": (hq1_x, hq1_y),
-        "hq2": (hq2_x, hq2_y),
-        "fac1": (fac1_x, fac1_y),
-        "fac2": (fac2_x, fac2_y),
-        "cities": city_positions,
-    }
-    return terrain, buildings_info
-
-def create_game(width=14, height=14, rng_seed=42):
-    """Create a new game state with starting units."""
-    rng = random.Random(rng_seed)
-    terrain, binfo = generate_map(width, height, rng)
-
-    state = GameState(
-        width=width, height=height, terrain=terrain,
-        units=[], buildings=[], _next_uid=0,
-        gold={1: STARTING_GOLD, 2: P2_STARTING_GOLD},
-        gold_earned={1: 0, 2: 0},
-        units_produced={1: 0, 2: 0},
-    )
-
-    hq1 = binfo["hq1"]
-    hq2 = binfo["hq2"]
-
-    # Buildings
-    state.buildings.append(Building(x=hq1[0], y=hq1[1], owner=1, building_type="hq"))
-    state.buildings.append(Building(x=hq2[0], y=hq2[1], owner=2, building_type="hq"))
-    state.buildings.append(Building(x=binfo["fac1"][0], y=binfo["fac1"][1], owner=1, building_type="factory"))
-    state.buildings.append(Building(x=binfo["fac2"][0], y=binfo["fac2"][1], owner=2, building_type="factory"))
-    for cx, cy in binfo["cities"]:
-        state.buildings.append(Building(x=cx, y=cy, owner=0, building_type="city"))
-
-    # Starting units for player 1 (left side)
-    p1_units = [
-        (UnitType.INFANTRY, hq1[0], hq1[1] - 2),
-        (UnitType.INFANTRY, hq1[0], hq1[1] + 2),
-        (UnitType.INFANTRY, hq1[0] + 1, hq1[1] - 1),
-        (UnitType.TANK, hq1[0] + 1, hq1[1] + 1),
-        (UnitType.RANGER, hq1[0], hq1[1] - 1),
-        (UnitType.RANGER, hq1[0], hq1[1] + 1),
-    ]
-    p2_units = [
-        (UnitType.INFANTRY, hq2[0], hq2[1] - 2),
-        (UnitType.INFANTRY, hq2[0], hq2[1] + 2),
-        (UnitType.INFANTRY, hq2[0] - 1, hq2[1] - 1),
-        (UnitType.TANK, hq2[0] - 1, hq2[1] + 1),
-        (UnitType.RANGER, hq2[0], hq2[1] - 1),
-        (UnitType.RANGER, hq2[0], hq2[1] + 1),
-    ]
-
-    for ut, x, y in p1_units:
-        state.units.append(Unit(uid=state.next_uid(), unit_type=ut, player=1, x=x, y=y, hp=UNIT_STATS[ut]["hp"]))
-    for ut, x, y in p2_units:
-        state.units.append(Unit(uid=state.next_uid(), unit_type=ut, player=2, x=x, y=y, hp=UNIT_STATS[ut]["hp"]))
-
-    return state
-
-# ============================================================================
-# Economy
-# ============================================================================
-
-def collect_income(state, player):
-    """Collect 1 gold per owned city + 1 base HQ income at start of turn."""
-    cities = state.player_cities(player)
-    income = len(cities) + 1  # +1 base HQ income
-    state.gold[player] += income
-    state.gold_earned[player] += income
-
-def process_production(state, player):
-    """Spawn queued units at factories if tile is unoccupied."""
-    for fac in state.player_factories(player):
-        if fac.production_queue is not None:
-            if state.unit_at(fac.x, fac.y) is None:
-                ut = fac.production_queue
-                fac.production_queue = None
-                unit = Unit(
-                    uid=state.next_uid(), unit_type=ut, player=player,
-                    x=fac.x, y=fac.y, hp=UNIT_STATS[ut]["hp"],
-                    has_moved=True, has_acted=True,
-                )
-                state.units.append(unit)
-                state.units_produced[player] += 1
-
-def build_unit(state, player, factory, unit_type):
-    """Queue a unit at a factory. Returns True if successful."""
-    if factory.building_type != "factory" or factory.owner != player:
-        return False
-    if factory.production_queue is not None:
-        return False
-    cost = UNIT_COST[unit_type.name]
-    if state.gold[player] < cost:
-        return False
-    state.gold[player] -= cost
-    factory.production_queue = unit_type
-    return True
-
-# ============================================================================
 # Game logic
 # ============================================================================
 
-def do_move(state, unit, tx, ty):
+def do_move(state: GameState, unit: Unit, tx: int, ty: int):
+    """Move unit. Resets capture progress if leaving a building being captured."""
+    # Reset capture if leaving
+    if can_capture(unit.unit_type):
+        for b in state.buildings:
+            if b.x == unit.x and b.y == unit.y and b.capture_player == state.current_player and b.capture_progress > 0:
+                b.capture_player = 0
+                b.capture_progress = 0
     unit.x = tx
     unit.y = ty
     unit.has_moved = True
 
-def do_attack(state, rng, attacker, defender):
+def do_attack(state: GameState, rng: random.Random, attacker: Unit, defender: Unit) -> Tuple[int, int]:
     dist = manhattan(attacker.x, attacker.y, defender.x, defender.y)
-    def_terrain = state.terrain_at(defender.x, defender.y)
-    atk_terrain = state.terrain_at(attacker.x, attacker.y)
-    dmg_d, dmg_a = resolve_attack(rng, attacker, defender, attacker.has_moved, def_terrain, atk_terrain, dist)
+    atk_tile = state.tile_at(attacker.x, attacker.y)
+    def_tile = state.tile_at(defender.x, defender.y)
+    dmg_d, dmg_a = resolve_combat(rng, attacker, defender, atk_tile, def_tile,
+                                   dist, attacker.has_moved)
     defender.hp -= dmg_d
     attacker.hp -= dmg_a
     attacker.has_acted = True
+    # Check elimination
+    enemy = state.other_player(attacker.player)
+    if not state.player_units(enemy):
+        state.winner = attacker.player
+    if not state.player_units(attacker.player):
+        state.winner = enemy
     return dmg_d, dmg_a
 
-def do_capture(state, unit):
-    """Attempt to capture building at unit's position."""
-    if unit.unit_type not in (UnitType.INFANTRY, UnitType.RANGER):
+def do_capture(state: GameState, unit: Unit) -> bool:
+    """Attempt capture. Returns True if building was captured."""
+    if not can_capture(unit.unit_type):
         return False
     for b in state.buildings:
         if b.x == unit.x and b.y == unit.y and b.owner != unit.player:
@@ -500,870 +472,529 @@ def do_capture(state, unit):
             else:
                 b.capture_progress += 1
             if b.capture_progress >= CAPTURE_THRESHOLD:
+                old_owner = b.owner
                 b.owner = unit.player
                 b.capture_player = 0
                 b.capture_progress = 0
-                return True  # captured!
+                if b.building_type == "hq":
+                    state.winner = unit.player
+                return True
             unit.has_acted = True
             return False
     return False
 
-def do_wait(unit):
+def do_wait(unit: Unit):
     unit.has_moved = True
     unit.has_acted = True
 
-def check_winner(state):
-    """Check win conditions."""
-    # Elimination: 0 units AND 0 factories AND 0 gold
-    for p in [1, 2]:
-        if (not state.player_units(p) and
-            not state.player_factories(p) and
-            state.gold[p] <= 0):
-            state.winner = state.other_player(p)
-            return
-
-    # Timeout
-    if state.round_num > MAX_ROUNDS:
-        hp1 = sum(u.hp for u in state.player_units(1))
-        hp2 = sum(u.hp for u in state.player_units(2))
-        state.winner = 1 if hp1 >= hp2 else 2
-
-def end_turn(state):
-    """End current player's turn."""
-    # Reset stale capture progress
-    for b in state.buildings:
-        if b.capture_player != 0:
-            captor = None
-            for u in state.units:
-                if u.alive and u.x == b.x and u.y == b.y and u.player == b.capture_player:
-                    captor = u
-                    break
-            if captor is None:
-                b.capture_player = 0
-                b.capture_progress = 0
-
-    # Advance player
+def end_turn(state: GameState):
+    """Advance turn. Check round limit."""
     if state.current_player == 1:
         state.current_player = 2
     else:
         state.current_player = 1
         state.round_num += 1
 
-    # Economy: income + production at start of turn
-    collect_income(state, state.current_player)
-    process_production(state, state.current_player)
-
-    # Reset unit flags for new current player
+    # Reset flags
     for u in state.player_units(state.current_player):
         u.has_moved = False
         u.has_acted = False
 
-    check_winner(state)
+    # Round limit
+    if state.round_num > MAX_ROUNDS and state.winner is None:
+        hp1 = sum(u.hp for u in state.player_units(1))
+        hp2 = sum(u.hp for u in state.player_units(2))
+        if hp1 > hp2:
+            state.winner = 1
+        elif hp2 > hp1:
+            state.winner = 2
+        else:
+            # Tie: count units
+            n1 = len(state.player_units(1))
+            n2 = len(state.player_units(2))
+            state.winner = 1 if n1 >= n2 else 2
 
 # ============================================================================
 # AI Strategies
 # ============================================================================
 
-def get_attack_targets(state, unit):
-    stats = unit.stats
-    mar = stats.get("move_attack_max_range", 0)
-    if not stats["can_attack_after_move"] and unit.has_moved and mar == 0:
-        return []
-    a_min, a_max = stats["range"]
-    # If moved and has move_attack_max_range, cap effective max range
-    eff_max = mar if (not stats["can_attack_after_move"] and unit.has_moved and mar > 0) else a_max
+def get_attack_targets(state: GameState, unit: Unit) -> List[Unit]:
+    """Get units this unit can attack from current position."""
+    if unit.unit_type == UnitType.RANGER and unit.has_moved:
+        return []  # Rangers can't attack after moving
+    mn = UNIT_MIN_RANGE[unit.unit_type]
+    mx = UNIT_MAX_RANGE[unit.unit_type]
     targets = []
-    enemy = state.other_player(unit.player)
-    for e in state.player_units(enemy):
+    for e in state.enemy_units(unit.player):
         d = manhattan(unit.x, unit.y, e.x, e.y)
-        if a_min <= d <= eff_max:
+        if mn <= d <= mx:
             targets.append(e)
     return targets
 
-def expected_damage_to(attacker, defender, def_terrain, moved):
-    stats = attacker.stats
-    mar = stats.get("move_attack_max_range", 0)
-    dist = manhattan(attacker.x, attacker.y, defender.x, defender.y)
-    if not stats["can_attack_after_move"] and moved:
-        if mar == 0 or dist > mar:
-            return 0
-    a_min, a_max = stats["range"]
-    if not (a_min <= dist <= a_max):
-        return 0
-    def_def = TERRAIN_DEFENSE[def_terrain]
-    def_eva = TERRAIN_EVASION[def_terrain]
-    rp = 5 if attacker.unit_type == UnitType.RANGER and dist == 3 else 0
-    hc = hit_chance(stats["accuracy"], def_eva, moved, rp)
-    hd = hit_damage(stats["atk"], def_def)
-    gd = graze_damage(stats["atk"], def_def)
-    return hc * hd + (1 - hc) * gd
+def expected_damage(atk_type: UnitType, def_tile: TileType,
+                    moved: bool, distance: int) -> float:
+    """Expected damage from one strike."""
+    atk = UNIT_ATK[atk_type]
+    defense = DEFENSE_BONUS[def_tile]
+    hit_dmg = max(atk - defense, 1)
+    hit_ch = compute_hit_chance(atk_type, def_tile, moved, distance) / 100.0
+    graze = 1 if hit_dmg >= 2 else 0
+    return hit_ch * hit_dmg + (1 - hit_ch) * graze
 
-
-def _neutral_cities(state):
-    """Get all neutral (unowned) cities."""
-    return [b for b in state.buildings if b.building_type == "city" and b.owner == 0]
-
-def _uncaptured_cities(state, player):
-    """Cities not owned by this player (neutral or enemy)."""
-    return [b for b in state.buildings if b.building_type == "city" and b.owner != player]
-
-def _try_send_infantry_to_capture(state, unit, player, rng, targets_buildings):
-    """Try to move infantry/ranger toward a capturable building. Returns True if handled."""
-    if unit.unit_type not in (UnitType.INFANTRY, UnitType.RANGER):
-        return False
-    if not targets_buildings:
-        return False
-
-    # Already on a building to capture?
-    for b in targets_buildings:
-        if b.x == unit.x and b.y == unit.y:
-            if do_capture(state, unit):
-                # Check HQ capture
-                if b.building_type == "hq":
-                    state.winner = player
-                return True
-
-    # Move toward nearest capturable building
-    nearest = min(targets_buildings, key=lambda b: manhattan(unit.x, unit.y, b.x, b.y))
-    dest = find_path_toward(state, unit, nearest.x, nearest.y)
-    if dest:
-        do_move(state, unit, dest[0], dest[1])
-        # If arrived, capture
-        for b in targets_buildings:
-            if b.x == unit.x and b.y == unit.y:
-                if do_capture(state, unit):
-                    if b.building_type == "hq":
-                        state.winner = player
-                    return True
-        # Attack if possible after moving
-        targets = get_attack_targets(state, unit)
-        if targets:
-            target = min(targets, key=lambda t: t.hp)
-            do_attack(state, rng, unit, target)
-        else:
-            do_wait(unit)
-        return True
-    return False
-
-
-# ---- Shared tactical helpers ----
-
-def _count_enemy_units(state, player):
-    """Count enemy units by type."""
-    enemy = state.other_player(player)
-    counts = {UnitType.INFANTRY: 0, UnitType.TANK: 0, UnitType.RANGER: 0}
-    for u in state.player_units(enemy):
-        counts[u.unit_type] += 1
-    return counts
-
-def _count_own_units(state, player):
-    """Count own units by type."""
-    counts = {UnitType.INFANTRY: 0, UnitType.TANK: 0, UnitType.RANGER: 0}
-    for u in state.player_units(player):
-        counts[u.unit_type] += 1
-    return counts
-
-def _focus_fire_target(state, unit, targets):
-    """Pick best focus fire target: prioritize killable > lowest HP > highest value."""
+def pick_target(state: GameState, unit: Unit, targets: List[Unit]) -> Optional[Unit]:
+    """Focus fire: prefer killable > lowest HP > highest value."""
     if not targets:
         return None
     def score(t):
-        dt = state.terrain_at(t.x, t.y)
-        ed = expected_damage_to(unit, t, dt, unit.has_moved)
+        dt = state.tile_at(t.x, t.y)
+        dist = manhattan(unit.x, unit.y, t.x, t.y)
+        ed = expected_damage(unit.unit_type, dt, unit.has_moved, dist)
         killable = 1 if ed >= t.hp else 0
-        # Value: tanks > rangers > infantry
-        value = {UnitType.TANK: 3, UnitType.RANGER: 2, UnitType.INFANTRY: 1}.get(t.unit_type, 1)
+        value = {UnitType.TANK: 3, UnitType.RANGER: 2, UnitType.INFANTRY: 1}[t.unit_type]
         return (-killable, t.hp, -value)
     return min(targets, key=score)
 
-def _should_retreat(unit, state, player):
-    """Unit at 1 HP should retreat toward own buildings."""
-    if unit.hp > 1:
-        return False
-    return True
-
-def _retreat_toward_hq(state, unit, player):
-    """Move damaged unit toward own HQ/buildings."""
-    own_hq = state.player_hq(player)
-    if not own_hq:
-        return False
-    # Find own buildings to retreat to
-    own_buildings = state.player_buildings(player)
-    if not own_buildings:
-        return False
-    nearest = min(own_buildings, key=lambda b: manhattan(unit.x, unit.y, b.x, b.y))
-    if manhattan(unit.x, unit.y, nearest.x, nearest.y) <= 1:
-        # Already near safety
-        return False
-    dest = find_path_toward(state, unit, nearest.x, nearest.y)
-    if dest:
-        do_move(state, unit, dest[0], dest[1])
-        do_wait(unit)
-        return True
-    return False
-
-def _hq_needs_protection(state, player):
-    """Check if HQ has no friendly units within 3 tiles."""
-    own_hq = state.player_hq(player)
-    if not own_hq:
-        return False
-    for u in state.player_units(player):
-        if u.alive and manhattan(u.x, u.y, own_hq.x, own_hq.y) <= 3:
-            return False
-    return True
-
-def _nearest_enemy_to_hq(state, player):
-    """Find the nearest enemy unit to our HQ."""
-    own_hq = state.player_hq(player)
-    if not own_hq:
-        return None
-    enemies = state.player_units(state.other_player(player))
-    if not enemies:
-        return None
-    return min(enemies, key=lambda e: manhattan(e.x, e.y, own_hq.x, own_hq.y))
-
-def _ranger_move_and_attack(state, unit, target, rng):
-    """Move ranger toward target, try to attack at range 2 after moving. Returns True if attacked."""
-    best_tile = _best_ranger_tile(state, unit, target)
-    if best_tile:
-        do_move(state, unit, best_tile[0], best_tile[1])
-    targets = get_attack_targets(state, unit)
-    if targets:
-        t = _focus_fire_target(state, unit, targets)
-        do_attack(state, rng, unit, t)
-        return True
-    do_wait(unit)
-    return False
-
-def _best_ranger_tile(state, unit, target):
-    """Find best reachable tile at range 2-3 from target, prefer range 2."""
-    tiles = reachable_tiles(state, unit)
-    candidates = [(x, y) for (x, y) in tiles if 2 <= manhattan(x, y, target.x, target.y) <= 3]
+def find_ranger_position(state: GameState, unit: Unit, target: Unit,
+                         occupied: set) -> Optional[Tuple[int,int]]:
+    """Find reachable tile at range 2-3 from target, prefer range 2 + defensive terrain."""
+    tiles = reachable_tiles(state, unit, occupied)
+    candidates = [(x, y) for (x, y) in tiles
+                  if 2 <= manhattan(x, y, target.x, target.y) <= 3]
     if not candidates:
-        return find_path_toward(state, unit, target.x, target.y)
+        return None
     def score(p):
         d = manhattan(p[0], p[1], target.x, target.y)
-        t = state.terrain_at(p[0], p[1])
-        return (0 if d == 2 else 1, -TERRAIN_DEFENSE[t])
+        t = state.tile_at(p[0], p[1])
+        return (0 if d == 2 else 1, -DEFENSE_BONUS[t])
     return min(candidates, key=score)
-
-def _ranger_retreat_tile(state, unit, enemies):
-    """Find a tile that keeps ranger at range 2+ from all nearby enemies, on good terrain."""
-    tiles = reachable_tiles(state, unit)
-    # Also consider staying put
-    all_positions = list(tiles.keys()) + [(unit.x, unit.y)]
-    
-    def score(p):
-        min_dist = min(manhattan(p[0], p[1], e.x, e.y) for e in enemies) if enemies else 99
-        t = state.terrain_at(p[0], p[1])
-        # Want distance >= 2, prefer defensive terrain
-        too_close = 1 if min_dist < 2 else 0
-        return (too_close, -TERRAIN_DEFENSE[t], -min_dist)
-    
-    return min(all_positions, key=score)
-
-def _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                       own_hq, aggressive=False, rush_hq=False, defend_radius=99):
-    """Unified smart action for a unit. Returns True if unit was handled."""
-    if not unit.alive or unit.has_acted:
-        return True
-
-    # 1. Retreat if at 1 HP (unless rushing)
-    if not rush_hq and _should_retreat(unit, state, player):
-        if _retreat_toward_hq(state, unit, player):
-            return True
-
-    # 2. Try attack first without moving (focus fire)
-    targets = get_attack_targets(state, unit)
-    if targets:
-        target = _focus_fire_target(state, unit, targets)
-        do_attack(state, rng, unit, target)
-        return True
-
-    # 3. Ranger special handling
-    if unit.unit_type == UnitType.RANGER:
-        # Check if enemies are too close (range 1) - retreat
-        close_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
-        if close_enemies and not aggressive:
-            retreat_pos = _ranger_retreat_tile(state, unit, enemies)
-            if retreat_pos != (unit.x, unit.y):
-                do_move(state, unit, retreat_pos[0], retreat_pos[1])
-                targets = get_attack_targets(state, unit)
-                if targets:
-                    target = _focus_fire_target(state, unit, targets)
-                    do_attack(state, rng, unit, target)
-                    return True
-                do_wait(unit)
-                return True
-
-        if enemies:
-            # Pick best target to engage
-            nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-            _ranger_move_and_attack(state, unit, nearest, rng)
-            return True
-        # No enemies - capture or wait
-        if capturable and unit.unit_type == UnitType.RANGER:
-            if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
-                return True
-        do_wait(unit)
-        return True
-
-    # 4. Rush HQ mode
-    if rush_hq and unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and enemy_hq:
-        if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
-            if do_capture(state, unit):
-                state.winner = player
-            return True
-        dest = find_path_toward(state, unit, enemy_hq.x, enemy_hq.y)
-        if dest:
-            do_move(state, unit, dest[0], dest[1])
-        if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
-            if do_capture(state, unit):
-                state.winner = player
-            return True
-        targets = get_attack_targets(state, unit)
-        if targets:
-            target = _focus_fire_target(state, unit, targets)
-            do_attack(state, rng, unit, target)
-            return True
-        do_wait(unit)
-        return True
-
-    # 5. Capture cities (infantry/ranger, if safe)
-    if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and capturable:
-        nearby_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 3]
-        # Filter cities by safety - don't send lone units deep into enemy territory
-        if own_hq:
-            safe_cities = [b for b in capturable
-                           if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= defend_radius
-                           or not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 2)]
-        else:
-            safe_cities = capturable
-        if safe_cities and (not nearby_enemies or aggressive):
-            if _try_send_infantry_to_capture(state, unit, player, rng, safe_cities):
-                return True
-
-    # 6. Move toward enemies and attack
-    if enemies:
-        nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-        dest = find_path_toward(state, unit, nearest.x, nearest.y)
-        if dest:
-            do_move(state, unit, dest[0], dest[1])
-        targets = get_attack_targets(state, unit)
-        if targets:
-            target = _focus_fire_target(state, unit, targets)
-            do_attack(state, rng, unit, target)
-            return True
-        # Try capture if on a building
-        if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER):
-            if do_capture(state, unit):
-                for b in state.buildings:
-                    if b.x == unit.x and b.y == unit.y and b.building_type == "hq":
-                        state.winner = player
-                        return True
-        do_wait(unit)
-        return True
-
-    # 7. No enemies - capture HQ or cities
-    if enemy_hq and unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER):
-        if _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq]):
-            return True
-    do_wait(unit)
-    return True
 
 
 class Strategy:
-    """Base strategy class."""
     name = "base"
-
-    def play_turn(self, state, player, rng):
+    def play_turn(self, state: GameState, player: int, rng: random.Random):
         raise NotImplementedError
-
-    def do_economy(self, state, player, rng):
-        pass
 
 
 class AggressiveStrategy(Strategy):
-    """Pushes map control, trades aggressively, mixes Tanks and Rangers adaptively."""
+    """Push hard, attack everything, rush HQ when able."""
     name = "aggressive"
 
-    def do_economy(self, state, player, rng):
-        enemy_counts = _count_enemy_units(state, player)
-        for fac in state.player_factories(player):
-            if fac.production_queue is not None:
-                continue
-            gold = state.gold[player]
-            # If enemy has lots of infantry, Rangers outrange them
-            if enemy_counts[UnitType.INFANTRY] >= 3 and gold >= 2:
-                build_unit(state, player, fac, UnitType.RANGER)
-            # If enemy has tanks, match with tanks
-            elif enemy_counts[UnitType.TANK] >= 2 and gold >= 3:
-                build_unit(state, player, fac, UnitType.TANK)
-            # Default: tank > ranger > infantry
-            elif gold >= 3:
-                build_unit(state, player, fac, UnitType.TANK)
-            elif gold >= 2:
-                build_unit(state, player, fac, UnitType.RANGER)
-            elif gold >= 1:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-
     def play_turn(self, state, player, rng):
-        self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
-        own_hq = state.player_hq(player)
         units = state.player_units(player)
-        enemies = state.player_units(state.other_player(player))
-        capturable = _uncaptured_cities(state, player)
+        enemies = state.enemy_units(player)
+        occupied = set()
 
-        # Sort: closest to enemy first (aggressive push)
+        # Sort: closest to enemy HQ first
         if enemy_hq:
             units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
 
-        # HQ protection: if HQ exposed and enemy nearby, redirect closest unit
-        if own_hq and _hq_needs_protection(state, player):
-            nearest_threat = _nearest_enemy_to_hq(state, player)
-            if nearest_threat and manhattan(nearest_threat.x, nearest_threat.y, own_hq.x, own_hq.y) <= 5:
-                # Find closest available unit to defend
-                available = [u for u in units if u.alive and not u.has_acted]
-                if available:
-                    defender = min(available, key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
-                    dest = find_path_toward(state, defender, own_hq.x, own_hq.y)
-                    if dest:
-                        do_move(state, defender, dest[0], dest[1])
-                    targets = get_attack_targets(state, defender)
-                    if targets:
-                        t = _focus_fire_target(state, defender, targets)
-                        do_attack(state, rng, defender, t)
-                    else:
-                        do_wait(defender)
-
         for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
-            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                               own_hq, aggressive=True, defend_radius=99)
-            if state.winner:
-                return
+
+            # Attack without moving first
+            targets = get_attack_targets(state, unit)
+            if targets:
+                t = pick_target(state, unit, targets)
+                do_attack(state, rng, unit, t)
+                occupied.add((unit.x, unit.y))
+                if state.winner: return
+                continue
+
+            # Ranger: find attack position
+            if unit.unit_type == UnitType.RANGER:
+                if enemies:
+                    nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    if pos:
+                        do_move(state, unit, pos[0], pos[1])
+                        # Rangers can't attack after moving
+                        do_wait(unit)
+                        occupied.add((unit.x, unit.y))
+                        continue
+                    # Can't find good position, move closer
+                    dest = best_move_toward(state, unit, nearest.x, nearest.y, occupied)
+                    if dest:
+                        do_move(state, unit, dest[0], dest[1])
+                    do_wait(unit)
+                    occupied.add((unit.x, unit.y))
+                    continue
+
+            # Infantry/Tank: capture HQ or attack
+            if can_capture(unit.unit_type) and enemy_hq:
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
+                    continue
+
+            # Move toward enemy HQ (infantry/ranger) or nearest enemy (tank)
+            if can_capture(unit.unit_type) and enemy_hq:
+                target_x, target_y = enemy_hq.x, enemy_hq.y
+            elif enemies:
+                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                target_x, target_y = nearest.x, nearest.y
+            else:
+                do_wait(unit)
+                occupied.add((unit.x, unit.y))
+                continue
+
+            dest = best_move_toward(state, unit, target_x, target_y, occupied)
+            if dest:
+                do_move(state, unit, dest[0], dest[1])
+
+            # Try capture after moving
+            if can_capture(unit.unit_type) and enemy_hq:
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
+                    continue
+
+            # Attack after moving
+            targets = get_attack_targets(state, unit)
+            if targets:
+                t = pick_target(state, unit, targets)
+                do_attack(state, rng, unit, t)
+                if state.winner: return
+            else:
+                do_wait(unit)
+            occupied.add((unit.x, unit.y))
 
 
 class DefensiveStrategy(Strategy):
-    """Secures nearby cities, Rangers for area denial, only pushes when ahead."""
+    """Hold position, let enemies come to you, protect HQ."""
     name = "defensive"
 
-    def do_economy(self, state, player, rng):
-        enemy_counts = _count_enemy_units(state, player)
-        own_counts = _count_own_units(state, player)
-        owned_cities = len(state.player_cities(player))
-        for fac in state.player_factories(player):
-            if fac.production_queue is not None:
-                continue
-            gold = state.gold[player]
-            # Need infantry for city captures early
-            if owned_cities < 2 and gold >= 1 and own_counts[UnitType.INFANTRY] < 3:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-            # Build tank as wall if enemy is pushing hard (lots of melee units nearby)
-            elif enemy_counts[UnitType.INFANTRY] + enemy_counts[UnitType.TANK] >= 4 and gold >= 3:
-                build_unit(state, player, fac, UnitType.TANK)
-            # Rangers for zone control (primary defensive unit)
-            elif gold >= 2:
-                build_unit(state, player, fac, UnitType.RANGER)
-            elif gold >= 1:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-
     def play_turn(self, state, player, rng):
-        self.do_economy(state, player, rng)
         own_hq = state.player_hq(player)
         enemy_hq = state.player_hq(state.other_player(player))
         units = state.player_units(player)
-        enemies = state.player_units(state.other_player(player))
-        capturable = _uncaptured_cities(state, player)
+        enemies = state.enemy_units(player)
+        occupied = set()
 
-        # Defensive: sort by distance to own HQ (handle closest first)
+        # Sort: closest to own HQ first (defend what matters)
         if own_hq:
             units.sort(key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
 
-        # Check if we're ahead (more units + cities) - if so, push
-        own_count = len(units)
-        enemy_count = len(enemies)
-        own_cities = len(state.player_cities(player))
-        enemy_cities = len(state.player_cities(state.other_player(player)))
-        pushing = own_count > enemy_count + 2 and own_cities >= enemy_cities
+        # Are we winning? If so, push
+        pushing = len(units) > len(enemies) + 2
 
         for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
 
-            # Always try to attack first (focus fire)
+            # Always attack without moving if possible
             targets = get_attack_targets(state, unit)
             if targets:
-                target = _focus_fire_target(state, unit, targets)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
+                t = pick_target(state, unit, targets)
+                do_attack(state, rng, unit, t)
+                occupied.add((unit.x, unit.y))
+                if state.winner: return
                 continue
 
-            # Retreat damaged units
-            if _should_retreat(unit, state, player):
-                if _retreat_toward_hq(state, unit, player):
+            # Retreat at 1 HP
+            if unit.hp == 1 and own_hq:
+                dest = best_move_toward(state, unit, own_hq.x, own_hq.y, occupied)
+                if dest and manhattan(dest[0], dest[1], own_hq.x, own_hq.y) < manhattan(unit.x, unit.y, own_hq.x, own_hq.y):
+                    do_move(state, unit, dest[0], dest[1])
+                    do_wait(unit)
+                    occupied.add((unit.x, unit.y))
                     continue
 
-            # Rangers: position defensively near HQ at range 2 from threats
+            # Ranger: kite — retreat from adjacent enemies, hold at range 2-3
             if unit.unit_type == UnitType.RANGER:
-                threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 6]
-                close_enemies = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
-                if close_enemies:
-                    retreat_pos = _ranger_retreat_tile(state, unit, enemies)
-                    if retreat_pos != (unit.x, unit.y):
-                        do_move(state, unit, retreat_pos[0], retreat_pos[1])
-                        targets = get_attack_targets(state, unit)
-                        if targets:
-                            t = _focus_fire_target(state, unit, targets)
-                            do_attack(state, rng, unit, t)
-                            if state.winner:
-                                return
-                            continue
-                        do_wait(unit)
-                        continue
-                if threats:
-                    nearest_threat = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                    _ranger_move_and_attack(state, unit, nearest_threat, rng)
-                    if state.winner:
-                        return
+                close = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
+                if close:
+                    # Move away from melee threats
+                    tiles = reachable_tiles(state, unit, occupied)
+                    safe = [(x, y) for (x, y) in tiles
+                            if all(manhattan(x, y, e.x, e.y) >= 2 for e in close)]
+                    if safe:
+                        # Pick tile with best defense
+                        best = max(safe, key=lambda p: DEFENSE_BONUS[state.tile_at(p[0], p[1])])
+                        do_move(state, unit, best[0], best[1])
+                    do_wait(unit)
+                    occupied.add((unit.x, unit.y))
                     continue
-                # No threats near HQ - capture or hold position
-                if capturable:
-                    nearby_cities = [b for b in capturable if own_hq and manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 7]
-                    if nearby_cities:
-                        if _try_send_infantry_to_capture(state, unit, player, rng, nearby_cities):
-                            if state.winner:
-                                return
-                            continue
+
+                # Threats near HQ
+                if own_hq:
+                    threats = [e for e in enemies if manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 6]
+                    if threats:
+                        nearest = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                        pos = find_ranger_position(state, unit, nearest, occupied)
+                        if pos:
+                            do_move(state, unit, pos[0], pos[1])
+                        do_wait(unit)
+                        occupied.add((unit.x, unit.y))
+                        continue
+
                 if pushing and enemies:
                     nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                    _ranger_move_and_attack(state, unit, nearest, rng)
-                    if state.winner:
-                        return
-                    continue
-                do_wait(unit)
-                continue
-
-            # Early game: capture nearby cities
-            if unit.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and capturable:
-                if own_hq:
-                    nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 7]
-                else:
-                    nearby_cities = capturable
-                if nearby_cities:
-                    # Don't send into danger
-                    safe_cities = [b for b in nearby_cities
-                                   if not any(e for e in enemies if manhattan(e.x, e.y, b.x, b.y) <= 1)]
-                    if safe_cities:
-                        if _try_send_infantry_to_capture(state, unit, player, rng, safe_cities):
-                            if state.winner:
-                                return
-                            continue
-
-            # Threats near HQ - intercept
-            threats = [e for e in enemies if own_hq and manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
-            if threats:
-                nearest_threat = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                dest = find_path_toward(state, unit, nearest_threat.x, nearest_threat.y)
-                if dest:
-                    do_move(state, unit, dest[0], dest[1])
-                targets = get_attack_targets(state, unit)
-                if targets:
-                    t = _focus_fire_target(state, unit, targets)
-                    do_attack(state, rng, unit, t)
-                    if state.winner:
-                        return
-                else:
+                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    if pos:
+                        do_move(state, unit, pos[0], pos[1])
                     do_wait(unit)
+                    occupied.add((unit.x, unit.y))
+                    continue
+
+                do_wait(unit)
+                occupied.add((unit.x, unit.y))
                 continue
 
-            # If pushing, advance
+            # Intercept threats near HQ
+            if own_hq:
+                threats = [e for e in enemies if manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 5]
+                if threats:
+                    nearest = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                    dest = best_move_toward(state, unit, nearest.x, nearest.y, occupied)
+                    if dest:
+                        do_move(state, unit, dest[0], dest[1])
+                    targets = get_attack_targets(state, unit)
+                    if targets:
+                        t = pick_target(state, unit, targets)
+                        do_attack(state, rng, unit, t)
+                        if state.winner: return
+                    else:
+                        do_wait(unit)
+                    occupied.add((unit.x, unit.y))
+                    continue
+
+            # Push if winning
             if pushing and enemies:
                 nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                dest = find_path_toward(state, unit, nearest.x, nearest.y)
+                dest = best_move_toward(state, unit, nearest.x, nearest.y, occupied)
                 if dest:
                     do_move(state, unit, dest[0], dest[1])
                 targets = get_attack_targets(state, unit)
                 if targets:
-                    t = _focus_fire_target(state, unit, targets)
+                    t = pick_target(state, unit, targets)
                     do_attack(state, rng, unit, t)
-                    if state.winner:
-                        return
+                    if state.winner: return
                 else:
                     do_wait(unit)
+                occupied.add((unit.x, unit.y))
                 continue
 
-            # Fall back toward HQ if too far
+            # Hold position near HQ
             if own_hq and manhattan(unit.x, unit.y, own_hq.x, own_hq.y) > 4:
-                dest = find_path_toward(state, unit, own_hq.x, own_hq.y)
+                dest = best_move_toward(state, unit, own_hq.x, own_hq.y, occupied)
                 if dest:
                     do_move(state, unit, dest[0], dest[1])
             do_wait(unit)
+            occupied.add((unit.x, unit.y))
 
 
 class RushStrategy(Strategy):
-    """Fast infantry/ranger push to enemy HQ, sacrifices economy for speed."""
+    """Beeline infantry/rangers to enemy HQ. Ignore combat unless blocking."""
     name = "rush"
 
-    def do_economy(self, state, player, rng):
-        for fac in state.player_factories(player):
-            if fac.production_queue is not None:
-                continue
-            gold = state.gold[player]
-            own_counts = _count_own_units(state, player)
-            # Mix in rangers every 3rd unit for covering fire
-            total = own_counts[UnitType.INFANTRY] + own_counts[UnitType.RANGER]
-            if own_counts[UnitType.RANGER] < max(1, total // 3) and gold >= 2:
-                build_unit(state, player, fac, UnitType.RANGER)
-            elif gold >= 1:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-
     def play_turn(self, state, player, rng):
-        self.do_economy(state, player, rng)
         enemy_hq = state.player_hq(state.other_player(player))
-        own_hq = state.player_hq(player)
         units = state.player_units(player)
-        enemies = state.player_units(state.other_player(player))
-        capturable = _uncaptured_cities(state, player)
+        enemies = state.enemy_units(player)
+        occupied = set()
 
-        capturers = [u for u in units if u.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and u.alive and not u.has_acted]
-        tanks = [u for u in units if u.unit_type == UnitType.TANK and u.alive and not u.has_acted]
+        if enemy_hq:
+            units.sort(key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
 
-        # Rangers provide covering fire, infantry rush
-        rangers = [u for u in capturers if u.unit_type == UnitType.RANGER]
-        infantry = [u for u in capturers if u.unit_type == UnitType.INFANTRY]
-
-        # Split infantry: 1-2 capture nearby cities, rest rush
-        hq_rushers = list(infantry)
-        city_capturers = []
-        if capturable and infantry:
-            n_cap = min(2, max(1, len(infantry) // 3))
-            if own_hq:
-                nearby_cities = [b for b in capturable if manhattan(b.x, b.y, own_hq.x, own_hq.y) <= 6]
-            else:
-                nearby_cities = capturable
-            if nearby_cities:
-                for_cities = sorted(infantry, key=lambda u: min(manhattan(u.x, u.y, b.x, b.y) for b in nearby_cities))
-                city_capturers = for_cities[:n_cap]
-                hq_rushers = for_cities[n_cap:]
-
-        for unit in city_capturers:
-            if _try_send_infantry_to_capture(state, unit, player, rng, capturable):
-                if state.winner:
-                    return
-                continue
-            hq_rushers.append(unit)
-
-        # Rangers: provide covering fire by attacking enemies near the rush path
-        for unit in rangers:
+        for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
+
+            # Attack without moving
             targets = get_attack_targets(state, unit)
             if targets:
-                target = _focus_fire_target(state, unit, targets)
-                do_attack(state, rng, unit, target)
-                if state.winner:
-                    return
+                # Only attack if target is killable or blocking HQ
+                killable = [t for t in targets if t.hp <= expected_damage(
+                    unit.unit_type, state.tile_at(t.x, t.y), unit.has_moved,
+                    manhattan(unit.x, unit.y, t.x, t.y))]
+                hq_blockers = [t for t in targets if enemy_hq and
+                               manhattan(t.x, t.y, enemy_hq.x, enemy_hq.y) <= 1] if enemy_hq else []
+                priority = killable or hq_blockers or targets
+                t = pick_target(state, unit, priority)
+                do_attack(state, rng, unit, t)
+                occupied.add((unit.x, unit.y))
+                if state.winner: return
                 continue
-            # Move toward enemy HQ area but stay at range
-            if enemies:
-                # Target enemies blocking the rush path
-                if enemy_hq:
-                    blocking = sorted(enemies, key=lambda e: manhattan(e.x, e.y, enemy_hq.x, enemy_hq.y))
-                    target_enemy = blocking[0]
-                else:
-                    target_enemy = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                _ranger_move_and_attack(state, unit, target_enemy, rng)
-                if state.winner:
-                    return
-                continue
-            # No enemies, rush HQ too
-            if enemy_hq:
-                _try_send_infantry_to_capture(state, unit, player, rng, [enemy_hq])
-                if state.winner:
-                    return
-                continue
-            do_wait(unit)
 
-        # Infantry rush HQ
-        for unit in hq_rushers:
-            if not unit.alive or unit.has_acted:
-                continue
-            # Attack targets of opportunity while rushing
-            targets = get_attack_targets(state, unit)
-            if targets:
-                # Only attack if enemy is blocking path or killable
-                killable = [t for t in targets if t.hp <= hit_damage(unit.stats["atk"], TERRAIN_DEFENSE[state.terrain_at(t.x, t.y)])]
-                if killable:
-                    do_attack(state, rng, unit, killable[0])
-                    if state.winner:
-                        return
-                    continue
-                # If enemy is on the HQ, we must fight
-                if enemy_hq and any(t.x == enemy_hq.x and t.y == enemy_hq.y for t in targets):
-                    t = [t for t in targets if t.x == enemy_hq.x and t.y == enemy_hq.y][0]
-                    do_attack(state, rng, unit, t)
-                    if state.winner:
-                        return
+            # Capture if on HQ
+            if can_capture(unit.unit_type) and enemy_hq:
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
                     continue
 
-            if enemy_hq and unit.x == enemy_hq.x and unit.y == enemy_hq.y:
-                if do_capture(state, unit):
-                    state.winner = player
-                    return
-                continue
-
-            if enemy_hq:
-                dest = find_path_toward(state, unit, enemy_hq.x, enemy_hq.y)
+            # Rush toward HQ
+            if can_capture(unit.unit_type) and enemy_hq:
+                dest = best_move_toward(state, unit, enemy_hq.x, enemy_hq.y, occupied)
                 if dest:
                     do_move(state, unit, dest[0], dest[1])
                 if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
-                    if do_capture(state, unit):
-                        state.winner = player
-                        return
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
                     continue
                 targets = get_attack_targets(state, unit)
                 if targets:
-                    t = _focus_fire_target(state, unit, targets)
+                    t = pick_target(state, unit, targets)
                     do_attack(state, rng, unit, t)
-                    if state.winner:
-                        return
+                    if state.winner: return
+                else:
+                    do_wait(unit)
+                occupied.add((unit.x, unit.y))
+                continue
+
+            # Tanks: just fight nearest
+            if enemies:
+                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                dest = best_move_toward(state, unit, nearest.x, nearest.y, occupied)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                targets = get_attack_targets(state, unit)
+                if targets:
+                    t = pick_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
+                    if state.winner: return
                 else:
                     do_wait(unit)
             else:
                 do_wait(unit)
-
-        # Tanks: fight nearest enemy
-        for unit in tanks:
-            if not unit.alive or unit.has_acted:
-                continue
-            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                               own_hq, aggressive=True, defend_radius=99)
-            if state.winner:
-                return
+            occupied.add((unit.x, unit.y))
 
 
 class BalancedStrategy(Strategy):
-    """Evaluates board state, counter-builds, plays for economic advantage."""
+    """Fight smart, capture HQ when opportunity arises, protect own HQ."""
     name = "balanced"
 
-    def do_economy(self, state, player, rng):
-        enemy_counts = _count_enemy_units(state, player)
-        own_counts = _count_own_units(state, player)
-        owned_cities = len(state.player_cities(player))
-
-        for fac in state.player_factories(player):
-            if fac.production_queue is not None:
-                continue
-            gold = state.gold[player]
-
-            # Early game: infantry for city captures
-            if state.round_num <= 4 and owned_cities < 2 and gold >= 1:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-                continue
-
-            # Counter-build based on enemy composition
-            enemy_inf = enemy_counts[UnitType.INFANTRY]
-            enemy_tank = enemy_counts[UnitType.TANK]
-            enemy_ranger = enemy_counts[UnitType.RANGER]
-            enemy_total = enemy_inf + enemy_tank + enemy_ranger
-
-            if enemy_total > 0:
-                # Enemy heavy infantry → Rangers (outrange)
-                if enemy_inf / enemy_total > 0.5 and gold >= 2:
-                    build_unit(state, player, fac, UnitType.RANGER)
-                    continue
-                # Enemy heavy rangers → Tanks (can close distance, high HP survives)
-                if enemy_ranger / enemy_total > 0.4 and gold >= 3:
-                    build_unit(state, player, fac, UnitType.TANK)
-                    continue
-                # Enemy heavy tanks → Rangers (kite at range) or more tanks
-                if enemy_tank / enemy_total > 0.4:
-                    if gold >= 2:
-                        build_unit(state, player, fac, UnitType.RANGER)
-                        continue
-
-            # Default balanced mix based on what we lack
-            own_total = own_counts[UnitType.INFANTRY] + own_counts[UnitType.TANK] + own_counts[UnitType.RANGER]
-            if own_total > 0:
-                inf_ratio = own_counts[UnitType.INFANTRY] / own_total
-                ranger_ratio = own_counts[UnitType.RANGER] / own_total
-                # Keep roughly 30% infantry, 30% ranger, 40% tank
-                if inf_ratio < 0.25 and gold >= 1:
-                    build_unit(state, player, fac, UnitType.INFANTRY)
-                    continue
-                if ranger_ratio < 0.25 and gold >= 2:
-                    build_unit(state, player, fac, UnitType.RANGER)
-                    continue
-
-            if gold >= 3:
-                build_unit(state, player, fac, UnitType.TANK)
-            elif gold >= 2:
-                build_unit(state, player, fac, UnitType.RANGER)
-            elif gold >= 1:
-                build_unit(state, player, fac, UnitType.INFANTRY)
-
     def play_turn(self, state, player, rng):
-        self.do_economy(state, player, rng)
-        enemy_hq = state.player_hq(state.other_player(player))
         own_hq = state.player_hq(player)
+        enemy_hq = state.player_hq(state.other_player(player))
         units = state.player_units(player)
-        enemies = state.player_units(state.other_player(player))
-        capturable = _uncaptured_cities(state, player)
+        enemies = state.enemy_units(player)
+        occupied = set()
 
-        # HQ protection check
-        if own_hq and _hq_needs_protection(state, player):
-            nearest_threat = _nearest_enemy_to_hq(state, player)
-            if nearest_threat and manhattan(nearest_threat.x, nearest_threat.y, own_hq.x, own_hq.y) <= 5:
-                available = [u for u in units if u.alive and not u.has_acted]
-                if available:
-                    defender = min(available, key=lambda u: manhattan(u.x, u.y, own_hq.x, own_hq.y))
-                    dest = find_path_toward(state, defender, own_hq.x, own_hq.y)
-                    if dest:
-                        do_move(state, defender, dest[0], dest[1])
-                    targets = get_attack_targets(state, defender)
-                    if targets:
-                        t = _focus_fire_target(state, defender, targets)
-                        do_attack(state, rng, defender, t)
-                    else:
-                        do_wait(defender)
+        # Designate 1 infantry as HQ rusher if close enough
+        rusher_uid = None
+        if enemy_hq:
+            capturers = [u for u in units if can_capture(u.unit_type)]
+            if capturers:
+                closest = min(capturers, key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
+                if manhattan(closest.x, closest.y, enemy_hq.x, enemy_hq.y) <= 8:
+                    rusher_uid = closest.uid
 
-        # Separate capturers and fighters
-        capturers = [u for u in units if u.unit_type in (UnitType.INFANTRY, UnitType.RANGER) and u.alive and not u.has_acted]
-        fighters = [u for u in units if u.unit_type == UnitType.TANK and u.alive and not u.has_acted]
+        # Sort by distance to nearest enemy (engage front-line first)
+        if enemies:
+            units.sort(key=lambda u: min(manhattan(u.x, u.y, e.x, e.y) for e in enemies))
 
-        # Send 1 infantry to rush enemy HQ if close enough
-        rusher = None
-        if capturers and enemy_hq:
-            rusher = min(capturers, key=lambda u: manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y))
-            if manhattan(rusher.x, rusher.y, enemy_hq.x, enemy_hq.y) > 8:
-                rusher = None  # too far, don't bother
-
-        # Capturers: cities first, then fight
-        for unit in capturers:
+        for unit in units:
             if not unit.alive or unit.has_acted:
                 continue
-            is_rusher = (rusher and unit.uid == rusher.uid)
-            if is_rusher:
-                _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                                   own_hq, rush_hq=True, defend_radius=8)
+
+            is_rusher = (unit.uid == rusher_uid)
+
+            # Attack without moving
+            targets = get_attack_targets(state, unit)
+            if targets:
+                t = pick_target(state, unit, targets)
+                do_attack(state, rng, unit, t)
+                occupied.add((unit.x, unit.y))
+                if state.winner: return
+                continue
+
+            # Retreat at 1 HP
+            if unit.hp == 1 and own_hq and not is_rusher:
+                dest = best_move_toward(state, unit, own_hq.x, own_hq.y, occupied)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                do_wait(unit)
+                occupied.add((unit.x, unit.y))
+                continue
+
+            # Rusher: beeline HQ
+            if is_rusher and enemy_hq:
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
+                    continue
+                dest = best_move_toward(state, unit, enemy_hq.x, enemy_hq.y, occupied)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                    do_capture(state, unit)
+                    if state.winner: return
+                    occupied.add((unit.x, unit.y))
+                    continue
+                targets = get_attack_targets(state, unit)
+                if targets:
+                    t = pick_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
+                    if state.winner: return
+                else:
+                    do_wait(unit)
+                occupied.add((unit.x, unit.y))
+                continue
+
+            # Ranger: position at range 2-3, kite melee
+            if unit.unit_type == UnitType.RANGER:
+                close = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
+                if close:
+                    tiles = reachable_tiles(state, unit, occupied)
+                    safe = [(x, y) for (x, y) in tiles
+                            if all(manhattan(x, y, e.x, e.y) >= 2 for e in close)]
+                    if safe:
+                        best = max(safe, key=lambda p: DEFENSE_BONUS[state.tile_at(p[0], p[1])])
+                        do_move(state, unit, best[0], best[1])
+                    do_wait(unit)
+                    occupied.add((unit.x, unit.y))
+                    continue
+                if enemies:
+                    nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    if pos:
+                        do_move(state, unit, pos[0], pos[1])
+                    do_wait(unit)
+                    occupied.add((unit.x, unit.y))
+                    continue
+                do_wait(unit)
+                occupied.add((unit.x, unit.y))
+                continue
+
+            # Infantry/Tank: engage nearest enemy
+            if enemies:
+                nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
+                dest = best_move_toward(state, unit, nearest.x, nearest.y, occupied)
+                if dest:
+                    do_move(state, unit, dest[0], dest[1])
+                # Capture if ended up on enemy HQ
+                if can_capture(unit.unit_type) and enemy_hq:
+                    if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                        do_capture(state, unit)
+                        if state.winner: return
+                        occupied.add((unit.x, unit.y))
+                        continue
+                targets = get_attack_targets(state, unit)
+                if targets:
+                    t = pick_target(state, unit, targets)
+                    do_attack(state, rng, unit, t)
+                    if state.winner: return
+                else:
+                    do_wait(unit)
             else:
-                _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                                   own_hq, defend_radius=8)
-            if state.winner:
-                return
-
-        # Fighters: engage
-        for unit in fighters:
-            if not unit.alive or unit.has_acted:
-                continue
-            _smart_unit_action(state, unit, player, rng, enemies, capturable, enemy_hq,
-                               own_hq, aggressive=False, defend_radius=8)
-            if state.winner:
-                return
+                # No enemies, push to HQ
+                if can_capture(unit.unit_type) and enemy_hq:
+                    dest = best_move_toward(state, unit, enemy_hq.x, enemy_hq.y, occupied)
+                    if dest:
+                        do_move(state, unit, dest[0], dest[1])
+                    if unit.x == enemy_hq.x and unit.y == enemy_hq.y:
+                        do_capture(state, unit)
+                        if state.winner: return
+                do_wait(unit)
+            occupied.add((unit.x, unit.y))
 
 
 STRATEGIES = {
@@ -1384,83 +1015,66 @@ class GameResult:
     p1_kills: int
     p2_kills: int
     win_type: str  # "hq_capture", "elimination", "timeout"
-    gold_earned: dict = field(default_factory=dict)  # {1: int, 2: int}
-    units_produced: dict = field(default_factory=dict)  # {1: int, 2: int}
+    map_name: str = ""
 
-def run_game(p1_strategy, p2_strategy, seed, verbose=False, coin_flip=False):
-    """Run a single game. Returns GameResult."""
+def run_game(p1_strat, p2_strat, map_name: str, seed: int,
+             verbose=False, replay=False) -> GameResult:
+    """Run one game. Returns GameResult."""
     rng = random.Random(seed)
-    state = create_game(width=14, height=14, rng_seed=seed)
-    if coin_flip:
-        state.current_player = rng.choice([1, 2])
-    strategies = {1: p1_strategy, 2: p2_strategy}
-
+    state = load_map(map_name)
+    strategies = {1: p1_strat, 2: p2_strat}
     initial_units = {1: len(state.player_units(1)), 2: len(state.player_units(2))}
-    log = []
+    frames = []
 
-    while state.winner is None:
+    if replay:
+        frames.append(render_map(state))
+
+    while state.winner is None and state.round_num <= MAX_ROUNDS:
         player = state.current_player
-        alive_before = {
-            1: set(u.uid for u in state.player_units(1)),
-            2: set(u.uid for u in state.player_units(2)),
-        }
-
         strategies[player].play_turn(state, player, rng)
-
         if state.winner is None:
             end_turn(state)
-
-        if verbose:
-            alive_after = {
-                1: set(u.uid for u in state.player_units(1)),
-                2: set(u.uid for u in state.player_units(2)),
-            }
-            for p in [1, 2]:
-                killed = alive_before[p] - alive_after[p]
-                if killed:
-                    log.append(f"  Round {state.round_num} P{player}: killed {len(killed)} P{p} unit(s)")
-
-    # Count kills (include produced units)
-    p1_final = len(state.player_units(1))
-    p2_final = len(state.player_units(2))
-    p1_total = initial_units[1] + state.units_produced[1]
-    p2_total = initial_units[2] + state.units_produced[2]
-    p1_kills = p2_total - p2_final
-    p2_kills = p1_total - p1_final
+        if replay:
+            frames.append(render_map(state))
 
     # Determine win type
-    loser = 1 if state.winner == 2 else 2
-    if state.round_num > MAX_ROUNDS:
+    if state.winner is None:
+        # Timeout — resolve by HP
+        hp1 = sum(u.hp for u in state.player_units(1))
+        hp2 = sum(u.hp for u in state.player_units(2))
+        state.winner = 1 if hp1 >= hp2 else 2
         win_type = "timeout"
-    elif state.player_units(loser):
-        win_type = "hq_capture"
     else:
-        win_type = "elimination"
+        loser = state.other_player(state.winner)
+        if state.player_units(loser):
+            win_type = "hq_capture"
+        else:
+            win_type = "elimination"
+
+    p1_kills = initial_units[2] - len(state.player_units(2))
+    p2_kills = initial_units[1] - len(state.player_units(1))
 
     if verbose:
-        for line in log:
-            print(line)
-        print(f"  → P{state.winner} wins ({win_type}) in {state.round_num} rounds | "
-              f"kills: P1={p1_kills} P2={p2_kills} | "
-              f"gold: P1={state.gold_earned[1]} P2={state.gold_earned[2]} | "
-              f"produced: P1={state.units_produced[1]} P2={state.units_produced[2]}")
+        print(f"  → P{state.winner} wins ({win_type}) R{state.round_num} "
+              f"kills: P1={p1_kills} P2={p2_kills} [{map_name}]")
 
-    return GameResult(
-        winner=state.winner,
-        rounds=state.round_num,
-        p1_kills=p1_kills,
-        p2_kills=p2_kills,
-        win_type=win_type,
-        gold_earned={1: state.gold_earned[1], 2: state.gold_earned[2]},
-        units_produced={1: state.units_produced[1], 2: state.units_produced[2]},
-    )
+    if replay:
+        for i, frame in enumerate(frames):
+            print(f"\n{'─'*60}")
+            print(frame)
+        print(f"\n{'═'*60}")
+        print(f"  RESULT: P{state.winner} wins by {win_type} in {state.round_num} rounds")
+        print(f"{'═'*60}")
+
+    return GameResult(winner=state.winner, rounds=state.round_num,
+                      p1_kills=p1_kills, p2_kills=p2_kills,
+                      win_type=win_type, map_name=map_name)
 
 # ============================================================================
 # Simulation
 # ============================================================================
 
-def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_flip=False):
-    """Run all matchups and print results."""
+def run_simulation(strategy_names, maps, num_games, base_seed, verbose=False, replay=False):
     results = {}
 
     for s1_name in strategy_names:
@@ -1471,44 +1085,40 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_fli
             game_results = []
 
             for i in range(num_games):
+                map_name = maps[i % len(maps)]
                 seed = base_seed + hash(key) + i
                 if verbose:
-                    print(f"\n--- {s1_name} vs {s2_name} game {i+1} (seed={seed}) ---")
-                result = run_game(s1, s2, seed, verbose, coin_flip=coin_flip)
+                    print(f"\n--- {s1_name} vs {s2_name} G{i+1} [{map_name}] seed={seed} ---")
+                do_replay = replay and i == 0  # replay first game only
+                result = run_game(s1, s2, map_name, seed, verbose, do_replay)
                 game_results.append(result)
 
             results[key] = game_results
 
-    # Print summary
+    # Summary
     print(f"\n{'='*90}")
-    print(f"  HASHFRONT SIMULATION RESULTS — {num_games} games per matchup")
+    print(f"  HASHFRONT SIMULATION — {num_games} games/matchup — maps: {', '.join(maps)}")
     print(f"{'='*90}\n")
 
     # Win rate matrix
-    print("WIN RATE MATRIX (row = P1, col = P2, value = P1 win %)")
+    print("WIN RATE MATRIX (row=P1, col=P2, value=P1 win%)")
     print(f"{'':>14}", end="")
     for s in strategy_names:
         print(f"{s:>14}", end="")
     print()
     print("-" * (14 + 14 * len(strategy_names)))
-
     for s1 in strategy_names:
         print(f"{s1:>14}", end="")
         for s2 in strategy_names:
             gr = results[(s1, s2)]
-            p1_wins = sum(1 for r in gr if r.winner == 1)
-            pct = p1_wins / len(gr) * 100
+            pct = sum(1 for r in gr if r.winner == 1) / len(gr) * 100
             print(f"{pct:>13.1f}%", end="")
         print()
 
-    print()
-
-    # Detailed matchup stats
-    header = (f"{'MATCHUP':<30} {'P1 Win%':>8} {'Avg Rnd':>8} {'P1 Kills':>9} {'P2 Kills':>9} "
-              f"{'HQ Cap%':>8} {'Avg Gold':>9} {'Avg Prod':>9}")
-    print(f"\n{header}")
-    print("-" * len(header))
-
+    # Detailed stats
+    print(f"\n{'MATCHUP':<30} {'P1 Win%':>8} {'Avg Rnd':>8} {'P1 Kills':>9} "
+          f"{'P2 Kills':>9} {'HQ Cap%':>8} {'Elim%':>7} {'Timeout%':>9}")
+    print("-" * 100)
     for s1 in strategy_names:
         for s2 in strategy_names:
             gr = results[(s1, s2)]
@@ -1517,12 +1127,31 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_fli
             avg_rnd = sum(r.rounds for r in gr) / n
             avg_p1k = sum(r.p1_kills for r in gr) / n
             avg_p2k = sum(r.p2_kills for r in gr) / n
-            hq_caps = sum(1 for r in gr if r.win_type == "hq_capture") / n * 100
-            avg_gold = sum(r.gold_earned[1] + r.gold_earned[2] for r in gr) / n / 2
-            avg_prod = sum(r.units_produced[1] + r.units_produced[2] for r in gr) / n / 2
+            hq_pct = sum(1 for r in gr if r.win_type == "hq_capture") / n * 100
+            elim_pct = sum(1 for r in gr if r.win_type == "elimination") / n * 100
+            to_pct = sum(1 for r in gr if r.win_type == "timeout") / n * 100
             label = f"{s1} vs {s2}"
-            print(f"{label:<30} {p1w/n*100:>7.1f}% {avg_rnd:>8.1f} {avg_p1k:>9.2f} {avg_p2k:>9.2f} "
-                  f"{hq_caps:>7.1f}% {avg_gold:>9.1f} {avg_prod:>9.1f}")
+            print(f"{label:<30} {p1w/n*100:>7.1f}% {avg_rnd:>8.1f} {avg_p1k:>9.2f} "
+                  f"{avg_p2k:>9.2f} {hq_pct:>7.1f}% {elim_pct:>6.1f}% {to_pct:>8.1f}%")
+
+    # Per-map breakdown
+    print(f"\n{'MAP BREAKDOWN':<30} ", end="")
+    for s1 in strategy_names:
+        for s2 in strategy_names:
+            print(f" {s1[:3]}v{s2[:3]}", end="")
+    print()
+    print("-" * (30 + 8 * len(strategy_names)**2))
+    for m in maps:
+        print(f"{m:<30} ", end="")
+        for s1 in strategy_names:
+            for s2 in strategy_names:
+                gr = [r for r in results[(s1, s2)] if r.map_name == m]
+                if gr:
+                    pct = sum(1 for r in gr if r.winner == 1) / len(gr) * 100
+                    print(f" {pct:5.0f}%", end="")
+                else:
+                    print(f"    - ", end="")
+        print()
 
     print(f"\n{'='*90}")
     print("  DONE")
@@ -1533,20 +1162,34 @@ def run_simulation(strategy_names, num_games, base_seed, verbose=False, coin_fli
 # ============================================================================
 
 def main():
+    available_maps = list_maps()
+
     parser = argparse.ArgumentParser(description="Hashfront headless game simulator")
     parser.add_argument("--games", type=int, default=100, help="Games per matchup (default: 100)")
-    parser.add_argument("--seed", type=int, default=42, help="Base RNG seed (default: 42)")
-    parser.add_argument("--verbose", action="store_true", help="Print per-game logs")
-    parser.add_argument("--coin-flip", action="store_true", help="Randomize first player each game")
+    parser.add_argument("--seed", type=int, default=42, help="Base RNG seed")
+    parser.add_argument("--verbose", action="store_true", help="Per-game logs")
+    parser.add_argument("--replay", action="store_true", help="ASCII replay of first game per matchup")
+    parser.add_argument("--map", nargs="+", choices=available_maps, default=None,
+                        help=f"Maps to use (default: all). Available: {', '.join(available_maps)}")
     parser.add_argument("--strategies", nargs="+", choices=list(STRATEGIES.keys()),
-                        default=list(STRATEGIES.keys()),
-                        help="Strategies to test (default: all)")
+                        default=list(STRATEGIES.keys()), help="Strategies to test")
+    parser.add_argument("--show-map", metavar="MAP", help="Just render a map and exit")
     args = parser.parse_args()
 
-    print(f"Hashfront Game Simulator")
-    flip_str = " | Coin flip: ON" if args.coin_flip else ""
-    print(f"Games per matchup: {args.games} | Seed: {args.seed} | Strategies: {', '.join(args.strategies)}{flip_str}")
-    run_simulation(args.strategies, args.games, args.seed, args.verbose, coin_flip=args.coin_flip)
+    if args.show_map:
+        if args.show_map not in available_maps:
+            print(f"Unknown map: {args.show_map}. Available: {', '.join(available_maps)}")
+            sys.exit(1)
+        state = load_map(args.show_map)
+        print(render_map(state))
+        sys.exit(0)
+
+    maps = args.map or available_maps
+    print(f"Hashfront Simulator")
+    print(f"Games/matchup: {args.games} | Seed: {args.seed}")
+    print(f"Strategies: {', '.join(args.strategies)}")
+    print(f"Maps ({len(maps)}): {', '.join(maps)}")
+    run_simulation(args.strategies, maps, args.games, args.seed, args.verbose, args.replay)
 
 if __name__ == "__main__":
     main()

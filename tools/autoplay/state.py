@@ -68,6 +68,20 @@ class GameState:
         return {(u.x, u.y) for u in self.units if u.is_alive}
 
 
+def fetch_game_turn(game_id: int) -> tuple:
+    """Lightweight poll: returns (current_player, round, state) without fetching units."""
+    result = graphql(f"""{{
+        hashfrontGameModels(where: {{game_idEQ: {game_id}}}) {{
+            edges {{ node {{ current_player round state }} }}
+        }}
+    }}""")
+    edges = result["data"]["hashfrontGameModels"]["edges"]
+    if not edges:
+        return (0, 0, "Unknown")
+    n = edges[0]["node"]
+    return (n["current_player"], n["round"], n["state"])
+
+
 def graphql(query: str) -> dict:
     """Execute a GraphQL query against Torii."""
     data = json.dumps({"query": query}).encode("utf-8")

@@ -3,7 +3,7 @@
 Hashfront Autoplay — Threaded autonomous bot.
 
 Architecture:
-  - TxQueue: Single thread processes all transactions (avoids controller CLI conflicts)
+  - Transactions execute directly per-thread (paymaster handles nonce management)
   - GameThread: One per game, polls every GAME_POLL_INTERVAL, enqueues actions
   - ManagerThread: Discovers games, creates new ones, spawns/reaps GameThreads
 
@@ -15,17 +15,16 @@ Usage:
 
 import argparse
 import logging
-import queue
 import random
 import threading
 import time
 
 from config import (
-    MAX_GAMES, MAP_ID, GAME_NAMES, TX_WAIT, CONTRACT,
+    MAX_GAMES, MAP_ID, GAME_NAMES, CONTRACT,
     OPEN_GAME_PREFIX, OPEN_GAME_NAMES, BOT_ADDRESS,
 )
 from state import (
-    fetch_game_state, fetch_game_counter, fetch_active_games,
+    fetch_game_state, fetch_game_turn, fetch_game_counter, fetch_active_games,
     fetch_all_games, fetch_player_states, fetch_map_ids,
 )
 from planner import plan_turn, EndTurnAction, MoveAction, AttackAction, CaptureAction
@@ -46,48 +45,27 @@ MANAGER_INTERVAL = 30       # seconds — manager checks for new games
 
 # ─── TX Queue ────────────────────────────────────────────────────────────────
 
-class TxQueue:
-    """
-    Single-threaded transaction executor. All game threads enqueue work here
-    so controller CLI calls never overlap.
-    """
+def tx_execute(calls: list, label: str) -> dict:
+    """Execute calls directly. Each thread calls independently — paymaster handles nonces."""
+    return execute_calls(calls, label)
 
-    def __init__(self):
-        self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="tx-queue")
-        self._thread.start()
 
-    def submit(self, calls: list, label: str, callback=None):
-        """Enqueue a multicall. Optional callback(result_dict) when done."""
-        self._queue.put((calls, label, callback))
-
-    def submit_and_wait(self, calls: list, label: str, timeout: float = 60) -> dict:
-        """Enqueue a multicall and block until it completes."""
-        event = threading.Event()
-        result_box = [None]
-
-        def cb(result):
-            result_box[0] = result
-            event.set()
-
-        self.submit(calls, label, callback=cb)
-        event.wait(timeout=timeout)
-        return result_box[0] or {"status": "timeout", "message": "TX queue timeout"}
-
-    def _run(self):
-        while True:
-            try:
-                calls, label, callback = self._queue.get()
-                result = execute_calls(calls, label)
-                if callback:
-                    try:
-                        callback(result)
-                    except Exception as e:
-                        log.error(f"TX callback error: {e}")
-                # Brief pause between TXs for nonce sequencing
-                time.sleep(1)
-            except Exception as e:
-                log.error(f"TX queue error: {e}")
+def wait_for_turn_change(game_id: int, prev_player: int, prev_round: int,
+                         timeout: float = 10, interval: float = 0.3) -> bool:
+    """Poll Torii until turn advances or game finishes. Returns True if changed."""
+    import time as _time
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        try:
+            cp, rnd, st = fetch_game_turn(game_id)
+            if st == "Finished":
+                return True
+            if cp != prev_player or rnd != prev_round:
+                return True
+        except Exception:
+            pass
+        _time.sleep(interval)
+    return False  # timed out — proceed anyway
 
 
 # ─── Game Thread ─────────────────────────────────────────────────────────────
@@ -95,18 +73,17 @@ class TxQueue:
 class GameThread:
     """Manages a single game in its own thread."""
 
-    def __init__(self, game_id: int, tx_queue: TxQueue, only_player: int = 0):
+    def __init__(self, game_id: int, only_player: int = 0):
         """
         game_id: the game to manage
-        tx_queue: shared TX queue
         only_player: if set, only play this player's turns (human game mode)
         """
         self.game_id = game_id
-        self.tx_queue = tx_queue
         self.only_player = only_player  # 0 = self-play (both sides)
         self.error_count = 0
         self.finished = False
         self.stop_event = threading.Event()
+        self._last_submitted = None  # (round, player) of last successful TX
         # Stalemate detection
         self._last_total_units = None  # total alive units last check
         self._stale_rounds = 0         # consecutive rounds with no kills
@@ -163,6 +140,11 @@ class GameThread:
 
         player = state.info.current_player
 
+        # Skip once if we already submitted for this exact round+player (indexer lag)
+        if self._last_submitted == (state.info.round, player):
+            self._last_submitted = None  # clear after one skip so we don't deadlock
+            return
+
         # In human games, skip opponent's turn
         if self.only_player and player != self.only_player:
             return
@@ -172,10 +154,10 @@ class GameThread:
         enemy_units = state.enemy_units(player)
 
         # Round 30+ — force resign to prevent infinite games
-        if state.info.round >= 30:
-            glog.info(f"R{state.info.round} P{player}: round 30 reached, resigning 🏳️")
+        if state.info.round >= 100:
+            glog.info(f"R{state.info.round} P{player}: round 100 reached, resigning 🏳️")
             calls = [{"contractAddress": CONTRACT, "entrypoint": "resign", "calldata": [str(self.game_id)]}]
-            self.tx_queue.submit_and_wait(calls, f"{label} RESIGN-R30")
+            tx_execute(calls, f"{label} RESIGN-R30")
             if self.only_player:
                 self.finished = True
             return
@@ -186,17 +168,12 @@ class GameThread:
         should_resign = (not my_units) or (not enemy_units and not can_capture)
 
         if should_resign:
+            reason = "no units" if not my_units else "only tanks left, can't capture"
+            glog.info(f"R{state.info.round} P{player}: {reason}, resigning 🏳️")
+            calls = [{"contractAddress": CONTRACT, "entrypoint": "resign", "calldata": [str(self.game_id)]}]
+            tx_execute(calls, f"{label} RESIGN")
             if self.only_player:
-                reason = "no units" if not my_units else "no capturable units"
-                glog.info(f"R{state.info.round} P{player}: {reason}, resigning 🏳️")
-                calls = [{"contractAddress": CONTRACT, "entrypoint": "resign", "calldata": [str(self.game_id)]}]
-                self.tx_queue.submit_and_wait(calls, f"{label} RESIGN")
                 self.finished = True
-            else:
-                reason = "no units" if not my_units else "only tanks left, can't capture"
-                glog.info(f"R{state.info.round} P{player}: {reason}, ending turn")
-                calls = actions_to_calls(self.game_id, [EndTurnAction()])
-                self.tx_queue.submit_and_wait(calls, label)
             return
 
         # Stalemate detection: track if anyone is dying
@@ -237,7 +214,7 @@ class GameThread:
 
         # Execute via TX queue
         calls = actions_to_calls(self.game_id, actions)
-        result = self.tx_queue.submit_and_wait(calls, label)
+        result = tx_execute(calls, label)
 
         if result["status"] == "error":
             error_msg = result.get("message", "")
@@ -251,7 +228,7 @@ class GameThread:
             if "Already acted" in error_msg:
                 glog.info("Unit already acted — ending turn to advance")
                 calls = actions_to_calls(self.game_id, [EndTurnAction()])
-                self.tx_queue.submit_and_wait(calls, f"{label} RECOVERY")
+                tx_execute(calls, f"{label} RECOVERY")
                 self.error_count = 0
                 return
 
@@ -263,8 +240,13 @@ class GameThread:
             glog.warning(f"TX failed ({self.error_count}/3), will retry")
         else:
             self.error_count = 0
-            # Wait for indexer to catch up before next poll
-            time.sleep(TX_WAIT)
+            # Poll indexer until turn advances (instead of fixed sleep)
+            changed = wait_for_turn_change(self.game_id, player, state.info.round)
+            if changed:
+                self._last_submitted = None
+            else:
+                # Timeout — set guard but it'll expire after one skip
+                self._last_submitted = (state.info.round, player)
 
 
 # ─── Manager Thread ──────────────────────────────────────────────────────────
@@ -275,8 +257,7 @@ class Manager:
     Runs in the main thread.
     """
 
-    def __init__(self, tx_queue: TxQueue, max_games: int = MAX_GAMES, selfplay: bool = True):
-        self.tx_queue = tx_queue
+    def __init__(self, max_games: int = MAX_GAMES, selfplay: bool = True):
         self.max_games = max_games
         self.selfplay = selfplay
         self.available_maps: list = []
@@ -322,10 +303,10 @@ class Manager:
             active_games = fetch_active_games()
             total_active = len(active_games)
             selfplay_count = sum(1 for gt in self.game_threads.values() if not gt.only_player)
-            if total_active >= 10:
-                log.debug(f"Skipping game creation: {total_active} active games (cap=10)")
+            if total_active >= 30:
+                log.debug(f"Skipping game creation: {total_active} active games (cap=30)")
             else:
-                while selfplay_count < self.max_games and total_active < 10:
+                while selfplay_count < self.max_games and total_active < 30:
                     if not self._create_selfplay_game():
                         break
                     selfplay_count += 1
@@ -358,7 +339,7 @@ class Manager:
                 # Human game — detect bot side
                 bot_pid = self._detect_bot_side(game.game_id)
                 if bot_pid:
-                    gt = GameThread(game.game_id, self.tx_queue, only_player=bot_pid)
+                    gt = GameThread(game.game_id, only_player=bot_pid)
                     gt.start()
                     self.game_threads[game.game_id] = gt
                     log.info(f"⚔️ Human game {game.game_id} ({game.name}) — bot is P{bot_pid}")
@@ -367,7 +348,7 @@ class Manager:
                 selfplay_count = sum(1 for gt in self.game_threads.values() if not gt.only_player)
                 if selfplay_count >= self.max_games:
                     continue
-                gt = GameThread(game.game_id, self.tx_queue, only_player=0)
+                gt = GameThread(game.game_id, only_player=0)
                 gt.start()
                 self.game_threads[game.game_id] = gt
                 log.info(f"Adopted self-play game {game.game_id} ({game.name}) R{game.round}")
@@ -398,11 +379,11 @@ class Manager:
             name = f"{name}_{suffix}"
             map_id = self._random_map()
             log.info(f"🎮 Creating open game '{name}' on map {map_id}...")
-            result = self.tx_queue.submit_and_wait(
+            result = tx_execute(
                 _create_game_calls(name, map_id), f"CREATE {name}"
             )
             if result["status"] == "success":
-                time.sleep(TX_WAIT)
+                time.sleep(3)  # wait for indexer to index new game
                 game_id = fetch_game_counter()
                 log.info(f"🎮 Open game {game_id} ({name}) — waiting for challengers!")
             else:
@@ -418,14 +399,14 @@ class Manager:
         map_id = self._random_map()
 
         log.info(f"Creating self-play '{name}' on map {map_id}...")
-        result = self.tx_queue.submit_and_wait(
+        result = tx_execute(
             _create_game_calls(name, map_id), f"CREATE {name}"
         )
         if result["status"] != "success":
             log.error(f"Failed to create: {result.get('message', '')[:100]}")
             return False
 
-        time.sleep(TX_WAIT)
+        time.sleep(3)  # wait for indexer to index new game
         try:
             game_id = fetch_game_counter()
         except Exception as e:
@@ -433,16 +414,16 @@ class Manager:
             return False
 
         log.info(f"Joining game {game_id} as P2...")
-        result = self.tx_queue.submit_and_wait(
+        result = tx_execute(
             _join_game_calls(game_id, 2), f"JOIN game {game_id} as P2"
         )
         if result["status"] != "success":
             log.error(f"Failed to join: {result.get('message', '')[:100]}")
             return False
 
-        time.sleep(TX_WAIT)
+        time.sleep(3)  # wait for indexer to index new game
 
-        gt = GameThread(game_id, self.tx_queue, only_player=0)
+        gt = GameThread(game_id, only_player=0)
         gt.start()
         self.game_threads[game_id] = gt
         self.stats["games_created"] += 1
@@ -507,9 +488,7 @@ def main():
     log.info(f"Self-play: {'OFF' if args.no_selfplay else f'ON (max {args.games})'}")
     log.info(f"Human poll: {GAME_POLL_INTERVAL}s | Self-play poll: {SELFPLAY_POLL_INTERVAL}s | Manager: {MANAGER_INTERVAL}s")
 
-    tx_queue = TxQueue()
     manager = Manager(
-        tx_queue=tx_queue,
         max_games=args.games,
         selfplay=not args.no_selfplay,
     )
