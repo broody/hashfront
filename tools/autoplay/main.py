@@ -40,7 +40,7 @@ log = logging.getLogger("main")
 
 # How often game threads poll for state changes
 GAME_POLL_INTERVAL = 5      # seconds — human games feel responsive
-SELFPLAY_POLL_INTERVAL = 8  # seconds — self-play can be slower
+SELFPLAY_POLL_INTERVAL = 3  # seconds — self-play can be slower
 MANAGER_INTERVAL = 30       # seconds — manager checks for new games
 
 
@@ -196,24 +196,25 @@ class GameThread:
             if total_units >= self._last_total_units:
                 self._stale_rounds += 1
             else:
-                self._stale_rounds = 0
-                self._stale_override.clear()  # reset overrides on progress
+                # Kill happened — reduce stale count but don't fully reset
+                # (one kill shouldn't undo escalation)
+                self._stale_rounds = max(0, self._stale_rounds - 3)
         self._last_total_units = total_units
 
         # Escalate strategy on stalemate
         if self._stale_rounds >= 6 and player not in self._stale_override:
-            # 6+ rounds with no kills — force aggressive strategy
-            from strategy import GUERRILLA, RUSH, ASSASSIN
+            from strategy import RUSH, ASSASSIN
             import random as _rng
-            escalation = _rng.choice([GUERRILLA, RUSH, ASSASSIN])
+            escalation = _rng.choice([RUSH, ASSASSIN])
             self._stale_override[player] = escalation.name
             glog.info(f"⚡ STALEMATE detected ({self._stale_rounds} stale rounds) — "
                       f"P{player} escalating to {escalation.name}")
 
-        if self._stale_rounds >= 12 and player in self._stale_override:
-            # 12+ rounds — force Rush on everyone
+        if self._stale_rounds >= 10:
+            # 10+ stale ticks — force Rush on everyone, no going back
             self._stale_override[player] = "Rush"
-            glog.info(f"⚡⚡ DEEP STALEMATE ({self._stale_rounds} rounds) — P{player} forced Rush")
+            if self._stale_rounds == 10:
+                glog.info(f"⚡⚡ DEEP STALEMATE — P{player} forced Rush")
 
         # Plan with optional strategy override
         strat_override = self._stale_override.get(player)
@@ -233,9 +234,16 @@ class GameThread:
             error_msg = result.get("message", "")
             self.error_count += 1
 
-            if "Game not playing" in error_msg:
+            if "Game not playing" in error_msg or "not playing" in error_msg.lower():
                 glog.info("Game ended during execution")
                 self.finished = True
+                return
+
+            if "Already acted" in error_msg:
+                glog.info("Unit already acted — ending turn to advance")
+                calls = actions_to_calls(self.game_id, [EndTurnAction()])
+                self.tx_queue.submit_and_wait(calls, f"{label} RECOVERY")
+                self.error_count = 0
                 return
 
             if self.error_count >= 3:
