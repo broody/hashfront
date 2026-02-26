@@ -2,7 +2,7 @@ use dojo::model::ModelStorage;
 use hashfront::models::map::{MapInfo, MapTile};
 use hashfront::models::unit::Unit;
 use hashfront::systems::actions::{IActionsDispatcher, IActionsDispatcherTrait};
-use hashfront::types::{TileType, Vec2};
+use hashfront::types::{BorderType, TileType, Vec2};
 use starknet::testing::{set_account_contract_address, set_contract_address};
 use super::common::{PLAYER1, PLAYER2, build_test_buildings, setup};
 
@@ -10,9 +10,10 @@ use super::common::{PLAYER1, PLAYER2, build_test_buildings, setup};
 // ──────────────────────────────────────────────────────────
 
 /// Tiles: HQ at (0,0) and (19,19), ocean strip at y=10 (x=0..19).
+/// All ocean tiles are adjacent to grass, so they get BorderType::Bluff.
 fn build_ocean_tiles() -> Array<u32> {
     let hq: u32 = 4; // TileType::HQ
-    let ocean: u32 = 8; // TileType::Ocean
+    let ocean_bluff: u32 = (1 * 16) + 8; // (BorderType::Bluff << 4) | TileType::Ocean = 24
     let mut tiles: Array<u32> = array![
         0 * 256 + hq, // HQ at index 0 = (0,0)
         399 * 256 + hq // HQ at index 399 = (19,19)
@@ -20,7 +21,7 @@ fn build_ocean_tiles() -> Array<u32> {
     // Ocean wall at y=10 → indices 200..219
     let mut x: u32 = 0;
     while x < 20 {
-        tiles.append((200 + x) * 256 + ocean);
+        tiles.append((200 + x) * 256 + ocean_bluff);
         x += 1;
     }
     tiles
@@ -74,12 +75,14 @@ fn test_register_map_with_ocean() {
             "ocean", 20, 20, build_ocean_tiles(), build_test_buildings(), build_ocean_units(),
         );
 
-    // Verify ocean tiles stored correctly
+    // Verify ocean tiles stored correctly with border_type
     let ocean_tile: MapTile = world.read_model((map_id, 0_u8, 10_u8));
     assert(ocean_tile.tile_type == TileType::Ocean, 'should be ocean');
+    assert(ocean_tile.border_type == BorderType::Bluff, 'should be bluff');
 
     let ocean_tile2: MapTile = world.read_model((map_id, 10_u8, 10_u8));
     assert(ocean_tile2.tile_type == TileType::Ocean, 'mid ocean');
+    assert(ocean_tile2.border_type == BorderType::Bluff, 'mid should be bluff');
 
     // Non-ocean tile should be default Grass
     let grass_tile: MapTile = world.read_model((map_id, 5_u8, 5_u8));
@@ -198,11 +201,11 @@ fn test_tank_cannot_traverse_ocean() {
 
     let (actions, _world) = setup();
 
-    // Build a small map with ocean at (3,0)
+    // Build a small map with ocean+bluff at (3,0)
     let tiles: Array<u32> = array![
         0 * 256 + 4, // HQ @ (0,0)
         99 * 256 + 4, // HQ @ (9,9) for a 10x10 map
-        3 * 256 + 8 // Ocean @ (3,0)
+        3 * 256 + 24 // Ocean+Bluff @ (3,0): (1<<4)|8 = 24
     ];
     let buildings: Array<u32> = array![
         1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
@@ -244,7 +247,7 @@ fn test_ranger_cannot_traverse_ocean() {
     let tiles: Array<u32> = array![
         0 * 256 + 4, // HQ @ (0,0)
         99 * 256 + 4, // HQ @ (9,9)
-        3 * 256 + 8 // Ocean @ (3,0)
+        3 * 256 + 24 // Ocean+Bluff @ (3,0): (1<<4)|8 = 24
     ];
     let buildings: Array<u32> = array![
         1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
@@ -285,4 +288,105 @@ fn test_ground_units_move_adjacent_to_ocean() {
     let unit: Unit = world.read_model((game_id, 1_u8));
     assert(unit.x == 1, 'x should be 1');
     assert(unit.y == 2, 'y should be 2');
+}
+
+// ── Border validation tests
+// ─────────────────────────────────────────
+
+#[test]
+#[should_panic(expected: ('Ocean adj land needs border', 'ENTRYPOINT_FAILED'))]
+#[available_gas(200000000)]
+fn test_ocean_adjacent_land_must_have_border() {
+    let p1 = PLAYER1();
+    set_contract_address(p1);
+    set_account_contract_address(p1);
+
+    let (actions, _) = setup();
+
+    // Ocean at (3,0) with BorderType::None — adjacent to grass, should panic
+    let tiles: Array<u32> = array![
+        0 * 256 + 4, // HQ @ (0,0)
+        99 * 256 + 4, // HQ @ (9,9)
+        3 * 256 + 8 // Ocean @ (3,0) — no border! tile_val = 8
+    ];
+    let buildings: Array<u32> = array![
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
+    ];
+    let units: Array<u32> = array![
+        1 * 16777216 + 1 * 65536 + 1 * 256 + 0, 2 * 16777216 + 1 * 65536 + 8 * 256 + 9,
+    ];
+
+    actions.register_map("bad_border", 10, 10, tiles, buildings, units);
+}
+
+#[test]
+#[available_gas(200000000)]
+fn test_interior_ocean_no_border_ok() {
+    let p1 = PLAYER1();
+    set_contract_address(p1);
+    set_account_contract_address(p1);
+
+    let (actions, _) = setup();
+
+    // 10x10 map: ocean block at (3,1),(4,1),(3,2),(4,2)
+    // (3,1) and (4,1) are adjacent to grass at y=0 → need border
+    // (3,2) and (4,2) are adjacent to grass at y=3 → need border
+    // But (3,1) also adjacent to (3,2)=ocean, (4,1)=ocean, (2,1)=grass → needs border
+    // Interior ocean would need a 3x3+ block. Let's use a 3x3 with interior:
+    // Ocean at (3,1),(4,1),(5,1),(3,2),(4,2),(5,2),(3,3),(4,3),(5,3)
+    // (4,2) has all 4 neighbors as ocean → interior, BorderType::None is OK
+    let bluff: u32 = (1 * 16) + 8; // 24
+    let ocean: u32 = 8; // no border
+    let tiles: Array<u32> = array![
+        0 * 256 + 4, // HQ @ (0,0)
+        99 * 256 + 4, // HQ @ (9,9)
+        // Row y=1: (3,1),(4,1),(5,1)
+        13 * 256 + bluff, // (3,1) adj grass above
+        14 * 256 + bluff, // (4,1) adj grass above
+        15 * 256 + bluff, // (5,1) adj grass above
+        // Row y=2: (3,2),(4,2),(5,2)
+        23 * 256 + bluff, // (3,2) adj grass left at (2,2)
+        24 * 256 + ocean, // (4,2) interior — all 4 neighbors are ocean
+        25 * 256 + bluff, // (5,2) adj grass right at (6,2)
+        // Row y=3: (3,3),(4,3),(5,3)
+        33 * 256 + bluff, // (3,3) adj grass below
+        34 * 256 + bluff, // (4,3) adj grass below
+        35 * 256 + bluff // (5,3) adj grass below
+    ];
+    let buildings: Array<u32> = array![
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
+    ];
+    let units: Array<u32> = array![
+        1 * 16777216 + 1 * 65536 + 1 * 256 + 0, 2 * 16777216 + 1 * 65536 + 8 * 256 + 9,
+    ];
+
+    // Should succeed — interior ocean (4,2) has no border, which is fine
+    actions.register_map("interior_ok", 10, 10, tiles, buildings, units);
+}
+
+#[test]
+#[should_panic(expected: ('Only ocean has border', 'ENTRYPOINT_FAILED'))]
+#[available_gas(200000000)]
+fn test_land_tile_cannot_have_border() {
+    let p1 = PLAYER1();
+    set_contract_address(p1);
+    set_account_contract_address(p1);
+
+    let (actions, _) = setup();
+
+    // Mountain at (2,0) with BorderType::Bluff — invalid, land can't have border
+    let bad_mountain: u32 = (1 * 16) + 1; // border_type=Bluff(1), tile_type=Mountain(1)
+    let tiles: Array<u32> = array![
+        0 * 256 + 4, // HQ @ (0,0)
+        99 * 256 + 4, // HQ @ (9,9)
+        2 * 256 + bad_mountain // Mountain @ (2,0) with Bluff border — should panic
+    ];
+    let buildings: Array<u32> = array![
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
+    ];
+    let units: Array<u32> = array![
+        1 * 16777216 + 1 * 65536 + 1 * 256 + 0, 2 * 16777216 + 1 * 65536 + 8 * 256 + 9,
+    ];
+
+    actions.register_map("bad_land_border", 10, 10, tiles, buildings, units);
 }

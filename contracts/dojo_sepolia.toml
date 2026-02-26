@@ -1,7 +1,7 @@
 [world]
 name = "Hashfront"
 description = "Turn-based tactics game on Starknet"
-seed = "hashfront_sepolia4"
+seed = "hashfront_sepolia5"
 
 [env]
 rpc_url = "https://api.cartridge.gg/x/starknet/sepolia"

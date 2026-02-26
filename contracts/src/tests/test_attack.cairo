@@ -4,7 +4,7 @@ use hashfront::models::map::MapTile;
 use hashfront::models::player::PlayerState;
 use hashfront::models::unit::Unit;
 use hashfront::systems::actions::{IActionsDispatcher, IActionsDispatcherTrait};
-use hashfront::types::{TileType, UnitType};
+use hashfront::types::{BorderType, TileType, UnitType};
 use starknet::testing::{
     set_account_contract_address, set_block_hash, set_block_number, set_contract_address,
 };
@@ -223,7 +223,13 @@ fn test_attack_miss_whiffs_when_hit_damage_is_one() {
     // Put defender on mountain: infantry attack power 2 vs defense 2 => hit_damage = 1.
     world
         .write_model_test(
-            @MapTile { map_id: game.map_id, x: 5, y: 6, tile_type: TileType::Mountain },
+            @MapTile {
+                map_id: game.map_id,
+                x: 5,
+                y: 6,
+                tile_type: TileType::Mountain,
+                border_type: BorderType::None,
+            },
         );
 
     // Force attack miss.

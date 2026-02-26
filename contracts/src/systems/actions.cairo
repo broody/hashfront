@@ -28,6 +28,7 @@ pub trait IActions<T> {
 
 #[dojo::contract]
 pub mod actions {
+    use core::dict::{Felt252Dict, Felt252DictTrait};
     use dojo::event::EventStorage;
     use dojo::model::ModelStorage;
     use hashfront::consts::{
@@ -43,7 +44,7 @@ pub mod actions {
     use hashfront::models::map::{MapBuilding, MapInfo, MapTile, MapTileSeq, MapUnit};
     use hashfront::models::player::{PlayerHQ, PlayerState};
     use hashfront::models::unit::{Unit, UnitImpl, UnitPosition};
-    use hashfront::types::{BuildingType, GameState, TileType, UnitType, Vec2};
+    use hashfront::types::{BorderType, BuildingType, GameState, TileType, UnitType, Vec2};
     use starknet::syscalls::get_block_hash_syscall;
     use starknet::{get_block_number, get_caller_address};
     use super::IActions;
@@ -81,7 +82,12 @@ pub mod actions {
             counter.count += 1;
             world.write_model(@counter);
 
-            // Store tiles
+            let ocean_tile_type: u8 = TileType::Ocean.into();
+            let mut tile_type_by_index: Felt252Dict<u8> = Default::default();
+
+            // Validate tile payload and cache final tile types in-memory by grid index.
+            // Packing: packed = grid_index * 256 + tile_val
+            // tile_val = (border_type << 4) | tile_type
             let mut i: u32 = 0;
             while i < tile_span.len() {
                 let packed: u32 = *tile_span.at(i);
@@ -89,15 +95,98 @@ pub mod actions {
                 let tile_val: u8 = (packed % 256).try_into().unwrap();
 
                 assert(grid_index.into() < total, 'Index out of bounds');
-                let tile_type: TileType = tile_val.into();
+                let tile_type_val: u8 = tile_val % 16;
+                let tile_type: TileType = tile_type_val.into();
+                let border_type: BorderType = (tile_val / 16).into();
                 assert(tile_type != TileType::Grass, 'Grass tiles not allowed');
 
-                let (x, y) = map_helpers::index_to_xy(grid_index, width);
-                let seq: u16 = i.try_into().unwrap();
-                world.write_model(@MapTile { map_id, x, y, tile_type });
-                world.write_model(@MapTileSeq { map_id, seq, x, y, tile_type });
+                // Only ocean tiles may carry a border type.
+                if tile_type != TileType::Ocean {
+                    assert(border_type == BorderType::None, 'Only ocean has border');
+                }
+
+                tile_type_by_index.insert(grid_index.into(), tile_type_val);
 
                 i += 1;
+            }
+
+            // Validate: ocean tiles adjacent to non-ocean must have a border_type
+            let mut v: u32 = 0;
+            while v < tile_span.len() {
+                let packed: u32 = *tile_span.at(v);
+                let tile_val: u8 = (packed % 256).try_into().unwrap();
+                let tile_type_val: u8 = tile_val % 16;
+
+                if tile_type_val == ocean_tile_type {
+                    let grid_index: u16 = (packed / 256).try_into().unwrap();
+                    let (x, y) = map_helpers::index_to_xy(grid_index, width);
+                    let border_type: BorderType = (tile_val / 16).into();
+
+                    // Check 4 neighbors; out-of-bounds counts as non-ocean (map edge)
+                    let mut has_land_neighbor = false;
+                    if x == 0 {
+                        has_land_neighbor = true;
+                    } else {
+                        let left_index = map_helpers::xy_to_index(x - 1, y, width);
+                        let left_tile_type: u8 = tile_type_by_index.get(left_index.into());
+                        if left_tile_type != ocean_tile_type {
+                            has_land_neighbor = true;
+                        }
+                    }
+                    if !has_land_neighbor && x + 1 >= width {
+                        has_land_neighbor = true;
+                    }
+                    if !has_land_neighbor {
+                        let right_index = map_helpers::xy_to_index(x + 1, y, width);
+                        let right_tile_type: u8 = tile_type_by_index.get(right_index.into());
+                        if right_tile_type != ocean_tile_type {
+                            has_land_neighbor = true;
+                        }
+                    }
+                    if !has_land_neighbor && y == 0 {
+                        has_land_neighbor = true;
+                    }
+                    if !has_land_neighbor {
+                        let up_index = map_helpers::xy_to_index(x, y - 1, width);
+                        let up_tile_type: u8 = tile_type_by_index.get(up_index.into());
+                        if up_tile_type != ocean_tile_type {
+                            has_land_neighbor = true;
+                        }
+                    }
+                    if !has_land_neighbor && y + 1 >= height {
+                        has_land_neighbor = true;
+                    }
+                    if !has_land_neighbor {
+                        let down_index = map_helpers::xy_to_index(x, y + 1, width);
+                        let down_tile_type: u8 = tile_type_by_index.get(down_index.into());
+                        if down_tile_type != ocean_tile_type {
+                            has_land_neighbor = true;
+                        }
+                    }
+
+                    if has_land_neighbor {
+                        assert(border_type != BorderType::None, 'Ocean adj land needs border');
+                    }
+                }
+
+                v += 1;
+            }
+
+            // Store tiles after validation.
+            let mut t: u32 = 0;
+            while t < tile_span.len() {
+                let packed: u32 = *tile_span.at(t);
+                let grid_index: u16 = (packed / 256).try_into().unwrap();
+                let tile_val: u8 = (packed % 256).try_into().unwrap();
+                let tile_type: TileType = (tile_val % 16).into();
+                let border_type: BorderType = (tile_val / 16).into();
+
+                let (x, y) = map_helpers::index_to_xy(grid_index, width);
+                let seq: u16 = t.try_into().unwrap();
+                world.write_model(@MapTile { map_id, x, y, tile_type, border_type });
+                world.write_model(@MapTileSeq { map_id, seq, x, y, tile_type, border_type });
+
+                t += 1;
             }
 
             // Store buildings and count HQs for player_count
@@ -115,8 +204,9 @@ pub mod actions {
                 assert(x < width && y < height, 'Building out of bounds');
 
                 // Cannot place buildings on ocean tiles
-                let building_tile: MapTile = world.read_model((map_id, x, y));
-                assert(building_tile.tile_type != TileType::Ocean, 'No building on ocean');
+                let tile_index = map_helpers::xy_to_index(x, y, width);
+                let building_tile_type: u8 = tile_type_by_index.get(tile_index.into());
+                assert(building_tile_type != ocean_tile_type, 'No building on ocean');
 
                 if building_type == BuildingType::HQ {
                     hq_count += 1;
@@ -150,8 +240,9 @@ pub mod actions {
                 assert(x < width && y < height, 'Unit out of bounds');
 
                 // Cannot place units on ocean tiles
-                let unit_tile: MapTile = world.read_model((map_id, x, y));
-                assert(unit_tile.tile_type != TileType::Ocean, 'No unit on ocean');
+                let tile_index = map_helpers::xy_to_index(x, y, width);
+                let unit_tile_type: u8 = tile_type_by_index.get(tile_index.into());
+                assert(unit_tile_type != ocean_tile_type, 'No unit on ocean');
 
                 world
                     .write_model(
@@ -882,7 +973,9 @@ pub mod actions {
             let mut i: u16 = 0;
             while i < map_info.tile_count {
                 let map_tile: MapTileSeq = world.read_model((map_id, i));
-                let tile_val: u8 = map_tile.tile_type.into();
+                let tile_type_val: u8 = map_tile.tile_type.into();
+                let border_type_val: u8 = map_tile.border_type.into();
+                let tile_val: u8 = border_type_val * 16 + tile_type_val;
                 let index = map_helpers::xy_to_index(map_tile.x, map_tile.y, map_info.width);
                 let packed: u32 = index.into() * 256 + tile_val.into();
                 tiles.append(packed);

@@ -40,6 +40,16 @@ pub enum BuildingType {
     HQ,
 }
 
+// BorderType: None=0, Bluff=1, Cliff=2, Beach=3
+#[derive(Serde, Drop, Copy, PartialEq, Introspect, DojoStore, Default)]
+pub enum BorderType {
+    #[default]
+    None,
+    Bluff,
+    Cliff,
+    Beach,
+}
+
 #[derive(Serde, Drop, Copy, PartialEq, Introspect, DojoStore, Default)]
 pub enum CombatOutcome {
     #[default]
@@ -144,6 +154,29 @@ pub impl BuildingTypeIntoU8 of Into<BuildingType, u8> {
             BuildingType::City => 1,
             BuildingType::Factory => 2,
             BuildingType::HQ => 3,
+        }
+    }
+}
+
+pub impl U8IntoBorderType of Into<u8, BorderType> {
+    fn into(self: u8) -> BorderType {
+        match self {
+            0 => BorderType::None,
+            1 => BorderType::Bluff,
+            2 => BorderType::Cliff,
+            3 => BorderType::Beach,
+            _ => panic!("Invalid border type"),
+        }
+    }
+}
+
+pub impl BorderTypeIntoU8 of Into<BorderType, u8> {
+    fn into(self: BorderType) -> u8 {
+        match self {
+            BorderType::None => 0,
+            BorderType::Bluff => 1,
+            BorderType::Cliff => 2,
+            BorderType::Beach => 3,
         }
     }
 }

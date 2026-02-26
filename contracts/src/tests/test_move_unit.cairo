@@ -3,7 +3,7 @@ use hashfront::models::game::Game;
 use hashfront::models::map::MapTile;
 use hashfront::models::unit::{Unit, UnitPosition};
 use hashfront::systems::actions::{IActionsDispatcher, IActionsDispatcherTrait};
-use hashfront::types::{TileType, UnitType, Vec2};
+use hashfront::types::{BorderType, TileType, UnitType, Vec2};
 use starknet::testing::{set_account_contract_address, set_contract_address};
 use super::common::{
     PLAYER1, PLAYER2, build_test_buildings, build_test_tiles, build_test_units, setup,
@@ -226,11 +226,36 @@ fn test_tank_road_bonus_allows_four_road_steps() {
     unit.y = 1;
     world.write_model_test(@unit);
 
-    world.write_model_test(@MapTile { map_id, x: 0, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 1, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 2, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 3, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 4, y: 1, tile_type: TileType::Road });
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 0, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 1, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 2, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 3, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 4, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
 
     actions_dispatcher
         .move_unit(
@@ -259,8 +284,18 @@ fn test_tank_road_bonus_is_lost_after_leaving_road() {
     unit.y = 1;
     world.write_model_test(@unit);
 
-    world.write_model_test(@MapTile { map_id, x: 0, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 1, y: 1, tile_type: TileType::Road });
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 0, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 1, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
 
     // Leaves road at step 2; any remaining road bonus is discarded.
     actions_dispatcher
@@ -285,12 +320,42 @@ fn test_ranger_road_bonus_allows_five_road_steps() {
     unit.y = 1;
     world.write_model_test(@unit);
 
-    world.write_model_test(@MapTile { map_id, x: 0, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 1, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 2, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 3, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 4, y: 1, tile_type: TileType::Road });
-    world.write_model_test(@MapTile { map_id, x: 5, y: 1, tile_type: TileType::Road });
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 0, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 1, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 2, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 3, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 4, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
+    world
+        .write_model_test(
+            @MapTile {
+                map_id, x: 5, y: 1, tile_type: TileType::Road, border_type: BorderType::None,
+            },
+        );
 
     actions_dispatcher
         .move_unit(

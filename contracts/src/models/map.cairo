@@ -1,4 +1,4 @@
-use hashfront::types::{BuildingType, TileType, UnitType};
+use hashfront::types::{BorderType, BuildingType, TileType, UnitType};
 
 #[derive(Introspect, Serde, Drop, DojoStore)]
 #[dojo::model]
@@ -24,6 +24,7 @@ pub struct MapTile {
     #[key]
     pub y: u8,
     pub tile_type: TileType,
+    pub border_type: BorderType,
 }
 
 #[derive(Introspect, Serde, Drop, DojoStore)]
@@ -36,6 +37,7 @@ pub struct MapTileSeq {
     pub x: u8,
     pub y: u8,
     pub tile_type: TileType,
+    pub border_type: BorderType,
 }
 
 #[derive(Introspect, Serde, Drop, DojoStore)]

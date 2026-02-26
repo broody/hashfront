@@ -155,6 +155,9 @@ build_call_for_map() {
         'T') tile_val=6 ;;
         'D') tile_val=7 ;;
         'O') tile_val=8 ;;
+        'b') tile_val=$(( 1 * 16 + 8 )) ;;  # Ocean + Bluff
+        'k') tile_val=$(( 2 * 16 + 8 )) ;;  # Ocean + Cliff
+        's') tile_val=$(( 3 * 16 + 8 )) ;;  # Ocean + Beach
         *)
           echo "Error: unknown tile char '$ch' at ($x,$y) in $map_name" >&2
           exit 1
