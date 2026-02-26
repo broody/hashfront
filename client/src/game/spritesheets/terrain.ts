@@ -2,32 +2,80 @@ const TILE = 24;
 
 export const terrainAtlas = {
   frames: {
-    border_top_left: {
+    bluff_top_left: {
       frame: { x: 0, y: TILE * 8, w: TILE, h: TILE },
     },
     border_water: {
       frame: { x: 0, y: TILE, w: TILE, h: TILE },
     },
-    border_top_right: {
+    bluff_top_right: {
       frame: { x: TILE, y: TILE * 8, w: TILE, h: TILE },
     },
-    border_top_edge: {
+    bluff_top_edge: {
       frame: { x: TILE * 3, y: TILE * 6, w: TILE, h: TILE },
     },
-    border_bottom_edge: {
+    bluff_bottom_edge: {
       frame: { x: TILE * 3, y: TILE * 4, w: TILE, h: TILE },
     },
-    border_right_edge: {
+    bluff_right_edge: {
       frame: { x: TILE * 2, y: TILE * 5, w: TILE, h: TILE },
     },
-    border_left_edge: {
+    bluff_left_edge: {
       frame: { x: TILE * 4, y: TILE * 5, w: TILE, h: TILE },
     },
-    border_bottom_left: {
+    bluff_bottom_left: {
       frame: { x: 0, y: TILE * 9, w: TILE, h: TILE },
     },
-    border_bottom_right: {
+    bluff_bottom_right: {
       frame: { x: TILE, y: TILE * 9, w: TILE, h: TILE },
+    },
+    beach_top_left: {
+      frame: { x: 0, y: TILE * 10, w: TILE, h: TILE },
+    },
+    beach_top_right: {
+      frame: { x: TILE, y: TILE * 10, w: TILE, h: TILE },
+    },
+    beach_bottom_left: {
+      frame: { x: 0, y: TILE * 11, w: TILE, h: TILE },
+    },
+    beach_bottom_right: {
+      frame: { x: TILE, y: TILE * 11, w: TILE, h: TILE },
+    },
+    beach_top_edge: {
+      frame: { x: TILE * 3, y: TILE * 10, w: TILE, h: TILE },
+    },
+    beach_bottom_edge: {
+      frame: { x: TILE * 3, y: TILE * 8, w: TILE, h: TILE },
+    },
+    beach_right_edge: {
+      frame: { x: TILE * 2, y: TILE * 9, w: TILE, h: TILE },
+    },
+    beach_left_edge: {
+      frame: { x: TILE * 4, y: TILE * 9, w: TILE, h: TILE },
+    },
+    cliff_top_edge: {
+      frame: { x: TILE * 3, y: TILE * 2, w: TILE, h: TILE },
+    },
+    cliff_bottom_edge: {
+      frame: { x: TILE * 3, y: 0, w: TILE, h: TILE },
+    },
+    cliff_right_edge: {
+      frame: { x: TILE * 2, y: TILE, w: TILE, h: TILE },
+    },
+    cliff_left_edge: {
+      frame: { x: TILE * 4, y: TILE, w: TILE, h: TILE },
+    },
+    cliff_top_left: {
+      frame: { x: 0, y: TILE * 6, w: TILE, h: TILE },
+    },
+    cliff_top_right: {
+      frame: { x: TILE, y: TILE * 6, w: TILE, h: TILE },
+    },
+    cliff_bottom_left: {
+      frame: { x: 0, y: TILE * 7, w: TILE, h: TILE },
+    },
+    cliff_bottom_right: {
+      frame: { x: TILE, y: TILE * 7, w: TILE, h: TILE },
     },
     grass: {
       frame: { x: TILE, y: TILE, w: TILE, h: TILE },

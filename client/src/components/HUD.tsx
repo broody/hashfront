@@ -170,7 +170,6 @@ export default function HUD() {
     currentTurnAddressHex !== null &&
     connectedAddressHex === currentTurnAddressHex;
 
-
   useEffect(() => {
     if (!address) return;
     controllerConnector.username()?.then(setUsername);

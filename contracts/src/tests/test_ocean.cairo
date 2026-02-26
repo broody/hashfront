@@ -6,7 +6,8 @@ use hashfront::types::{TileType, Vec2};
 use starknet::testing::{set_account_contract_address, set_contract_address};
 use super::common::{PLAYER1, PLAYER2, build_test_buildings, setup};
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Helpers
+// ──────────────────────────────────────────────────────────
 
 /// Tiles: HQ at (0,0) and (19,19), ocean strip at y=10 (x=0..19).
 fn build_ocean_tiles() -> Array<u32> {
@@ -14,14 +15,14 @@ fn build_ocean_tiles() -> Array<u32> {
     let ocean: u32 = 8; // TileType::Ocean
     let mut tiles: Array<u32> = array![
         0 * 256 + hq, // HQ at index 0 = (0,0)
-        399 * 256 + hq, // HQ at index 399 = (19,19)
+        399 * 256 + hq // HQ at index 399 = (19,19)
     ];
     // Ocean wall at y=10 → indices 200..219
     let mut x: u32 = 0;
     while x < 20 {
         tiles.append((200 + x) * 256 + ocean);
         x += 1;
-    };
+    }
     tiles
 }
 
@@ -29,7 +30,7 @@ fn build_ocean_tiles() -> Array<u32> {
 fn build_ocean_units() -> Array<u32> {
     array![
         1 * 16777216 + 1 * 65536 + 1 * 256 + 0, // P1 Infantry @ (1,0)
-        2 * 16777216 + 1 * 65536 + 18 * 256 + 19, // P2 Infantry @ (18,19)
+        2 * 16777216 + 1 * 65536 + 18 * 256 + 19 // P2 Infantry @ (18,19)
     ]
 }
 
@@ -41,7 +42,9 @@ fn setup_ocean_game() -> (IActionsDispatcher, dojo::world::WorldStorage, u32) {
 
     let (actions, world) = setup();
     let map_id = actions
-        .register_map("ocean", 20, 20, build_ocean_tiles(), build_test_buildings(), build_ocean_units());
+        .register_map(
+            "ocean", 20, 20, build_ocean_tiles(), build_test_buildings(), build_ocean_units(),
+        );
     let game_id = actions.create_game("ocean", map_id, 1, false);
 
     let p2 = PLAYER2();
@@ -55,7 +58,8 @@ fn setup_ocean_game() -> (IActionsDispatcher, dojo::world::WorldStorage, u32) {
     (actions, world, game_id)
 }
 
-// ── Registration tests ───────────────────────────────────────────────
+// ── Registration tests
+// ───────────────────────────────────────────────
 
 #[test]
 #[available_gas(200000000)]
@@ -66,7 +70,9 @@ fn test_register_map_with_ocean() {
 
     let (actions, mut world) = setup();
     let map_id = actions
-        .register_map("ocean", 20, 20, build_ocean_tiles(), build_test_buildings(), build_ocean_units());
+        .register_map(
+            "ocean", 20, 20, build_ocean_tiles(), build_test_buildings(), build_ocean_units(),
+        );
 
     // Verify ocean tiles stored correctly
     let ocean_tile: MapTile = world.read_model((map_id, 0_u8, 10_u8));
@@ -98,7 +104,7 @@ fn test_register_map_building_on_ocean() {
     let buildings: Array<u32> = array![
         1 * 16777216 + 3 * 65536 + 0 * 256 + 0, // P1 HQ @ (0,0)
         2 * 16777216 + 3 * 65536 + 19 * 256 + 19, // P2 HQ @ (19,19)
-        0 * 16777216 + 1 * 65536 + 5 * 256 + 10, // Neutral City @ (5,10) — ocean!
+        0 * 16777216 + 1 * 65536 + 5 * 256 + 10 // Neutral City @ (5,10) — ocean!
     ];
 
     actions.register_map("bad", 20, 20, build_ocean_tiles(), buildings, build_ocean_units());
@@ -118,13 +124,14 @@ fn test_register_map_unit_on_ocean() {
     let units: Array<u32> = array![
         1 * 16777216 + 1 * 65536 + 1 * 256 + 0, // P1 Infantry @ (1,0) OK
         2 * 16777216 + 1 * 65536 + 18 * 256 + 19, // P2 Infantry @ (18,19) OK
-        1 * 16777216 + 1 * 65536 + 5 * 256 + 10, // P1 Infantry @ (5,10) — ocean!
+        1 * 16777216 + 1 * 65536 + 5 * 256 + 10 // P1 Infantry @ (5,10) — ocean!
     ];
 
     actions.register_map("bad", 20, 20, build_ocean_tiles(), build_test_buildings(), units);
 }
 
-// ── Movement tests ───────────────────────────────────────────────────
+// ── Movement tests
+// ───────────────────────────────────────────────────
 
 #[test]
 #[should_panic]
@@ -136,12 +143,14 @@ fn test_infantry_cannot_traverse_ocean() {
     // Path: (1,0) → (1,1) → (1,2) → (1,3) — first just move closer (4 moves).
     // Then next turn try to cross. But we can test directly by placing near ocean.
     // Infantry has range 4. Move from (1,0) → (1,1) → (1,2) → (1,3) → (1,4)
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 1, y: 1 },
-        Vec2 { x: 1, y: 2 },
-        Vec2 { x: 1, y: 3 },
-        Vec2 { x: 1, y: 4 },
-    ]);
+    actions
+        .move_unit(
+            game_id,
+            1,
+            array![
+                Vec2 { x: 1, y: 1 }, Vec2 { x: 1, y: 2 }, Vec2 { x: 1, y: 3 }, Vec2 { x: 1, y: 4 },
+            ],
+        );
 
     // End turn for P1, then P2
     actions.end_turn(game_id);
@@ -154,12 +163,14 @@ fn test_infantry_cannot_traverse_ocean() {
     let p1 = PLAYER1();
     set_contract_address(p1);
     set_account_contract_address(p1);
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 1, y: 5 },
-        Vec2 { x: 1, y: 6 },
-        Vec2 { x: 1, y: 7 },
-        Vec2 { x: 1, y: 8 },
-    ]);
+    actions
+        .move_unit(
+            game_id,
+            1,
+            array![
+                Vec2 { x: 1, y: 5 }, Vec2 { x: 1, y: 6 }, Vec2 { x: 1, y: 7 }, Vec2 { x: 1, y: 8 },
+            ],
+        );
 
     // End turns again
     actions.end_turn(game_id);
@@ -170,10 +181,11 @@ fn test_infantry_cannot_traverse_ocean() {
     // P1 again — infantry at (1,8), try to move to (1,9) then (1,10) = ocean
     set_contract_address(p1);
     set_account_contract_address(p1);
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 1, y: 9 },
-        Vec2 { x: 1, y: 10 }, // OCEAN — should panic
-    ]);
+    actions
+        .move_unit(
+            game_id, 1, array![Vec2 { x: 1, y: 9 }, Vec2 { x: 1, y: 10 } // OCEAN — should panic
+            ],
+        );
 }
 
 #[test]
@@ -190,15 +202,14 @@ fn test_tank_cannot_traverse_ocean() {
     let tiles: Array<u32> = array![
         0 * 256 + 4, // HQ @ (0,0)
         99 * 256 + 4, // HQ @ (9,9) for a 10x10 map
-        3 * 256 + 8, // Ocean @ (3,0)
+        3 * 256 + 8 // Ocean @ (3,0)
     ];
     let buildings: Array<u32> = array![
-        1 * 16777216 + 3 * 65536 + 0 * 256 + 0,
-        2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
     ];
     let units: Array<u32> = array![
         1 * 16777216 + 2 * 65536 + 1 * 256 + 0, // P1 Tank @ (1,0)
-        2 * 16777216 + 1 * 65536 + 8 * 256 + 9, // P2 Infantry @ (8,9)
+        2 * 16777216 + 1 * 65536 + 8 * 256 + 9 // P2 Infantry @ (8,9)
     ];
 
     let map_id = actions.register_map("ocean_small", 10, 10, tiles, buildings, units);
@@ -213,10 +224,11 @@ fn test_tank_cannot_traverse_ocean() {
     set_account_contract_address(p1);
 
     // Tank at (1,0), range 2. Try (2,0) → (3,0) where (3,0) is ocean.
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 2, y: 0 },
-        Vec2 { x: 3, y: 0 }, // OCEAN — should panic
-    ]);
+    actions
+        .move_unit(
+            game_id, 1, array![Vec2 { x: 2, y: 0 }, Vec2 { x: 3, y: 0 } // OCEAN — should panic
+            ],
+        );
 }
 
 #[test]
@@ -232,15 +244,14 @@ fn test_ranger_cannot_traverse_ocean() {
     let tiles: Array<u32> = array![
         0 * 256 + 4, // HQ @ (0,0)
         99 * 256 + 4, // HQ @ (9,9)
-        3 * 256 + 8, // Ocean @ (3,0)
+        3 * 256 + 8 // Ocean @ (3,0)
     ];
     let buildings: Array<u32> = array![
-        1 * 16777216 + 3 * 65536 + 0 * 256 + 0,
-        2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
+        1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
     ];
     let units: Array<u32> = array![
         1 * 16777216 + 3 * 65536 + 1 * 256 + 0, // P1 Ranger @ (1,0)
-        2 * 16777216 + 1 * 65536 + 8 * 256 + 9, // P2 Infantry @ (8,9)
+        2 * 16777216 + 1 * 65536 + 8 * 256 + 9 // P2 Infantry @ (8,9)
     ];
 
     let map_id = actions.register_map("ocean_ranger", 10, 10, tiles, buildings, units);
@@ -255,10 +266,11 @@ fn test_ranger_cannot_traverse_ocean() {
     set_account_contract_address(p1);
 
     // Ranger at (1,0), try (2,0) → (3,0) where (3,0) is ocean
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 2, y: 0 },
-        Vec2 { x: 3, y: 0 }, // OCEAN — should panic
-    ]);
+    actions
+        .move_unit(
+            game_id, 1, array![Vec2 { x: 2, y: 0 }, Vec2 { x: 3, y: 0 } // OCEAN — should panic
+            ],
+        );
 }
 
 #[test]
@@ -266,12 +278,9 @@ fn test_ranger_cannot_traverse_ocean() {
 fn test_ground_units_move_adjacent_to_ocean() {
     let (actions, mut world, game_id) = setup_ocean_game();
 
-    // P1 Infantry at (1,0). Move to (1,1) — safe tile next to no ocean. Just verify movement works
-    // on a map that contains ocean elsewhere.
-    actions.move_unit(game_id, 1, array![
-        Vec2 { x: 1, y: 1 },
-        Vec2 { x: 1, y: 2 },
-    ]);
+    // P1 Infantry at (1,0). Move to (1,1) — safe tile next to no ocean. Just verify movement
+    // works on a map that contains ocean elsewhere.
+    actions.move_unit(game_id, 1, array![Vec2 { x: 1, y: 1 }, Vec2 { x: 1, y: 2 }]);
 
     let unit: Unit = world.read_model((game_id, 1_u8));
     assert(unit.x == 1, 'x should be 1');

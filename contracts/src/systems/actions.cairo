@@ -792,7 +792,7 @@ pub mod actions {
                         matches += 1;
                     }
                     p += 1;
-                };
+                }
                 assert(matches > 0, 'Not an alive player');
                 assert(matches == 1, 'Ambiguous player');
             }

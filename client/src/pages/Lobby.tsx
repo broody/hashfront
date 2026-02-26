@@ -1080,8 +1080,11 @@ export default function Lobby() {
                 if (isFinished) {
                   actionLabel = "REVIEW_LOGS";
                 } else if (isLobby) {
-                  actionLabel =
-                    isMine ? "RE-ENTER" : isBotArena ? "WATCH_FEED" : "JOIN";
+                  actionLabel = isMine
+                    ? "RE-ENTER"
+                    : isBotArena
+                      ? "WATCH_FEED"
+                      : "JOIN";
                 } else {
                   actionLabel = isMine ? "RESUME" : "WATCH_FEED";
                 }

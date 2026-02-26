@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_TORII_URL: string;
   readonly VITE_TORII_GRAPHQL_URL: string;
 }
 

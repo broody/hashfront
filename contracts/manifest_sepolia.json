@@ -34,7 +34,7 @@
   "contracts": [
     {
       "address": "0x5050094858a637c2c315b408377f7ce7d0481c4e60fd5bc732aad0ac7ab2862",
-      "class_hash": "0x1ae9d4eae9be1166bd1e602ea63486585b80773471f251cd642963888b65a0f",
+      "class_hash": "0xa4d58b835c972bb02cccee77fe7cb1aab6f054e48acd555cb14f7bd5d89ac6",
       "init_calldata": [],
       "tag": "hashfront-actions",
       "selector": "0x8b04e6669a8a23a1c372cc7c4078e7cea1d7e35253b6a592e2393a823fb26d",
@@ -297,7 +297,7 @@
           "key": false
         }
       ],
-      "class_hash": "0x3085d166290fd9f64c536cb823c5cf1feb4cc08229a64c2047cd92c6e8122e8",
+      "class_hash": "0x3a0cb35f13cffc7e3956cb87685cdb30d908c69a932f4d418a08553e4fbafab",
       "tag": "hashfront-MapTile",
       "selector": "0x2c8bb09ffc4435173e0d5383ee2f1f8bc269b089adf7cd85a8a53bbf5b9b11f"
     },
@@ -329,7 +329,7 @@
           "key": false
         }
       ],
-      "class_hash": "0x58d93e3d8b8a4ea9e4bdb407cc930c83868567daaa230210f762057ee38a0b",
+      "class_hash": "0x1f9f21745ff84fc9cd8c897711c18fe2f3e9d43ad9c91956b157582623b6bce",
       "tag": "hashfront-MapTileSeq",
       "selector": "0x64bb043d91202704b01f7a3043e18231e8dad2935a2385c8776eae4f63ef0af"
     },
@@ -4389,6 +4389,10 @@
         },
         {
           "name": "DirtRoad",
+          "type": "()"
+        },
+        {
+          "name": "Ocean",
           "type": "()"
         }
       ]

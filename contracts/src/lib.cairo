@@ -33,8 +33,8 @@ mod tests {
     mod test_end_turn;
     mod test_join_game;
     mod test_move_unit;
+    mod test_ocean;
     mod test_register_map;
     mod test_resign;
     mod test_stats;
-    mod test_ocean;
 }

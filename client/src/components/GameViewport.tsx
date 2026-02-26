@@ -259,18 +259,18 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       }
     }
 
-    // Border pieces on top of the water ring.
-    addTileSprite("border_top_left", -1, -1);
-    addTileSprite("border_top_right", GRID_SIZE, -1);
-    addTileSprite("border_bottom_left", -1, GRID_SIZE);
-    addTileSprite("border_bottom_right", GRID_SIZE, GRID_SIZE);
+    // Cliff transition pieces on top of the water ring.
+    addTileSprite("cliff_top_left", -1, -1);
+    addTileSprite("cliff_top_right", GRID_SIZE, -1);
+    addTileSprite("cliff_bottom_left", -1, GRID_SIZE);
+    addTileSprite("cliff_bottom_right", GRID_SIZE, GRID_SIZE);
     for (let x = 0; x < GRID_SIZE; x++) {
-      addTileSprite("border_top_edge", x, -1);
-      addTileSprite("border_bottom_edge", x, GRID_SIZE);
+      addTileSprite("cliff_top_edge", x, -1);
+      addTileSprite("cliff_bottom_edge", x, GRID_SIZE);
     }
     for (let y = 0; y < GRID_SIZE; y++) {
-      addTileSprite("border_left_edge", -1, y);
-      addTileSprite("border_right_edge", GRID_SIZE, y);
+      addTileSprite("cliff_left_edge", -1, y);
+      addTileSprite("cliff_right_edge", GRID_SIZE, y);
     }
 
     for (let y = 0; y < GRID_SIZE; y++) {
