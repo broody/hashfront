@@ -2,9 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { BlueprintContainer } from "../components/BlueprintContainer";
 import { PixelPanel } from "../components/PixelPanel";
 import { PixelButton } from "../components/PixelButton";
-import {
-  terrainAtlas,
-} from "../game/spritesheets/terrain";
+import { terrainAtlas } from "../game/spritesheets/terrain";
 import {
   Application,
   Assets,
@@ -70,7 +68,8 @@ const loadSavedState = (): EditorState | null => {
 export default function MapEditor() {
   const [savedState] = useState(() => loadSavedState());
 
-  const [mapData, setMapData] = useState<EditorState>(() => ({    width: savedState?.width || 20,
+  const [mapData, setMapData] = useState<EditorState>(() => ({
+    width: savedState?.width || 20,
     height: savedState?.height || 20,
     terrain:
       savedState?.terrain ||
@@ -94,6 +93,8 @@ export default function MapEditor() {
   const [selectedUnit, setSelectedUnit] = useState("Infantry");
   const [selectedPlayer, setSelectedPlayer] = useState(1);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isMapMenuOpen, setIsMapMenuOpen] = useState(false);
+  const mapMenuRef = useRef<HTMLDivElement>(null);
   const [hoveredPos, setHoveredPos] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -103,6 +104,19 @@ export default function MapEditor() {
   useEffect(() => {
     localStorage.setItem("hashfront_map_editor", JSON.stringify(mapData));
   }, [mapData]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mapMenuRef.current &&
+        !mapMenuRef.current.contains(e.target as Node)
+      ) {
+        setIsMapMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const saveState = useCallback(() => {
     setPast((prev) => [...prev, JSON.parse(JSON.stringify(mapData))]);
@@ -142,16 +156,20 @@ export default function MapEditor() {
 
   const handleResize = (newW: number, newH: number) => {
     saveState();
-    const finalW = Math.min(40, Math.max(1, newW));
-    const finalH = Math.min(40, Math.max(1, newH));
+    const finalW = Math.min(40, Math.max(10, newW));
+    const finalH = Math.min(40, Math.max(10, newH));
 
     setMapData((prev) => {
-      const newTerrain = Array(finalH)
-        .fill(null)
-        .map(() => Array(finalW).fill("O"));
-      for (let y = 0; y < Math.min(prev.height, finalH); y++) {
-        for (let x = 0; x < Math.min(prev.width, finalW); x++) {
-          newTerrain[y][x] = prev.terrain[y][x];
+      // Grow terrain array if needed, never shrink
+      const newTerrain = prev.terrain.map((row) => [...row]);
+      while (newTerrain.length < finalH) {
+        newTerrain.push(
+          Array(Math.max(prev.terrain[0]?.length || 0, finalW)).fill("O"),
+        );
+      }
+      for (let y = 0; y < newTerrain.length; y++) {
+        while (newTerrain[y].length < finalW) {
+          newTerrain[y].push("O");
         }
       }
       return {
@@ -159,8 +177,6 @@ export default function MapEditor() {
         width: finalW,
         height: finalH,
         terrain: newTerrain,
-        buildings: prev.buildings.filter((b) => b.x < finalW && b.y < finalH),
-        units: prev.units.filter((u) => u.x < finalW && u.y < finalH),
       };
     });
   };
@@ -328,13 +344,17 @@ export default function MapEditor() {
 
       for (let i = 0; i < steps; i++) {
         if (rx > 0 && rx < w - 1 && ry > 0 && ry < h - 1) {
-          if (newTerrain[ry][rx] === "." || newTerrain[ry][rx] === "D" || newTerrain[ry][rx] === "R") {
+          if (
+            newTerrain[ry][rx] === "." ||
+            newTerrain[ry][rx] === "D" ||
+            newTerrain[ry][rx] === "R"
+          ) {
             newTerrain[ry][rx] = char;
           }
         }
-        
+
         // 80% chance to keep same direction
-        if (rand() < 0.20) {
+        if (rand() < 0.2) {
           dir = Math.floor(rand() * 4);
         }
 
@@ -354,7 +374,7 @@ export default function MapEditor() {
 
     addBlobs("M", Math.floor((w * h) / 100), 4); // Mountains
     addBlobs("T", Math.floor((w * h) / 80), 6); // Trees
-    
+
     // One main road of each type to keep it clean
     drawPath("R", Math.floor((w + h) * 1.5)); // Standard road
     drawPath("D", Math.floor((w + h) * 1.5)); // Dirt path
@@ -368,6 +388,11 @@ export default function MapEditor() {
   }, [mapData]);
 
   // Autotile logic - updated to use Refs and support preview overrides
+  const isEdgeTile = useCallback((tx: number, ty: number) => {
+    const { width: w, height: h } = mapDataRef.current;
+    return tx === 0 || ty === 0 || tx === w - 1 || ty === h - 1;
+  }, []);
+
   const isTileType = useCallback(
     (
       tx: number,
@@ -379,9 +404,10 @@ export default function MapEditor() {
         return override.char === char;
       const { width: w, height: h, terrain: t } = mapDataRef.current;
       if (tx < 0 || tx >= w || ty < 0 || ty >= h) return false;
+      if (isEdgeTile(tx, ty)) return char === "O";
       return t[ty][tx] === char;
     },
-    [],
+    [isEdgeTile],
   );
 
   const isOceanOrOOB = useCallback(
@@ -396,10 +422,11 @@ export default function MapEditor() {
       }
       const { width: w, height: h, terrain: t } = mapDataRef.current;
       if (tx < 0 || tx >= w || ty < 0 || ty >= h) return true;
+      if (isEdgeTile(tx, ty)) return true;
       const char = t[ty][tx];
       return char === "O" || char === "k" || char === "b" || char === "s";
     },
-    [],
+    [isEdgeTile],
   );
 
   const pickAutotile = useCallback(
@@ -541,7 +568,7 @@ export default function MapEditor() {
       previewOverride?: { x: number; y: number; char: string },
     ) => {
       const { terrain: t, width: w, height: h } = mapDataRef.current;
-      if (ty < 0 || ty >= h || tx < 0 || tx >= (t[ty]?.length || 0)) {
+      if (ty < 0 || ty >= h || tx < 0 || tx >= w) {
         return ["border_water"];
       }
 
@@ -586,7 +613,8 @@ export default function MapEditor() {
   );
 
   const getExportChar = (x: number, y: number) => {
-    const char = terrain[y][x];
+    // Edge tiles are always ocean visually
+    const char = isEdgeTile(x, y) ? "O" : terrain[y][x];
     if (char === "O") {
       const landUp = !isOceanOrOOB(x, y - 1);
       const landDown = !isOceanOrOOB(x, y + 1);
@@ -613,12 +641,20 @@ export default function MapEditor() {
 
   const handleExport = () => {
     const terrainText = terrain
-      .map((row, y) => row.map((_, x) => getExportChar(x, y)).join(" "))
+      .slice(0, height)
+      .map((row, y) =>
+        row
+          .slice(0, width)
+          .map((_, x) => getExportChar(x, y))
+          .join(" "),
+      )
       .join("\n");
     const buildingsText = buildings
+      .filter((b) => b.x > 0 && b.y > 0 && b.x < width - 1 && b.y < height - 1)
       .map((b) => `${b.type} ${b.player} ${b.x} ${b.y}`)
       .join("\n");
     const unitsText = units
+      .filter((u) => u.x > 0 && u.y > 0 && u.x < width - 1 && u.y < height - 1)
       .map((u) => `${u.type} ${u.player} ${u.x} ${u.y}`)
       .join("\n");
 
@@ -1099,10 +1135,11 @@ export default function MapEditor() {
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const sprites = getTileSprites(x, y);
+        const isEdge =
+          x === 0 || y === 0 || x === width - 1 || y === height - 1;
+        const sprites = getTileSprites(x, y, isEdge ? "O" : undefined);
         for (const sp of sprites) addSprite(sp, x, y);
-
-        const bldg = buildings.find((b) => b.x === x && b.y === y);
+        const bldg = !isEdge && buildings.find((b) => b.x === x && b.y === y);
         if (bldg) {
           addSprite(
             bldg.type === "City"
@@ -1117,7 +1154,7 @@ export default function MapEditor() {
           addText(`P${bldg.player}`, x, y, 10, "#ffffff", "top");
         }
 
-        const unit = units.find((u) => u.x === x && u.y === y);
+        const unit = !isEdge && units.find((u) => u.x === x && u.y === y);
         if (unit) {
           addText(
             `${unit.type.substring(0, 3).toUpperCase()}`,
@@ -1136,30 +1173,70 @@ export default function MapEditor() {
     <BlueprintContainer fullWidth>
       <div className="flex w-full h-full gap-4 text-white font-mono">
         {/* PixiJS Canvas Container */}
-        <PixelPanel
-          className="flex-1 flex flex-col relative overflow-hidden"
-          title="TACTICAL_MAP_CANVAS"
-        >
-          <div className="absolute top-2 right-4 flex gap-2 z-10">
-            <div className="bg-black/50 px-2 py-1 text-[10px] border border-white/20 mr-4 flex items-center">
-              Right-Click + Drag to Pan
+        <PixelPanel className="flex-1 flex flex-col relative overflow-hidden">
+          {/* Menu bar */}
+          <div className="flex items-center gap-2 border-b border-white/20 pb-2 mb-1 shrink-0">
+            <span
+              className="text-xl font-bold underline mr-auto"
+              style={{ textUnderlineOffset: "5px" }}
+            >
+              [TACTICAL_MAP_CANVAS]
+            </span>
+            <div className="relative" ref={mapMenuRef}>
+              <button
+                onClick={() => setIsMapMenuOpen((v) => !v)}
+                className={`px-4 py-2 text-sm uppercase tracking-wider border-2 border-white/30 transition-all duration-150 ${isMapMenuOpen ? "bg-white text-blueprint-blue" : "hover:bg-white/10"}`}
+              >
+                Map ▾
+              </button>
+              {isMapMenuOpen && (
+                <div className="absolute top-full right-0 mt-1 z-20 border-2 border-white bg-blueprint-blue/95 shadow-[0_0_15px_rgba(255,255,255,0.1)] min-w-[200px]">
+                  <button
+                    onClick={() => {
+                      handleRandomize();
+                      setIsMapMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm uppercase tracking-wider border-b border-white/15 hover:bg-white hover:text-blueprint-blue transition-all duration-150"
+                  >
+                    &gt; Randomize
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExport();
+                      setIsMapMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm uppercase tracking-wider border-b border-white/15 hover:bg-white hover:text-blueprint-blue transition-all duration-150"
+                  >
+                    &gt; Export
+                  </button>
+                  <label
+                    className="block w-full text-left px-4 py-3 text-sm uppercase tracking-wider border-b border-white/15 hover:bg-white hover:text-blueprint-blue transition-all duration-150 cursor-pointer"
+                    onClick={() => setIsMapMenuOpen(false)}
+                  >
+                    &gt; Import
+                    <input
+                      type="file"
+                      multiple
+                      accept=".txt"
+                      ref={fileInputRef}
+                      onChange={handleImport}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      setIsResetModalOpen(true);
+                      setIsMapMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm uppercase tracking-wider text-red-400 hover:bg-red-400 hover:text-blueprint-blue transition-all duration-150"
+                  >
+                    &gt; Reset
+                  </button>
+                </div>
+              )}
             </div>
-            <button
-              onClick={undo}
-              disabled={past.length === 0}
-              className="px-2 py-1 text-xs border border-white/30 disabled:opacity-30 hover:bg-white/10 bg-black/50"
-            >
-              UNDO
-            </button>
-            <button
-              onClick={redo}
-              disabled={future.length === 0}
-              className="px-2 py-1 text-xs border border-white/30 disabled:opacity-30 hover:bg-white/10 bg-black/50"
-            >
-              REDO
-            </button>
           </div>
-          <div ref={containerRef} className="w-full h-full cursor-crosshair" />
+          <div ref={containerRef} className="w-full flex-1 cursor-crosshair" />
         </PixelPanel>
 
         {/* Tools Palette */}
@@ -1169,28 +1246,35 @@ export default function MapEditor() {
         >
           <div>
             <div className="text-xs mb-2 opacity-50">DIMENSIONS (MAX 40)</div>
-            <div className="flex gap-2 mb-2 text-sm">
-              <input
-                type="number"
-                min="1"
-                max="40"
-                className="w-16 bg-transparent border border-white/30 text-center"
-                value={width}
-                onChange={(e) =>
-                  handleResize(parseInt(e.target.value, 10) || 1, height)
-                }
-              />
-              <span className="self-center">x</span>
-              <input
-                type="number"
-                min="1"
-                max="40"
-                className="w-16 bg-transparent border border-white/30 text-center"
-                value={height}
-                onChange={(e) =>
-                  handleResize(width, parseInt(e.target.value, 10) || 1)
-                }
-              />
+            <div className="flex flex-col gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-50 w-6">W</span>
+                <input
+                  type="range"
+                  min="10"
+                  max="40"
+                  value={width}
+                  onChange={(e) =>
+                    handleResize(parseInt(e.target.value, 10), height)
+                  }
+                  className="flex-1 accent-white h-2 cursor-pointer"
+                />
+                <span className="text-base w-8 text-center">{width}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-50 w-6">H</span>
+                <input
+                  type="range"
+                  min="10"
+                  max="40"
+                  value={height}
+                  onChange={(e) =>
+                    handleResize(width, parseInt(e.target.value, 10))
+                  }
+                  className="flex-1 accent-white h-2 cursor-pointer"
+                />
+                <span className="text-base w-8 text-center">{height}</span>
+              </div>
             </div>
           </div>
           <hr className="border-white/20" />
@@ -1287,31 +1371,6 @@ export default function MapEditor() {
               </div>
             </div>
           )}
-          <div className="mt-auto pt-4 flex flex-col gap-2">
-            <PixelButton
-              onClick={() => setIsResetModalOpen(true)}
-              className="!border-red-500 !text-red-500 hover:!bg-red-500 hover:!text-black mb-2"
-            >
-              RESET MAP
-            </PixelButton>
-            <PixelButton onClick={handleRandomize} variant="blue" className="mb-2">
-              RANDOMIZE MAP
-            </PixelButton>
-            <PixelButton onClick={handleExport} variant="green">
-              EXPORT MAP
-            </PixelButton>
-            <label className="blueprint-btn text-center cursor-pointer block border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-black">
-              IMPORT FILES
-              <input
-                type="file"
-                multiple
-                accept=".txt"
-                ref={fileInputRef}
-                onChange={handleImport}
-                className="hidden"
-              />
-            </label>
-          </div>
         </PixelPanel>
       </div>
 

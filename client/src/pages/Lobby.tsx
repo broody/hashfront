@@ -1322,15 +1322,6 @@ export default function Lobby() {
                 <span>&gt;</span> LEADERBOARD
               </Link>
               <Link
-                to="/logo-gallery"
-                className="hover:translate-x-2 transition-transform flex items-center gap-2 text-green-400"
-              >
-                <span>&gt;</span> LOGO_LAB{" "}
-                <span className="text-[10px] border border-green-400 px-1">
-                  NEW
-                </span>
-              </Link>
-              <Link
                 to="/editor"
                 className="hover:translate-x-2 transition-transform flex items-center gap-2 text-blue-400"
               >
