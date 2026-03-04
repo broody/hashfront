@@ -140,6 +140,13 @@ interface GameStore {
   setIsEndingTurn: (v: boolean) => void;
   isReplay: boolean;
   setIsReplay: (v: boolean) => void;
+
+  isLocalGame: boolean;
+  setIsLocalGame: (v: boolean) => void;
+  localPlayerTeam: TeamId | null;
+  setLocalPlayerTeam: (team: TeamId | null) => void;
+  onLocalEndTurn: (() => void) | null;
+  setOnLocalEndTurn: (fn: (() => void) | null) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -232,4 +239,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setIsEndingTurn: (v) => set({ isEndingTurn: v }),
   isReplay: false,
   setIsReplay: (v) => set({ isReplay: v }),
+
+  isLocalGame: false,
+  setIsLocalGame: (v) => set({ isLocalGame: v }),
+  localPlayerTeam: null,
+  setLocalPlayerTeam: (team) => set({ localPlayerTeam: team }),
+  onLocalEndTurn: null,
+  setOnLocalEndTurn: (fn) => set({ onLocalEndTurn: fn }),
 }));

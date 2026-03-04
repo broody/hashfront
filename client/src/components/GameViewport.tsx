@@ -34,10 +34,18 @@ function toNormalizedHex(value: string | undefined): string | null {
 }
 
 function getControllableTeam(address: string | undefined): string | null {
+  const { isLocalGame, localPlayerTeam, game, players, isReplay } =
+    useGameStore.getState();
+
+  if (isLocalGame) {
+    if (!game || game.state !== "Playing") return null;
+    const currentTeam = TEAMS[game.currentPlayer];
+    return currentTeam === localPlayerTeam ? localPlayerTeam : null;
+  }
+
   const connected = toNormalizedHex(address);
   if (!connected) return null;
 
-  const { game, players, isReplay } = useGameStore.getState();
   if (isReplay) return null;
   if (!game || game.state !== "Playing") return null;
 
