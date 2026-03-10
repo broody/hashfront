@@ -237,7 +237,7 @@ fn test_tank_cannot_traverse_ocean() {
 #[test]
 #[should_panic]
 #[available_gas(200000000)]
-fn test_ranger_cannot_traverse_ocean() {
+fn test_artillery_cannot_traverse_ocean() {
     let p1 = PLAYER1();
     set_contract_address(p1);
     set_account_contract_address(p1);
@@ -253,12 +253,12 @@ fn test_ranger_cannot_traverse_ocean() {
         1 * 16777216 + 3 * 65536 + 0 * 256 + 0, 2 * 16777216 + 3 * 65536 + 9 * 256 + 9,
     ];
     let units: Array<u32> = array![
-        1 * 16777216 + 3 * 65536 + 1 * 256 + 0, // P1 Ranger @ (1,0)
+        1 * 16777216 + 3 * 65536 + 1 * 256 + 0, // P1 Artillery @ (1,0)
         2 * 16777216 + 1 * 65536 + 8 * 256 + 9 // P2 Infantry @ (8,9)
     ];
 
-    let map_id = actions.register_map("ocean_ranger", 10, 10, tiles, buildings, units);
-    let game_id = actions.create_game("ocean_ranger", map_id, 1, false);
+    let map_id = actions.register_map("ocean_artillery", 10, 10, tiles, buildings, units);
+    let game_id = actions.create_game("ocean_artillery", map_id, 1, false);
 
     let p2 = PLAYER2();
     set_contract_address(p2);
@@ -268,7 +268,7 @@ fn test_ranger_cannot_traverse_ocean() {
     set_contract_address(p1);
     set_account_contract_address(p1);
 
-    // Ranger at (1,0), try (2,0) → (3,0) where (3,0) is ocean
+    // Artillery at (1,0), try (2,0) → (3,0) where (3,0) is ocean
     actions
         .move_unit(
             game_id, 1, array![Vec2 { x: 2, y: 0 }, Vec2 { x: 3, y: 0 } // OCEAN — should panic

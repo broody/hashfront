@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { fetchToriiSql } from "../utils/toriiSql";
-import { TEAMS, UNIT_TYPES } from "../data/gameStore";
+import { TEAMS } from "../data/gameStore";
+import { UNIT_DISPLAY_NAMES, UNIT_TYPES } from "../game/balance";
 
 export interface GameHistoryEvent {
   id: string;
@@ -10,12 +11,6 @@ export interface GameHistoryEvent {
   message: string;
   data: any;
 }
-
-const UNIT_DISPLAY_NAMES: Record<string, string> = {
-  rifle: "Infantry",
-  tank: "Tank",
-  artillery: "Ranger",
-};
 
 export function useGameHistory(gameId: number | undefined) {
   const [events, setEvents] = useState<GameHistoryEvent[]>([]);

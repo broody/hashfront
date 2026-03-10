@@ -28,7 +28,7 @@ pub enum UnitType {
     None,
     Infantry,
     Tank,
-    Ranger,
+    Artillery,
 }
 
 #[derive(Serde, Drop, Copy, PartialEq, Introspect, DojoStore, Default)]
@@ -91,7 +91,7 @@ pub impl U8IntoUnitType of Into<u8, UnitType> {
             0 => UnitType::None,
             1 => UnitType::Infantry,
             2 => UnitType::Tank,
-            3 => UnitType::Ranger,
+            3 => UnitType::Artillery,
             _ => panic!("Invalid unit type"),
         }
     }
@@ -103,7 +103,7 @@ pub impl UnitTypeIntoU8 of Into<UnitType, u8> {
             UnitType::None => 0,
             UnitType::Infantry => 1,
             UnitType::Tank => 2,
-            UnitType::Ranger => 3,
+            UnitType::Artillery => 3,
         }
     }
 }

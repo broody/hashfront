@@ -70,7 +70,7 @@ fn test_join_game_spawns_units() {
     assert(u1.player_id == 1, 'unit 1 is player 1');
     assert(u1.unit_type == UnitType::Infantry, 'unit 1 is infantry');
     assert(u1.is_alive, 'unit 1 alive');
-    assert(u1.hp == 3, 'infantry has 3 hp');
+    assert(u1.hp == 10, 'infantry has 10 hp');
 
     // Verify unit 2 belongs to player 2
     let u2: Unit = world.read_model((game_id, 2_u8));

@@ -441,7 +441,7 @@ pub mod actions {
                 let start_tile: MapTile = world.read_model((game.map_id, unit.x, unit.y));
                 if start_tile.tile_type == TileType::Road
                     || start_tile.tile_type == TileType::DirtRoad {
-                    2
+                    unit_stats::road_bonus_amount(unit.unit_type)
                 } else {
                     0
                 }
@@ -464,7 +464,7 @@ pub mod actions {
                     unit_stats::can_traverse(unit.unit_type, map_tile.tile_type), 'Cannot traverse',
                 );
 
-                let mut step_cost = unit_stats::move_cost(map_tile.tile_type);
+                let mut step_cost = unit_stats::move_cost(unit.unit_type, map_tile.tile_type);
                 if road_bonus_remaining > 0 {
                     if map_tile.tile_type == TileType::Road
                         || map_tile.tile_type == TileType::DirtRoad {
@@ -561,8 +561,8 @@ pub mod actions {
             assert(distance >= min_range && distance <= max_range, 'Out of attack range');
 
             let attacker_moved_this_turn = attacker.last_moved_round == game.round;
-            if attacker.unit_type == UnitType::Ranger {
-                assert(!attacker_moved_this_turn, 'Ranger moved');
+            if attacker.unit_type == UnitType::Artillery {
+                assert(!attacker_moved_this_turn, 'Artillery moved');
             }
 
             let attack_roll = self
@@ -656,7 +656,7 @@ pub mod actions {
             world.write_model(@game);
         }
 
-        /// Capture a building with an infantry or ranger unit. Increments capture progress; when it
+        /// Capture a building with an infantry unit. Increments capture progress; when it
         /// reaches the threshold, transfers ownership. Capturing an HQ ends the game.
         fn capture(ref self: ContractState, game_id: u32, unit_id: u8) {
             let mut world = self.world_default();
@@ -671,7 +671,7 @@ pub mod actions {
             let mut unit: Unit = world.read_model((game_id, unit_id));
             assert(unit.is_alive, 'Unit is dead');
             assert(unit.player_id == game.current_player, 'Not your unit');
-            assert(unit_stats::can_capture(unit.unit_type), 'Only infantry/ranger captures');
+            assert(unit_stats::can_capture(unit.unit_type), 'Only infantry captures');
             assert(unit.last_acted_round < game.round, 'Already acted');
 
             let mut building: Building = world.read_model((game_id, unit.x, unit.y));

@@ -137,20 +137,16 @@ fn test_capture_hq_wins_game() {
 }
 
 #[test]
+#[should_panic]
 #[available_gas(200000000)]
-fn test_capture_ranger() {
+fn test_capture_artillery() {
     let (actions_dispatcher, mut world, game_id) = setup_capture();
 
-    // Rangers can also capture.
     let mut u1: Unit = world.read_model((game_id, 1_u8));
-    u1.unit_type = UnitType::Ranger;
+    u1.unit_type = UnitType::Artillery;
     world.write_model_test(@u1);
 
     actions_dispatcher.capture(game_id, 1);
-
-    let building: Building = world.read_model((game_id, 10_u8, 10_u8));
-    assert(building.capture_player == 1, 'capture_player should be 1');
-    assert(building.capture_progress == 1, 'progress should be 1');
 }
 
 #[test]

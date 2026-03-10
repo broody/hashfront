@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import collections
+import hashlib
 import os
 import random
 import sys
@@ -28,7 +29,7 @@ from typing import Optional, List, Dict, Tuple
 # ============================================================================
 
 CAPTURE_THRESHOLD = 2
-MAX_ROUNDS = 30
+MAX_ROUNDS = 100
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "contracts", "scripts", "maps")
 
 class TileType(Enum):
@@ -56,19 +57,56 @@ TILE_CHAR = {
 class UnitType(Enum):
     INFANTRY = 1
     TANK = 2
-    RANGER = 3
+    ARTILLERY = 3
+    RANGER = 3  # Legacy alias for older map/unit files.
 
 # Contract-accurate stats
-UNIT_HP =    {UnitType.INFANTRY: 3, UnitType.TANK: 5, UnitType.RANGER: 3}
-UNIT_ATK =   {UnitType.INFANTRY: 2, UnitType.TANK: 4, UnitType.RANGER: 3}
-UNIT_MOVE =  {UnitType.INFANTRY: 4, UnitType.TANK: 2, UnitType.RANGER: 3}
-UNIT_MIN_RANGE = {UnitType.INFANTRY: 1, UnitType.TANK: 1, UnitType.RANGER: 2}
-UNIT_MAX_RANGE = {UnitType.INFANTRY: 1, UnitType.TANK: 1, UnitType.RANGER: 3}
-UNIT_ACCURACY =  {UnitType.INFANTRY: 90, UnitType.TANK: 85, UnitType.RANGER: 88}
+UNIT_HP = {
+    UnitType.INFANTRY: 10,
+    UnitType.TANK: 10,
+    UnitType.ARTILLERY: 10,
+}
+UNIT_MOVE = {
+    UnitType.INFANTRY: 2,
+    UnitType.TANK: 3,
+    UnitType.ARTILLERY: 3,
+}
+UNIT_MIN_RANGE = {
+    UnitType.INFANTRY: 1,
+    UnitType.TANK: 1,
+    UnitType.ARTILLERY: 2,
+}
+UNIT_MAX_RANGE = {
+    UnitType.INFANTRY: 1,
+    UnitType.TANK: 1,
+    UnitType.ARTILLERY: 3,
+}
+UNIT_ACCURACY = {
+    UnitType.INFANTRY: 90,
+    UnitType.TANK: 85,
+    UnitType.ARTILLERY: 88,
+}
+UNIT_DAMAGE_MATRIX = {
+    UnitType.INFANTRY: {
+        UnitType.INFANTRY: 3,
+        UnitType.TANK: 1,
+        UnitType.ARTILLERY: 4,
+    },
+    UnitType.TANK: {
+        UnitType.INFANTRY: 5,
+        UnitType.TANK: 4,
+        UnitType.ARTILLERY: 5,
+    },
+    UnitType.ARTILLERY: {
+        UnitType.INFANTRY: 3,
+        UnitType.TANK: 5,
+        UnitType.ARTILLERY: 2,
+    },
+}
 
 MOVE_COST = {
     TileType.GRASS: 1, TileType.ROAD: 1, TileType.DIRT_ROAD: 1,
-    TileType.TREE: 1, TileType.MOUNTAIN: 2, TileType.HQ: 1,
+    TileType.TREE: 1, TileType.MOUNTAIN: 1, TileType.HQ: 1,
     TileType.CITY: 1, TileType.FACTORY: 1,
 }
 DEFENSE_BONUS = {
@@ -85,7 +123,12 @@ TERRAIN_EVASION = {
 ROAD_TILES = {TileType.ROAD, TileType.DIRT_ROAD}
 
 def gets_road_bonus(ut: UnitType) -> bool:
-    return ut in (UnitType.TANK, UnitType.RANGER)
+    return ut in (UnitType.TANK, UnitType.ARTILLERY)
+
+def road_bonus_amount(ut: UnitType) -> int:
+    if gets_road_bonus(ut):
+        return 1
+    return 0
 
 def can_traverse(ut: UnitType, tile: TileType) -> bool:
     if tile == TileType.MOUNTAIN:
@@ -93,7 +136,7 @@ def can_traverse(ut: UnitType, tile: TileType) -> bool:
     return True
 
 def can_capture(ut: UnitType) -> bool:
-    return ut in (UnitType.INFANTRY, UnitType.RANGER)
+    return ut == UnitType.INFANTRY
 
 # ============================================================================
 # Data structures
@@ -250,8 +293,8 @@ UNIT_DISPLAY = {
     (UnitType.INFANTRY, 2): "\033[91mI\033[0m",  # red
     (UnitType.TANK, 1): "\033[94mT\033[0m",
     (UnitType.TANK, 2): "\033[91mT\033[0m",
-    (UnitType.RANGER, 1): "\033[94mR\033[0m",
-    (UnitType.RANGER, 2): "\033[91mR\033[0m",
+    (UnitType.ARTILLERY, 1): "\033[94mA\033[0m",
+    (UnitType.ARTILLERY, 2): "\033[91mA\033[0m",
 }
 
 def render_map(state: GameState, show_hp=True) -> str:
@@ -299,7 +342,7 @@ def render_map(state: GameState, show_hp=True) -> str:
     lines.append("")
     # Legend
     lines.append("  ·=grass ═=road ─=dirt ♣=tree ▲=mountain ★=HQ  "
-                 "\033[94mBlue=P1\033[0m \033[91mRed=P2\033[0m  I=Infantry T=Tank R=Ranger")
+                 "\033[94mBlue=P1\033[0m \033[91mRed=P2\033[0m  I=Infantry T=Tank A=Artillery")
     return "\n".join(lines)
 
 # ============================================================================
@@ -316,16 +359,16 @@ def compute_hit_chance(attacker_type: UnitType, def_tile: TileType,
     chance -= TERRAIN_EVASION[def_tile]
     if moved:
         chance -= 5
-    if attacker_type == UnitType.RANGER and distance == 3:
+    if attacker_type == UnitType.ARTILLERY and distance == 3:
         chance -= 5
     return max(75, min(95, chance))
 
-def resolve_strike(rng: random.Random, atk_type: UnitType, def_tile: TileType,
-                   moved: bool, distance: int) -> int:
+def resolve_strike(rng: random.Random, atk_type: UnitType, def_type: UnitType,
+                   def_tile: TileType, moved: bool, distance: int) -> int:
     """Resolve a single strike. Returns damage dealt."""
-    atk = UNIT_ATK[atk_type]
+    base_damage = UNIT_DAMAGE_MATRIX[atk_type][def_type]
     defense = DEFENSE_BONUS[def_tile]
-    hit_dmg = max(atk - defense, 1)
+    hit_dmg = max(base_damage - defense, 1)
     hit_ch = compute_hit_chance(atk_type, def_tile, moved, distance)
     roll = rng.randint(1, 100)
     if roll <= hit_ch:
@@ -339,7 +382,7 @@ def resolve_combat(rng: random.Random, attacker: Unit, defender: Unit,
                    atk_tile: TileType, def_tile: TileType,
                    distance: int, attacker_moved: bool) -> Tuple[int, int]:
     """Contract-accurate combat. Returns (dmg_to_defender, dmg_to_attacker)."""
-    dmg_to_def = resolve_strike(rng, attacker.unit_type, def_tile,
+    dmg_to_def = resolve_strike(rng, attacker.unit_type, defender.unit_type, def_tile,
                                 attacker_moved, distance)
     dmg_to_atk = 0
     defender_survives = defender.hp > dmg_to_def
@@ -347,7 +390,7 @@ def resolve_combat(rng: random.Random, attacker: Unit, defender: Unit,
         d_min = UNIT_MIN_RANGE[defender.unit_type]
         d_max = UNIT_MAX_RANGE[defender.unit_type]
         if d_min <= distance <= d_max:
-            dmg_to_atk = resolve_strike(rng, defender.unit_type, atk_tile,
+            dmg_to_atk = resolve_strike(rng, defender.unit_type, attacker.unit_type, atk_tile,
                                         False, distance)
     return dmg_to_def, dmg_to_atk
 
@@ -361,27 +404,28 @@ def reachable_tiles(state: GameState, unit: Unit,
     base_move = UNIT_MOVE[unit.unit_type]
     start_tile = state.tile_at(unit.x, unit.y)
 
-    # Road bonus: +2 if unit gets_road_bonus and starts on road
+    # Road bonus: +1 if unit gets_road_bonus and starts on road
     road_bonus = 0
     if gets_road_bonus(unit.unit_type) and start_tile in ROAD_TILES:
-        road_bonus = 2
+        road_bonus = road_bonus_amount(unit.unit_type)
     total_budget = base_move + road_bonus
 
     # Dijkstra: state = (cost, road_bonus_remaining, x, y)
     reached = {}  # (x,y) -> min cost
     heap = [(0, road_bonus, unit.x, unit.y)]
-    visited = set()
+    best_state_cost = {(unit.x, unit.y, road_bonus): 0}
     if occupied is None:
         occupied = set()
 
     import heapq
     while heap:
         cost, rb, cx, cy = heapq.heappop(heap)
-        if (cx, cy) in visited:
+        if cost > best_state_cost.get((cx, cy, rb), float("inf")):
             continue
-        visited.add((cx, cy))
         if (cx, cy) != (unit.x, unit.y):
-            reached[(cx, cy)] = cost
+            prev = reached.get((cx, cy))
+            if prev is None or cost < prev:
+                reached[(cx, cy)] = cost
 
         for dx, dy in [(0,1),(0,-1),(1,0),(-1,0)]:
             nx, ny = cx+dx, cy+dy
@@ -409,8 +453,11 @@ def reachable_tiles(state: GameState, unit: Unit,
             new_cost = cost + step_cost
             if new_cost > total_budget:
                 continue
-            if (nx, ny) not in visited:
-                heapq.heappush(heap, (new_cost, new_rb, nx, ny))
+            state_key = (nx, ny, new_rb)
+            if new_cost >= best_state_cost.get(state_key, float("inf")):
+                continue
+            best_state_cost[state_key] = new_cost
+            heapq.heappush(heap, (new_cost, new_rb, nx, ny))
 
     return reached
 
@@ -520,8 +567,8 @@ def end_turn(state: GameState):
 
 def get_attack_targets(state: GameState, unit: Unit) -> List[Unit]:
     """Get units this unit can attack from current position."""
-    if unit.unit_type == UnitType.RANGER and unit.has_moved:
-        return []  # Rangers can't attack after moving
+    if unit.unit_type == UnitType.ARTILLERY and unit.has_moved:
+        return []  # Artillery can't attack after moving
     mn = UNIT_MIN_RANGE[unit.unit_type]
     mx = UNIT_MAX_RANGE[unit.unit_type]
     targets = []
@@ -531,12 +578,12 @@ def get_attack_targets(state: GameState, unit: Unit) -> List[Unit]:
             targets.append(e)
     return targets
 
-def expected_damage(atk_type: UnitType, def_tile: TileType,
+def expected_damage(atk_type: UnitType, def_type: UnitType, def_tile: TileType,
                     moved: bool, distance: int) -> float:
     """Expected damage from one strike."""
-    atk = UNIT_ATK[atk_type]
+    base_damage = UNIT_DAMAGE_MATRIX[atk_type][def_type]
     defense = DEFENSE_BONUS[def_tile]
-    hit_dmg = max(atk - defense, 1)
+    hit_dmg = max(base_damage - defense, 1)
     hit_ch = compute_hit_chance(atk_type, def_tile, moved, distance) / 100.0
     graze = 1 if hit_dmg >= 2 else 0
     return hit_ch * hit_dmg + (1 - hit_ch) * graze
@@ -548,14 +595,18 @@ def pick_target(state: GameState, unit: Unit, targets: List[Unit]) -> Optional[U
     def score(t):
         dt = state.tile_at(t.x, t.y)
         dist = manhattan(unit.x, unit.y, t.x, t.y)
-        ed = expected_damage(unit.unit_type, dt, unit.has_moved, dist)
+        ed = expected_damage(unit.unit_type, t.unit_type, dt, unit.has_moved, dist)
         killable = 1 if ed >= t.hp else 0
-        value = {UnitType.TANK: 3, UnitType.RANGER: 2, UnitType.INFANTRY: 1}[t.unit_type]
+        value = {
+            UnitType.TANK: 3,
+            UnitType.ARTILLERY: 2,
+            UnitType.INFANTRY: 1,
+        }[t.unit_type]
         return (-killable, t.hp, -value)
     return min(targets, key=score)
 
-def find_ranger_position(state: GameState, unit: Unit, target: Unit,
-                         occupied: set) -> Optional[Tuple[int,int]]:
+def find_artillery_position(state: GameState, unit: Unit, target: Unit,
+                            occupied: set) -> Optional[Tuple[int,int]]:
     """Find reachable tile at range 2-3 from target, prefer range 2 + defensive terrain."""
     tiles = reachable_tiles(state, unit, occupied)
     candidates = [(x, y) for (x, y) in tiles
@@ -602,14 +653,14 @@ class AggressiveStrategy(Strategy):
                 if state.winner: return
                 continue
 
-            # Ranger: find attack position
-            if unit.unit_type == UnitType.RANGER:
+            # Artillery: find attack position
+            if unit.unit_type == UnitType.ARTILLERY:
                 if enemies:
                     nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    pos = find_artillery_position(state, unit, nearest, occupied)
                     if pos:
                         do_move(state, unit, pos[0], pos[1])
-                        # Rangers can't attack after moving
+                        # Artillery can't attack after moving
                         do_wait(unit)
                         occupied.add((unit.x, unit.y))
                         continue
@@ -629,7 +680,7 @@ class AggressiveStrategy(Strategy):
                     occupied.add((unit.x, unit.y))
                     continue
 
-            # Move toward enemy HQ (infantry/ranger) or nearest enemy (tank)
+            # Move toward enemy HQ (infantry) or nearest enemy (tank/artillery)
             if can_capture(unit.unit_type) and enemy_hq:
                 target_x, target_y = enemy_hq.x, enemy_hq.y
             elif enemies:
@@ -703,8 +754,8 @@ class DefensiveStrategy(Strategy):
                     occupied.add((unit.x, unit.y))
                     continue
 
-            # Ranger: kite — retreat from adjacent enemies, hold at range 2-3
-            if unit.unit_type == UnitType.RANGER:
+            # Artillery: kite — retreat from adjacent enemies, hold at range 2-3
+            if unit.unit_type == UnitType.ARTILLERY:
                 close = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
                 if close:
                     # Move away from melee threats
@@ -724,7 +775,7 @@ class DefensiveStrategy(Strategy):
                     threats = [e for e in enemies if manhattan(e.x, e.y, own_hq.x, own_hq.y) <= 6]
                     if threats:
                         nearest = min(threats, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                        pos = find_ranger_position(state, unit, nearest, occupied)
+                        pos = find_artillery_position(state, unit, nearest, occupied)
                         if pos:
                             do_move(state, unit, pos[0], pos[1])
                         do_wait(unit)
@@ -733,7 +784,7 @@ class DefensiveStrategy(Strategy):
 
                 if pushing and enemies:
                     nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    pos = find_artillery_position(state, unit, nearest, occupied)
                     if pos:
                         do_move(state, unit, pos[0], pos[1])
                     do_wait(unit)
@@ -788,7 +839,7 @@ class DefensiveStrategy(Strategy):
 
 
 class RushStrategy(Strategy):
-    """Beeline infantry/rangers to enemy HQ. Ignore combat unless blocking."""
+    """Beeline infantry to enemy HQ. Ignore combat unless blocking."""
     name = "rush"
 
     def play_turn(self, state, player, rng):
@@ -809,7 +860,7 @@ class RushStrategy(Strategy):
             if targets:
                 # Only attack if target is killable or blocking HQ
                 killable = [t for t in targets if t.hp <= expected_damage(
-                    unit.unit_type, state.tile_at(t.x, t.y), unit.has_moved,
+                    unit.unit_type, t.unit_type, state.tile_at(t.x, t.y), unit.has_moved,
                     manhattan(unit.x, unit.y, t.x, t.y))]
                 hq_blockers = [t for t in targets if enemy_hq and
                                manhattan(t.x, t.y, enemy_hq.x, enemy_hq.y) <= 1] if enemy_hq else []
@@ -939,8 +990,8 @@ class BalancedStrategy(Strategy):
                 occupied.add((unit.x, unit.y))
                 continue
 
-            # Ranger: position at range 2-3, kite melee
-            if unit.unit_type == UnitType.RANGER:
+            # Artillery: position at range 2-3, kite melee
+            if unit.unit_type == UnitType.ARTILLERY:
                 close = [e for e in enemies if manhattan(unit.x, unit.y, e.x, e.y) <= 1]
                 if close:
                     tiles = reachable_tiles(state, unit, occupied)
@@ -954,7 +1005,7 @@ class BalancedStrategy(Strategy):
                     continue
                 if enemies:
                     nearest = min(enemies, key=lambda e: manhattan(unit.x, unit.y, e.x, e.y))
-                    pos = find_ranger_position(state, unit, nearest, occupied)
+                    pos = find_artillery_position(state, unit, nearest, occupied)
                     if pos:
                         do_move(state, unit, pos[0], pos[1])
                     do_wait(unit)
@@ -1003,6 +1054,12 @@ STRATEGIES = {
     "rush": RushStrategy,
     "balanced": BalancedStrategy,
 }
+
+
+def stable_seed_offset(*parts: str) -> int:
+    """Deterministic offset for matchup seeds across Python processes."""
+    digest = hashlib.blake2b("::".join(parts).encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
 
 # ============================================================================
 # Game runner
@@ -1083,10 +1140,11 @@ def run_simulation(strategy_names, maps, num_games, base_seed, verbose=False, re
             s1 = STRATEGIES[s1_name]()
             s2 = STRATEGIES[s2_name]()
             game_results = []
+            seed_offset = stable_seed_offset(s1_name, s2_name)
 
             for i in range(num_games):
                 map_name = maps[i % len(maps)]
-                seed = base_seed + hash(key) + i
+                seed = base_seed + seed_offset + i
                 if verbose:
                     print(f"\n--- {s1_name} vs {s2_name} G{i+1} [{map_name}] seed={seed} ---")
                 do_replay = replay and i == 0  # replay first game only

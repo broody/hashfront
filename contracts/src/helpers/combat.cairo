@@ -15,7 +15,12 @@ pub fn resolve_combat(
     counter_roll: u8,
 ) -> (u8, u8, CombatOutcome, CombatOutcome) {
     let (damage_to_defender, attack_outcome) = resolve_strike_damage(
-        attacker_type, defender_tile, distance, attacker_moved_this_turn, attack_roll,
+        attacker_type,
+        defender_type,
+        defender_tile,
+        distance,
+        attacker_moved_this_turn,
+        attack_roll,
     );
 
     let defender_survives = defender_hp > damage_to_defender;
@@ -24,7 +29,9 @@ pub fn resolve_combat(
         let def_min_range = unit_stats::min_attack_range(defender_type);
         let def_max_range = unit_stats::max_attack_range(defender_type);
         if distance >= def_min_range && distance <= def_max_range {
-            resolve_strike_damage(defender_type, attacker_tile, distance, false, counter_roll)
+            resolve_strike_damage(
+                defender_type, attacker_type, attacker_tile, distance, false, counter_roll,
+            )
         } else {
             (0_u8, CombatOutcome::None)
         }
@@ -36,9 +43,14 @@ pub fn resolve_combat(
 }
 
 fn resolve_strike_damage(
-    attacker_type: UnitType, defender_tile: TileType, distance: u8, moved_this_turn: bool, roll: u8,
+    attacker_type: UnitType,
+    defender_type: UnitType,
+    defender_tile: TileType,
+    distance: u8,
+    moved_this_turn: bool,
+    roll: u8,
 ) -> (u8, CombatOutcome) {
-    let atk = unit_stats::attack_power(attacker_type);
+    let atk = unit_stats::base_damage(attacker_type, defender_type);
     let def_bonus = unit_stats::defense_bonus(defender_tile);
     let hit_damage = if atk > def_bonus {
         atk - def_bonus

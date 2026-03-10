@@ -1,7 +1,11 @@
+export const LOCAL_UNIT_TYPES = ["Infantry", "Tank", "Artillery"] as const;
+
+export type LocalUnitType = (typeof LOCAL_UNIT_TYPES)[number];
+
 export interface LocalUnit {
   unitId: number;
   playerId: number;
-  type: "Infantry" | "Tank" | "Ranger";
+  type: LocalUnitType;
   x: number;
   y: number;
   hp: number;
@@ -53,7 +57,7 @@ export interface MapDef {
     playerId: number;
   }[];
   startingUnits: {
-    type: "Infantry" | "Tank" | "Ranger";
+    type: LocalUnitType;
     playerId: number;
     x: number;
     y: number;

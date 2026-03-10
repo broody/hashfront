@@ -1,46 +1,130 @@
-import type { LocalGameState, LocalUnit, LocalBuilding, MapDef } from "./types";
+import type {
+  LocalBuilding,
+  LocalGameState,
+  LocalUnit,
+  LocalUnitType,
+  MapDef,
+} from "./types";
+import {
+  ARTILLERY_RANGE_PENALTY,
+  DEFAULT_UNIT_HP,
+  MOVE_PENALTY,
+  TERRAIN_DEFENSE,
+  TERRAIN_EVASION,
+  UNIT_ATTACK_RANGE as STORE_UNIT_ATTACK_RANGE,
+  UNIT_BASE_ACCURACY,
+  UNIT_DAMAGE_MATRIX,
+  UNIT_MOVE_RANGE as STORE_UNIT_MOVE_RANGE,
+  type StoreUnitType,
+} from "../balance";
 import { TileType } from "../types";
 import { findPath } from "../pathfinding";
 
 // --- Constants ---
 
-const UNIT_HP: Record<string, number> = { Infantry: 3, Tank: 5, Ranger: 3 };
-const UNIT_ATK: Record<string, number> = { Infantry: 2, Tank: 4, Ranger: 3 };
-const UNIT_MOVE: Record<string, number> = { Infantry: 4, Tank: 2, Ranger: 3 };
-const UNIT_ATTACK_RANGE: Record<string, [number, number]> = {
-  Infantry: [1, 1],
-  Tank: [1, 1],
-  Ranger: [2, 3],
+const MIN_HIT_CHANCE = 75;
+const MAX_HIT_CHANCE = 95;
+
+const UNIT_HP: Record<LocalUnitType, number> = {
+  Infantry: DEFAULT_UNIT_HP,
+  Tank: DEFAULT_UNIT_HP,
+  Artillery: DEFAULT_UNIT_HP,
 };
 
-const TERRAIN_DEFENSE: Record<number, number> = {
-  [TileType.Grass]: 0,
-  [TileType.Mountain]: 2,
-  [TileType.City]: 1,
-  [TileType.Factory]: 1,
-  [TileType.HQ]: 2,
-  [TileType.Road]: 0,
-  [TileType.Tree]: 1,
-  [TileType.DirtRoad]: 0,
-  [TileType.Barracks]: 0,
-  [TileType.Ocean]: 0,
+const UNIT_MOVE: Record<LocalUnitType, number> = {
+  Infantry: STORE_UNIT_MOVE_RANGE.rifle,
+  Tank: STORE_UNIT_MOVE_RANGE.tank,
+  Artillery: STORE_UNIT_MOVE_RANGE.artillery,
 };
 
-// Map local unit types to store unit types (for pathfinding)
-const UNIT_TYPE_TO_MOVE: Record<string, string> = {
+const UNIT_ATTACK_RANGE: Record<LocalUnitType, [number, number]> = {
+  Infantry: STORE_UNIT_ATTACK_RANGE.rifle,
+  Tank: STORE_UNIT_ATTACK_RANGE.tank,
+  Artillery: STORE_UNIT_ATTACK_RANGE.artillery,
+};
+
+const UNIT_TYPE_TO_MOVE: Record<LocalUnitType, StoreUnitType> = {
   Infantry: "rifle",
   Tank: "tank",
-  Ranger: "artillery",
+  Artillery: "artillery",
 };
 
 export {
-  UNIT_HP,
-  UNIT_ATK,
-  UNIT_MOVE,
-  UNIT_ATTACK_RANGE,
   TERRAIN_DEFENSE,
+  UNIT_ATTACK_RANGE,
+  UNIT_HP,
+  UNIT_MOVE,
   UNIT_TYPE_TO_MOVE,
 };
+
+function getStoreUnitType(unitType: LocalUnitType): StoreUnitType {
+  return UNIT_TYPE_TO_MOVE[unitType];
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function getHitChance(
+  attackerType: LocalUnitType,
+  defenderTile: TileType,
+  distance: number,
+  movedThisTurn: boolean,
+): number {
+  const attackerStoreType = getStoreUnitType(attackerType);
+  const baseAccuracy = UNIT_BASE_ACCURACY[attackerStoreType] ?? 0;
+  const terrainPenalty = TERRAIN_EVASION[defenderTile] ?? 0;
+  const movePenalty = movedThisTurn ? MOVE_PENALTY : 0;
+  const rangePenalty =
+    attackerType === "Artillery" && distance === 3
+      ? ARTILLERY_RANGE_PENALTY
+      : 0;
+
+  return clamp(
+    baseAccuracy - terrainPenalty - movePenalty - rangePenalty,
+    MIN_HIT_CHANCE,
+    MAX_HIT_CHANCE,
+  );
+}
+
+export function getHitDamage(
+  attackerType: LocalUnitType,
+  defenderType: LocalUnitType,
+  defenderTile: TileType,
+): number {
+  const attackerStoreType = getStoreUnitType(attackerType);
+  const defenderStoreType = getStoreUnitType(defenderType);
+  const baseDamage =
+    UNIT_DAMAGE_MATRIX[attackerStoreType]?.[defenderStoreType] ?? 0;
+  const terrainDefense = TERRAIN_DEFENSE[defenderTile] ?? 0;
+  return Math.max(baseDamage - terrainDefense, 1);
+}
+
+export function getProjectedDamage(
+  attackerType: LocalUnitType,
+  defenderType: LocalUnitType,
+  defenderTile: TileType,
+  distance: number,
+  movedThisTurn: boolean,
+): {
+  expectedDamage: number;
+  grazeDamage: number;
+  hitChance: number;
+  hitDamage: number;
+} {
+  const hitDamage = getHitDamage(attackerType, defenderType, defenderTile);
+  const hitChance = getHitChance(
+    attackerType,
+    defenderTile,
+    distance,
+    movedThisTurn,
+  );
+  const grazeDamage = hitDamage >= 2 ? 1 : 0;
+  const hitRate = hitChance / 100;
+  const expectedDamage = hitDamage * hitRate + grazeDamage * (1 - hitRate);
+
+  return { expectedDamage, grazeDamage, hitChance, hitDamage };
+}
 
 // --- Init ---
 
@@ -157,7 +241,7 @@ function manhattan(ax: number, ay: number, bx: number, by: number): number {
 }
 
 function inAttackRange(
-  unitType: string,
+  unitType: LocalUnitType,
   ax: number,
   ay: number,
   tx: number,
@@ -172,17 +256,30 @@ function rollHit(
   attacker: LocalUnit,
   defender: LocalUnit,
   state: LocalGameState,
-  _hasMoved: boolean,
+  hasMoved: boolean,
+  distance: number,
 ): { dmg: number; outcome: "hit" | "graze" | "miss" } {
-  const terrainTile = state.tileMap[defender.y * state.width + defender.x];
-  const terrainDef = TERRAIN_DEFENSE[terrainTile] ?? 0;
+  const terrainTile = state.tileMap[
+    defender.y * state.width + defender.x
+  ] as TileType;
+  const strike = getProjectedDamage(
+    attacker.type,
+    defender.type,
+    terrainTile,
+    distance,
+    hasMoved,
+  );
+  const roll = Math.floor(Math.random() * 100) + 1;
 
-  // Simplified combat: deterministic damage = max(atk - terrainDef, 1)
-  // The plan mentions hitChance but for MVP let's use deterministic like the Python bot
-  const atk = UNIT_ATK[attacker.type];
-  const dmg = Math.max(atk - terrainDef, 1);
+  if (roll <= strike.hitChance) {
+    return { dmg: strike.hitDamage, outcome: "hit" };
+  }
 
-  return { dmg, outcome: "hit" };
+  if (strike.grazeDamage > 0) {
+    return { dmg: strike.grazeDamage, outcome: "graze" };
+  }
+
+  return { dmg: 0, outcome: "miss" };
 }
 
 export function applyAttack(
@@ -197,10 +294,10 @@ export function applyAttack(
   if (attacker.lastActedRound >= state.round) return null;
   if (attacker.playerId === defender.playerId) return null;
 
-  // Ranger can't attack after moving
-  if (attacker.type === "Ranger" && attacker.lastMovedRound >= state.round)
+  if (attacker.type === "Artillery" && attacker.lastMovedRound >= state.round)
     return null;
 
+  const distance = manhattan(attacker.x, attacker.y, defender.x, defender.y);
   if (
     !inAttackRange(
       attacker.type,
@@ -209,8 +306,9 @@ export function applyAttack(
       defender.x,
       defender.y,
     )
-  )
+  ) {
     return null;
+  }
 
   const hasMoved = attacker.lastMovedRound >= state.round;
   const { dmg: dmgToDefender, outcome: attackOutcome } = rollHit(
@@ -218,6 +316,7 @@ export function applyAttack(
     defender,
     state,
     hasMoved,
+    distance,
   );
 
   let dmgToAttacker = 0;
@@ -225,27 +324,19 @@ export function applyAttack(
 
   const defenderHpAfter = defender.hp - dmgToDefender;
 
-  // Counterattack: if defender survives AND attacker is in defender's range
-  // Ranger can't counter melee
-  if (defenderHpAfter > 0 && defender.type !== "Ranger") {
-    if (
-      inAttackRange(
-        defender.type,
-        defender.x,
-        defender.y,
-        attacker.x,
-        attacker.y,
-      )
-    ) {
-      const counterResult = rollHit(
-        { ...defender, hp: defenderHpAfter },
-        attacker,
-        state,
-        false,
-      );
-      dmgToAttacker = counterResult.dmg;
-      counterOutcome = counterResult.outcome;
-    }
+  if (
+    defenderHpAfter > 0 &&
+    inAttackRange(defender.type, defender.x, defender.y, attacker.x, attacker.y)
+  ) {
+    const counterResult = rollHit(
+      { ...defender, hp: defenderHpAfter },
+      attacker,
+      state,
+      false,
+      distance,
+    );
+    dmgToAttacker = counterResult.dmg;
+    counterOutcome = counterResult.outcome;
   }
 
   let newUnits = state.units.map((u) => {

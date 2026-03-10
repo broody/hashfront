@@ -1,4 +1,5 @@
 use dojo::model::ModelStorage;
+use hashfront::helpers::unit_stats;
 use hashfront::types::UnitType;
 
 #[derive(Introspect, Serde, Drop, DojoStore)]
@@ -100,7 +101,7 @@ pub impl UnitImpl of UnitTrait {
         let u: Unit = world.read_model((game_id, pos.unit_id));
         u.is_alive
             && u.player_id == player_id
-            && (u.unit_type == UnitType::Infantry || u.unit_type == UnitType::Ranger)
+            && unit_stats::can_capture(u.unit_type)
             && u.x == x
             && u.y == y
     }

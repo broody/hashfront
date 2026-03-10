@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFAULT_UNIT_HP, UNIT_MAX_HP, UNIT_TYPES } from "../game/balance";
 
 // --- Teams ---
 export type TeamId = "blue" | "red" | "green" | "yellow";
@@ -10,19 +11,9 @@ export const TEAMS: Record<number, TeamId> = {
   4: "yellow",
 };
 
-export const UNIT_TYPES: Record<string, string> = {
-  Infantry: "rifle",
-  Tank: "tank",
-  Ranger: "artillery",
-};
+export { DEFAULT_UNIT_HP, UNIT_MAX_HP, UNIT_TYPES };
 
 // --- Units ---
-// Max HP per unit type (Infantry=3, Tank=5, Ranger=3)
-export const UNIT_MAX_HP: Record<string, number> = {
-  rifle: 3,
-  tank: 5,
-  artillery: 3,
-};
 
 export interface Unit {
   id: number;
@@ -182,7 +173,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       team,
       x,
       y,
-      hp: hp ?? UNIT_MAX_HP[type] ?? 3,
+      hp: hp ?? UNIT_MAX_HP[type] ?? DEFAULT_UNIT_HP,
       lastMovedRound,
       lastActedRound,
       facing: team === "red" ? "left" : "right",

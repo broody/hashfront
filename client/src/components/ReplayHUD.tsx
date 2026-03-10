@@ -1,9 +1,16 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useGameStore, UNIT_MAX_HP } from "../data/gameStore";
+import { useGameStore, UNIT_MAX_HP, DEFAULT_UNIT_HP } from "../data/gameStore";
 import { PixelPanel } from "./PixelPanel";
 import { TileType } from "../game/types";
 import type { useReplayController } from "../hooks/useReplayController";
+import {
+  TERRAIN_DEFENSE,
+  UNIT_ATTACK_RANGE,
+  UNIT_DAMAGE_PROFILE_TEXT,
+  UNIT_DISPLAY_NAMES,
+  UNIT_MOVE_RANGE,
+} from "../game/balance";
 
 const PLAYER_COLORS: Record<string, string> = {
   red: "#ef4444",
@@ -23,43 +30,6 @@ const UNIT_SPRITE_OFFSET: Record<string, { x: number; y: number }> = {
   rifle: { x: 0, y: 48 },
   tank: { x: 0, y: 432 },
   artillery: { x: 0, y: 336 },
-};
-
-const UNIT_DISPLAY_NAMES: Record<string, string> = {
-  rifle: "Infantry",
-  tank: "Tank",
-  artillery: "Ranger",
-};
-
-const UNIT_ATTACK_POWER: Record<string, number> = {
-  rifle: 2,
-  tank: 4,
-  artillery: 3,
-};
-
-const UNIT_ATTACK_RANGE: Record<string, [number, number]> = {
-  rifle: [1, 1],
-  tank: [1, 1],
-  artillery: [2, 3],
-};
-
-const UNIT_MOVE_RANGE: Record<string, number> = {
-  rifle: 4,
-  tank: 2,
-  artillery: 3,
-};
-
-const TERRAIN_DEFENSE: Record<number, number> = {
-  [TileType.Grass]: 0,
-  [TileType.Mountain]: 2,
-  [TileType.City]: 1,
-  [TileType.Factory]: 1,
-  [TileType.HQ]: 2,
-  [TileType.Road]: 0,
-  [TileType.Tree]: 1,
-  [TileType.DirtRoad]: 0,
-  [TileType.Barracks]: 0,
-  [TileType.Ocean]: 0,
 };
 
 const TERRAIN_NAMES: Record<number, string> = {
@@ -227,12 +197,15 @@ export default function ReplayHUD({ controller, gameId }: ReplayHUDProps) {
                 <div className="flex justify-between">
                   <span className="text-white/60">HP</span>
                   <span>
-                    {selectedUnit.hp} / {UNIT_MAX_HP[selectedUnit.type] ?? 3}
+                    {selectedUnit.hp} /{" "}
+                    {UNIT_MAX_HP[selectedUnit.type] ?? DEFAULT_UNIT_HP}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/60">ATK</span>
-                  <span>{UNIT_ATTACK_POWER[selectedUnit.type] ?? 0}</span>
+                  <span className="text-white/60">DMG I/T/A</span>
+                  <span>
+                    {UNIT_DAMAGE_PROFILE_TEXT[selectedUnit.type] ?? "-"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/60">RANGE</span>

@@ -27,7 +27,6 @@ const TERRAIN_TYPES = [
 const BUILDING_TYPES = ["City", "Factory", "HQ"];
 const UNIT_TYPES = [
   "Infantry",
-  "Ranger",
   "Tank",
   "HeavyTank",
   "Artillery",

@@ -10,7 +10,13 @@ import {
   Spritesheet,
 } from "pixi.js";
 import { Viewport } from "pixi-viewport";
-import { useGameStore, TEAMS, UNIT_MAX_HP } from "../data/gameStore";
+import {
+  useGameStore,
+  TEAMS,
+  UNIT_MAX_HP,
+  DEFAULT_UNIT_HP,
+} from "../data/gameStore";
+import { UNIT_ATTACK_RANGE, UNIT_MOVE_RANGE } from "../game/balance";
 import type { Unit, QueuedMove } from "../data/gameStore";
 import { TILE_PX, TILE_COLORS, TileType, BorderType } from "../game/types";
 import { terrainAtlas } from "../game/spritesheets/terrain";
@@ -466,20 +472,6 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       red: redSheet,
       green: greenSheet,
       yellow: yellowSheet,
-    };
-
-    // PRD unit types: Infantry (rifle), Tank (tank), Ranger (artillery)
-    const UNIT_MOVE_RANGE: Record<string, number> = {
-      rifle: 4, // Infantry
-      tank: 2, // Tank
-      artillery: 3, // Ranger
-    };
-
-    // Attack range: [min, max] Manhattan distance
-    const UNIT_ATTACK_RANGE: Record<string, [number, number]> = {
-      rifle: [1, 1], // Infantry: melee
-      tank: [1, 1], // Tank: melee
-      artillery: [2, 3], // Ranger: ranged (min range 2)
     };
 
     // --- Move trail overlay (added before units so trails render underneath) ---
@@ -1514,11 +1506,12 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       for (const [id, sprite] of unitSprites) {
         const unit = useGameStore.getState().units.find((u) => u.id === id);
         if (!unit) continue;
-        const maxHp = UNIT_MAX_HP[unit.type] ?? 3;
+        const maxHp = UNIT_MAX_HP[unit.type] ?? DEFAULT_UNIT_HP;
         if (unit.hp <= 0) continue;
 
-        const boxSize = 3;
-        const gap = 1;
+        const compactBar = maxHp > 6;
+        const boxSize = compactBar ? 2 : 3;
+        const gap = compactBar ? 0 : 1;
         const totalW = maxHp * boxSize + (maxHp - 1) * gap;
         const startX = sprite.x - totalW / 2;
         const hpOffset = unit.type === "rifle" ? 1 : -5;

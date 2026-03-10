@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useGameStore, TEAMS } from "../data/gameStore";
+import { UNIT_TYPES } from "../game/balance";
 import type { GamePlayerState } from "../data/gameStore";
 import type { MapDef } from "../game/local/types";
 import type { LocalGameState } from "../game/local/types";
@@ -12,12 +13,6 @@ import {
 } from "../game/local/engine";
 import { planAITurn } from "../game/local/ai";
 import { TileType } from "../game/types";
-
-const UNIT_TYPE_MAP: Record<string, string> = {
-  Infantry: "rifle",
-  Tank: "tank",
-  Ranger: "artillery",
-};
 
 export function useLocalGameState(
   mapDef: MapDef | null,
@@ -77,7 +72,7 @@ export function useLocalGameState(
     // Update or add units
     for (const lu of state.units) {
       const existing = existingByOnchainId.get(lu.unitId);
-      const storeType = UNIT_TYPE_MAP[lu.type] ?? "rifle";
+      const storeType = UNIT_TYPES[lu.type] ?? "rifle";
       const team = TEAMS[lu.playerId] ?? "blue";
 
       if (existing) {

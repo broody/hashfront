@@ -85,14 +85,14 @@ fn test_build_tank() {
 
 #[test]
 #[available_gas(200000000)]
-fn test_build_ranger() {
+fn test_build_artillery() {
     let (actions_dispatcher, mut world, game_id) = setup_with_factory();
 
-    // Ranger costs 2 gold
-    actions_dispatcher.build_unit(game_id, 10, 10, UnitType::Ranger);
+    // Artillery costs 2 gold
+    actions_dispatcher.build_unit(game_id, 10, 10, UnitType::Artillery);
 
     let building: Building = world.read_model((game_id, 10_u8, 10_u8));
-    assert(building.queued_unit == 3, 'should queue ranger (3)');
+    assert(building.queued_unit == 3, 'should queue artillery (3)');
 
     let ps1: PlayerState = world.read_model((game_id, 1_u8));
     assert(ps1.gold == 8, 'gold should be 8');

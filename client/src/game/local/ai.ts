@@ -3,19 +3,27 @@
  * Strategy-driven 5-phase tactical planner with 6 strategy presets.
  */
 
-import type { LocalGameState, LocalUnit, AIAction } from "./types";
+import { UNIT_ROAD_BONUS } from "../balance";
+import { TileType } from "../types";
+import { LOCAL_UNIT_TYPES } from "./types";
+import type {
+  AIAction,
+  LocalGameState,
+  LocalUnit,
+  LocalUnitType,
+} from "./types";
 import {
-  UNIT_ATK,
+  UNIT_HP,
   UNIT_MOVE,
   UNIT_ATTACK_RANGE,
   TERRAIN_DEFENSE,
+  getProjectedDamage,
   getAliveUnits,
   getEnemyUnits,
   getHQ,
   manhattan,
   inAttackRange,
 } from "./engine";
-import { TileType } from "../types";
 
 // --- Strategy ---
 
@@ -79,8 +87,8 @@ const RUSH: Strategy = {
   screenRatio: 0.0,
 };
 
-const RANGER_FORTRESS: Strategy = {
-  name: "Ranger Fortress",
+const ARTILLERY_FORTRESS: Strategy = {
+  name: "Artillery Fortress",
   aggression: 0.3,
   focusFire: 0.9,
   retreatThreshold: 0.6,
@@ -108,7 +116,7 @@ const ALL_STRATEGIES = [
   TURTLE,
   GUERRILLA,
   RUSH,
-  RANGER_FORTRESS,
+  ARTILLERY_FORTRESS,
   ASSASSIN,
 ];
 const STRATEGY_WEIGHTS: Record<string, number> = {
@@ -116,7 +124,7 @@ const STRATEGY_WEIGHTS: Record<string, number> = {
   Turtle: 2,
   Guerrilla: 3,
   Rush: 1,
-  "Ranger Fortress": 2,
+  "Artillery Fortress": 2,
   Assassin: 1,
 };
 
@@ -129,20 +137,74 @@ const DIRS = [
   [1, 0],
 ] as const;
 
-function moveCost(
-  tileMap: Uint8Array,
-  width: number,
-  x: number,
-  y: number,
-  unitType: string,
-): number | null {
-  const tile = tileMap[y * width + x];
+const ROAD_BONUS_STATE_COUNT = 2;
+
+function isRoadTile(tile: TileType): boolean {
+  return tile === TileType.Road || tile === TileType.DirtRoad;
+}
+
+function roadBonusForUnit(unitType: LocalUnitType): number {
+  if (unitType === "Tank") return UNIT_ROAD_BONUS.tank ?? 0;
+  if (unitType === "Artillery") return UNIT_ROAD_BONUS.artillery ?? 0;
+  return 0;
+}
+
+function baseMoveCost(tile: TileType, unitType: LocalUnitType): number | null {
   if (tile === TileType.Ocean) return null;
   if (tile === TileType.Mountain) {
     if (unitType !== "Infantry") return null;
-    return 2;
+    return 1;
   }
   return 1;
+}
+
+function initialRoadBonus(
+  tileMap: Uint8Array,
+  width: number,
+  startX: number,
+  startY: number,
+  unitType: LocalUnitType,
+): number {
+  const startTile = tileMap[startY * width + startX] as TileType;
+  return isRoadTile(startTile) ? roadBonusForUnit(unitType) : 0;
+}
+
+function resolveStepCost(
+  tile: TileType,
+  unitType: LocalUnitType,
+  roadBonusRemaining: number,
+): { nextRoadBonus: number; stepCost: number } | null {
+  const baseCost = baseMoveCost(tile, unitType);
+  if (baseCost === null) return null;
+
+  const maxRoadBonus = roadBonusForUnit(unitType);
+  if (maxRoadBonus === 0) {
+    return { nextRoadBonus: 0, stepCost: baseCost };
+  }
+
+  let stepCost = baseCost;
+  let nextRoadBonus = roadBonusRemaining;
+
+  if (nextRoadBonus > 0) {
+    if (isRoadTile(tile)) {
+      const spend = Math.min(stepCost, nextRoadBonus);
+      stepCost -= spend;
+      nextRoadBonus -= spend;
+    } else {
+      nextRoadBonus = 0;
+    }
+  }
+
+  return { nextRoadBonus, stepCost };
+}
+
+function stateKey(
+  x: number,
+  y: number,
+  width: number,
+  roadBonusRemaining: number,
+): number {
+  return (y * width + x) * ROAD_BONUS_STATE_COUNT + roadBonusRemaining;
 }
 
 interface ReachableEntry {
@@ -154,22 +216,40 @@ function findReachableAI(
   state: LocalGameState,
   startX: number,
   startY: number,
-  unitType: string,
+  unitType: LocalUnitType,
   occupied: Set<number>,
   maxRange?: number,
 ): Map<number, ReachableEntry> {
   const range = maxRange ?? UNIT_MOVE[unitType];
   const { tileMap, width, height } = state;
   const result = new Map<number, ReachableEntry>();
+  const bestByState = new Map<number, number>();
   const startKey = startY * width + startX;
+  const startRoadBonus = initialRoadBonus(
+    tileMap,
+    width,
+    startX,
+    startY,
+    unitType,
+  );
   result.set(startKey, { cost: 0, path: [] });
+  bestByState.set(stateKey(startX, startY, width, startRoadBonus), 0);
 
   const queue: {
     x: number;
     y: number;
     cost: number;
     path: { x: number; y: number }[];
-  }[] = [{ x: startX, y: startY, cost: 0, path: [] }];
+    roadBonusRemaining: number;
+  }[] = [
+    {
+      x: startX,
+      y: startY,
+      cost: 0,
+      path: [],
+      roadBonusRemaining: startRoadBonus,
+    },
+  ];
 
   while (queue.length > 0) {
     // Pick lowest cost
@@ -187,21 +267,33 @@ function findReachableAI(
       const ny = current.y + dy;
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
 
-      const step = moveCost(tileMap, width, nx, ny, unitType);
-      if (step === null) continue;
+      const tile = tileMap[ny * width + nx] as TileType;
+      const step = resolveStepCost(tile, unitType, current.roadBonusRemaining);
+      if (!step) continue;
 
-      const newCost = current.cost + step;
+      const newCost = current.cost + step.stepCost;
       if (newCost > range) continue;
 
       const nKey = ny * width + nx;
       if (occupied.has(nKey)) continue;
 
-      const existing = result.get(nKey);
-      if (existing && existing.cost <= newCost) continue;
+      const nStateKey = stateKey(nx, ny, width, step.nextRoadBonus);
+      const bestStateCost = bestByState.get(nStateKey);
+      if (bestStateCost !== undefined && bestStateCost <= newCost) continue;
 
       const newPath = [...current.path, { x: nx, y: ny }];
-      result.set(nKey, { cost: newCost, path: newPath });
-      queue.push({ x: nx, y: ny, cost: newCost, path: newPath });
+      bestByState.set(nStateKey, newCost);
+      const existing = result.get(nKey);
+      if (!existing || newCost < existing.cost) {
+        result.set(nKey, { cost: newCost, path: newPath });
+      }
+      queue.push({
+        x: nx,
+        y: ny,
+        cost: newCost,
+        path: newPath,
+        roadBonusRemaining: step.nextRoadBonus,
+      });
     }
   }
 
@@ -211,7 +303,7 @@ function findReachableAI(
 function fullPathDistance(
   state: LocalGameState,
   goal: { x: number; y: number },
-  unitType: string,
+  unitType: LocalUnitType,
 ): Map<number, number> {
   const { tileMap, width, height } = state;
   const dist = new Map<number, number>();
@@ -235,7 +327,8 @@ function fullPathDistance(
       const ny = current.y + dy;
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
 
-      const step = moveCost(tileMap, width, nx, ny, unitType);
+      const tile = tileMap[ny * width + nx] as TileType;
+      const step = baseMoveCost(tile, unitType);
       if (step === null) continue;
 
       const nKey = ny * width + nx;
@@ -256,7 +349,7 @@ function bestMoveToward(
   startY: number,
   goalX: number,
   goalY: number,
-  unitType: string,
+  unitType: LocalUnitType,
   occupied: Set<number>,
 ): { x: number; y: number }[] | null {
   const reachable = findReachableAI(state, startX, startY, unitType, occupied);
@@ -292,45 +385,85 @@ function bestMoveToward(
 function buildDangerMap(
   state: LocalGameState,
   enemies: LocalUnit[],
+  targetType: LocalUnitType,
 ): Map<number, number> {
   const danger = new Map<number, number>();
   const { width, height, tileMap } = state;
 
-  for (const enemy of enemies) {
-    const atk = UNIT_ATK[enemy.type];
+  function addThreatFromPosition(
+    enemy: LocalUnit,
+    attackX: number,
+    attackY: number,
+    movedThisTurn: boolean,
+  ) {
     const [minR, maxR] = UNIT_ATTACK_RANGE[enemy.type];
-    const occupied = new Set<number>();
+    for (let ddx = -maxR; ddx <= maxR; ddx++) {
+      for (let ddy = -maxR; ddy <= maxR; ddy++) {
+        const distance = Math.abs(ddx) + Math.abs(ddy);
+        if (distance < minR || distance > maxR) continue;
+        const nx = attackX + ddx;
+        const ny = attackY + ddy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+        const targetKey = ny * width + nx;
+        const terrain = tileMap[targetKey] as TileType;
+        const projected = getProjectedDamage(
+          enemy.type,
+          targetType,
+          terrain,
+          distance,
+          movedThisTurn,
+        );
+        danger.set(
+          targetKey,
+          (danger.get(targetKey) ?? 0) + projected.expectedDamage,
+        );
+      }
+    }
+  }
+
+  for (const enemy of enemies) {
+    addThreatFromPosition(enemy, enemy.x, enemy.y, false);
+
+    if (enemy.type === "Artillery") continue;
+
     const reachable = findReachableAI(
       state,
       enemy.x,
       enemy.y,
       enemy.type,
-      occupied,
+      new Set<number>(),
     );
 
-    for (const [tileKey] of reachable) {
+    for (const [tileKey, entry] of reachable) {
+      if (entry.path.length === 0) continue;
       const tx = tileKey % width;
       const ty = Math.floor(tileKey / width);
-
-      for (let ddx = -maxR; ddx <= maxR; ddx++) {
-        for (let ddy = -maxR; ddy <= maxR; ddy++) {
-          const d = Math.abs(ddx) + Math.abs(ddy);
-          if (d < minR || d > maxR) continue;
-          const nx = tx + ddx;
-          const ny = ty + ddy;
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-          const targetKey = ny * width + nx;
-          const terrain = tileMap[targetKey];
-          const defense = TERRAIN_DEFENSE[terrain] ?? 0;
-          const dmg = Math.max(atk - defense, 1);
-          danger.set(targetKey, (danger.get(targetKey) ?? 0) + dmg);
-        }
-      }
+      addThreatFromPosition(enemy, tx, ty, true);
     }
   }
 
   return danger;
 }
+
+function averageUnitThreat(unitType: LocalUnitType): number {
+  const distance = unitType === "Artillery" ? 2 : 1;
+  return (
+    (getProjectedDamage(unitType, "Infantry", TileType.Grass, distance, false)
+      .hitDamage +
+      getProjectedDamage(unitType, "Tank", TileType.Grass, distance, false)
+        .hitDamage +
+      getProjectedDamage(unitType, "Artillery", TileType.Grass, distance, false)
+        .hitDamage) /
+    3
+  );
+}
+
+const UNIT_THREAT_SCORE: Record<LocalUnitType, number> = {
+  Infantry: averageUnitThreat("Infantry"),
+  Tank: averageUnitThreat("Tank"),
+  Artillery: averageUnitThreat("Artillery"),
+};
 
 // --- Focus targets ---
 
@@ -342,9 +475,9 @@ function assignFocusTargets(
   if (enemies.length === 0) return [];
 
   if (strat.name === "Assassin") {
-    const value: Record<string, number> = {
+    const value: Record<LocalUnitType, number> = {
       Tank: 30,
-      Ranger: 20,
+      Artillery: 20,
       Infantry: 10,
     };
     return [...enemies].sort((a, b) => {
@@ -364,11 +497,11 @@ function assignFocusTargets(
     const scoreA =
       a.hp * hpWeight +
       manhattan(a.x, a.y, Math.round(cx), Math.round(cy)) * distWeight -
-      UNIT_ATK[a.type] * 2;
+      UNIT_THREAT_SCORE[a.type] * 2;
     const scoreB =
       b.hp * hpWeight +
       manhattan(b.x, b.y, Math.round(cx), Math.round(cy)) * distWeight -
-      UNIT_ATK[b.type] * 2;
+      UNIT_THREAT_SCORE[b.type] * 2;
     return scoreA - scoreB;
   });
 }
@@ -396,11 +529,20 @@ function recordAttack(
   unit: LocalUnit,
   target: LocalUnit,
   state: LocalGameState,
+  attackX: number,
+  attackY: number,
+  movedThisTurn: boolean,
   alreadyTargeted: Map<number, number>,
 ) {
-  const terrain = state.tileMap[target.y * state.width + target.x];
-  const defense = TERRAIN_DEFENSE[terrain] ?? 0;
-  const dmg = Math.max(UNIT_ATK[unit.type] - defense, 1);
+  const terrain = state.tileMap[target.y * state.width + target.x] as TileType;
+  const distance = manhattan(attackX, attackY, target.x, target.y);
+  const dmg = getProjectedDamage(
+    unit.type,
+    target.type,
+    terrain,
+    distance,
+    movedThisTurn,
+  ).expectedDamage;
   alreadyTargeted.set(
     target.unitId,
     (alreadyTargeted.get(target.unitId) ?? 0) + dmg,
@@ -420,16 +562,16 @@ function pickStrategyAdaptive(
 
   const myCount = myUnits.length;
   const enemyCount = enemies.length;
-  const myRangers = myUnits.filter((u) => u.type === "Ranger").length;
+  const myArtillery = myUnits.filter((u) => u.type === "Artillery").length;
   const myTanks = myUnits.filter((u) => u.type === "Tank").length;
-  const enemyRangers = enemies.filter((u) => u.type === "Ranger").length;
+  const enemyArtillery = enemies.filter((u) => u.type === "Artillery").length;
   const rnd = state.round;
 
   if (myCount >= enemyCount + 3 && Math.random() < 0.5) return TURTLE;
   if (enemyCount >= myCount + 3) return Math.random() < 0.5 ? GUERRILLA : RUSH;
-  if (myRangers >= 2 && myTanks >= 1 && Math.random() < 0.4)
-    return RANGER_FORTRESS;
-  if (enemyRangers === 0 && Math.random() < 0.4) return DEATHBALL;
+  if (myArtillery >= 2 && myTanks >= 1 && Math.random() < 0.4)
+    return ARTILLERY_FORTRESS;
+  if (enemyArtillery === 0 && Math.random() < 0.4) return DEATHBALL;
   if (rnd >= 12 && Math.abs(myCount - enemyCount) <= 1 && Math.random() < 0.3)
     return ASSASSIN;
 
@@ -618,13 +760,12 @@ function planScreener(
       unitId: unit.unitId,
       targetId: target.unitId,
     });
-    recordAttack(unit, target, state, alreadyTargeted);
+    recordAttack(unit, target, state, unit.x, unit.y, false, alreadyTargeted);
     return { actions, newPos: unitPos };
   }
 
-  // Find rangers to protect
-  const rangers = myUnits.filter((u) => u.type === "Ranger");
-  if (rangers.length === 0) {
+  const artilleryUnits = myUnits.filter((u) => u.type === "Artillery");
+  if (artilleryUnits.length === 0) {
     return planMelee(
       unit,
       enemies,
@@ -643,15 +784,19 @@ function planScreener(
       ? e
       : best,
   );
-  const nearestRanger = rangers.reduce((best, r) =>
-    manhattan(unit.x, unit.y, r.x, r.y) <
+  const nearestArtillery = artilleryUnits.reduce((best, artillery) =>
+    manhattan(unit.x, unit.y, artillery.x, artillery.y) <
     manhattan(unit.x, unit.y, best.x, best.y)
-      ? r
+      ? artillery
       : best,
   );
 
-  const interceptX = Math.round(nearestEnemy.x * 0.6 + nearestRanger.x * 0.4);
-  const interceptY = Math.round(nearestEnemy.y * 0.6 + nearestRanger.y * 0.4);
+  const interceptX = Math.round(
+    nearestEnemy.x * 0.6 + nearestArtillery.x * 0.4,
+  );
+  const interceptY = Math.round(
+    nearestEnemy.y * 0.6 + nearestArtillery.y * 0.4,
+  );
 
   const occ = new Set(occupied);
   occ.delete(unit.y * state.width + unit.x);
@@ -677,7 +822,7 @@ function planScreener(
     );
     if (t) {
       actions.push({ type: "attack", unitId: unit.unitId, targetId: t.unitId });
-      recordAttack(unit, t, state, alreadyTargeted);
+      recordAttack(unit, t, state, dest.x, dest.y, true, alreadyTargeted);
     }
     return { actions, newPos: dest };
   }
@@ -685,7 +830,7 @@ function planScreener(
   return { actions, newPos: unitPos };
 }
 
-function planRanger(
+function planArtillery(
   unit: LocalUnit,
   enemies: LocalUnit[],
   focusOrder: LocalUnit[],
@@ -712,7 +857,7 @@ function planRanger(
       unitId: unit.unitId,
       targetId: target.unitId,
     });
-    recordAttack(unit, target, state, alreadyTargeted);
+    recordAttack(unit, target, state, unit.x, unit.y, false, alreadyTargeted);
     return { actions, newPos: unitPos };
   }
 
@@ -722,7 +867,7 @@ function planRanger(
   occ.delete(unit.y * state.width + unit.x);
 
   const reachable = findReachableAI(state, unit.x, unit.y, unit.type, occ);
-  const [minR, maxR] = UNIT_ATTACK_RANGE.Ranger;
+  const [minR, maxR] = UNIT_ATTACK_RANGE.Artillery;
 
   let bestTile: { key: number; path: { x: number; y: number }[] } | null = null;
   let bestScore: [number, number, number] = [Infinity, Infinity, Infinity];
@@ -754,7 +899,6 @@ function planRanger(
   if (bestTile) {
     const dest = bestTile.path[bestTile.path.length - 1];
     actions.push({ type: "move", unitId: unit.unitId, path: bestTile.path });
-    // Rangers can NOT attack after moving
     return { actions, newPos: dest };
   }
 
@@ -804,7 +948,7 @@ function planMelee(
       unitId: unit.unitId,
       targetId: target.unitId,
     });
-    recordAttack(unit, target, state, alreadyTargeted);
+    recordAttack(unit, target, state, unit.x, unit.y, false, alreadyTargeted);
     return { actions, newPos: unitPos };
   }
 
@@ -852,7 +996,7 @@ function planMelee(
     );
     if (t) {
       actions.push({ type: "attack", unitId: unit.unitId, targetId: t.unitId });
-      recordAttack(unit, t, state, alreadyTargeted);
+      recordAttack(unit, t, state, dest.x, dest.y, true, alreadyTargeted);
     }
     return { actions, newPos: dest };
   }
@@ -1002,7 +1146,12 @@ export function planAITurn(
   }
 
   // Build tactical context
-  const dangerMap = buildDangerMap(state, enemies);
+  const dangerMaps = Object.fromEntries(
+    LOCAL_UNIT_TYPES.map((unitType) => [
+      unitType,
+      buildDangerMap(state, enemies, unitType),
+    ]),
+  ) as Record<LocalUnitType, Map<number, number>>;
   const focusOrder = assignFocusTargets(myUnits, enemies, strat);
   const alreadyTargeted = new Map<number, number>();
 
@@ -1038,10 +1187,9 @@ export function planAITurn(
   const retreaters: LocalUnit[] = [];
   const attackers: LocalUnit[] = [];
 
-  const UNIT_HP: Record<string, number> = { Infantry: 3, Tank: 5, Ranger: 3 };
   for (const unit of remaining) {
     const uKey = unit.y * state.width + unit.x;
-    const incoming = dangerMap.get(uKey) ?? 0;
+    const incoming = dangerMaps[unit.type].get(uKey) ?? 0;
     const maxHp = UNIT_HP[unit.type];
     const hpRatio = unit.hp / maxHp;
     const shouldRetreat =
@@ -1065,7 +1213,7 @@ export function planAITurn(
       enemies,
       state,
       occupiedSet,
-      dangerMap,
+      dangerMaps[unit.type],
       strat,
     );
 
@@ -1088,7 +1236,7 @@ export function planAITurn(
     const { actions: a, newPos } = planRetreat(
       unit,
       enemies,
-      dangerMap,
+      dangerMaps[unit.type],
       state,
       occupiedSet,
       myHQ,
@@ -1108,7 +1256,7 @@ export function planAITurn(
       state,
       occupiedSet,
       alreadyTargeted,
-      dangerMap,
+      dangerMaps[unit.type],
       strat,
       focusOrder,
     );
@@ -1138,15 +1286,15 @@ export function planAITurn(
   for (const unit of attackers) {
     let result: { actions: AIAction[]; newPos: { x: number; y: number } };
 
-    if (unit.type === "Ranger") {
-      result = planRanger(
+    if (unit.type === "Artillery") {
+      result = planArtillery(
         unit,
         enemies,
         focusOrder,
         state,
         occupiedSet,
         alreadyTargeted,
-        dangerMap,
+        dangerMaps[unit.type],
         strat,
       );
     } else {
@@ -1157,7 +1305,7 @@ export function planAITurn(
         state,
         occupiedSet,
         alreadyTargeted,
-        dangerMap,
+        dangerMaps[unit.type],
         strat,
       );
     }

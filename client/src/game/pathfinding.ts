@@ -1,4 +1,5 @@
 import { TileType } from "./types";
+import { UNIT_ROAD_BONUS } from "./balance";
 
 type UnitMoveType = "rifle" | "tank" | "artillery";
 
@@ -10,11 +11,13 @@ const TILE_COST: Record<TileType, number> = {
   [TileType.City]: 1,
   [TileType.Factory]: 1,
   [TileType.HQ]: 1,
-  [TileType.Mountain]: 2,
+  [TileType.Mountain]: 1,
   [TileType.Tree]: 1,
   [TileType.Barracks]: 1,
   [TileType.Ocean]: -1,
 };
+
+const ROAD_BONUS_STATE_COUNT = 2;
 
 interface Node {
   x: number;
@@ -60,7 +63,7 @@ function initialRoadBonus(
 ): number {
   if (unitType !== "tank" && unitType !== "artillery") return 0;
   const startTile = tileMap[fromY * gridWidth + fromX] as TileType;
-  return isRoadTile(startTile) ? 2 : 0;
+  return isRoadTile(startTile) ? (UNIT_ROAD_BONUS[unitType] ?? 0) : 0;
 }
 
 function resolveStepCost(
@@ -96,7 +99,7 @@ function stateKey(
   gridWidth: number,
   roadBonusRemaining: number,
 ): number {
-  return (y * gridWidth + x) * 3 + roadBonusRemaining;
+  return (y * gridWidth + x) * ROAD_BONUS_STATE_COUNT + roadBonusRemaining;
 }
 
 function coordKey(x: number, y: number, gridWidth: number): number {
