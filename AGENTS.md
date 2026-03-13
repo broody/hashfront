@@ -46,6 +46,7 @@ Contracts (`contracts/src/helpers/unit_stats.cairo`) must match those values.
 - Unless the simulator API changes, limit autoresearch edits to `autoresearch/train.py`
 - Run training from `autoresearch/` with `uv run train.py`
 - The trainer now auto-resumes from `autoresearch/checkpoints/best.pt` and writes run metrics to `autoresearch/checkpoints/history.jsonl` and `autoresearch/checkpoints/last_run.json`
-- Recommended full self-play run: `uv run train.py --parallel-envs 8 --self-play-ratio 1.0 --validation-interval 150`
+- Recommended full self-play run: `uv run train.py --parallel-envs 8 --sim-workers 8 --self-play-ratio 1.0 --validation-interval 150`
+- `--sim-workers` enables multi-process CPU-side simulator parallelism while the main process keeps batched policy inference and learning
 - Use `--fresh-start` to ignore the saved incumbent, or `--checkpoint-dir <dir>` to branch a separate experiment line
 - Keep the 300-second wall-clock budget and ensure the run still prints `Final win rate: X.XXXX`

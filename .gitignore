@@ -12,3 +12,6 @@ torii-db/
 torii.db
 torii.db-shm
 torii.db-wal
+
+tools/__pycache__/
+.claude/worktrees/

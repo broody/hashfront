@@ -1,11 +1,13 @@
 import argparse
 import copy
 import json
+import multiprocessing as mp
 import os
 import random
 import sys
 import time
 from dataclasses import dataclass, field
+from multiprocessing.connection import wait as wait_for_connections
 from pathlib import Path
 
 import torch
@@ -56,23 +58,26 @@ VALIDATION_INTERVAL = 30.0
 BASE_SEED = 1337
 GAMMA = 0.97
 LAMBDA = 0.90
-ENTROPY_WEIGHT = 0.012
+ENTROPY_WEIGHT = 0.025
 VALUE_WEIGHT = 0.45
 IMITATION_WEIGHT = 0.35
 LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-4
 MAX_TILE_CANDIDATES = 8
 BOARD_CHANNELS = 16
-ROLLOUT_FRAGMENT_STEPS = 64
+DEFAULT_ROLLOUT_FRAGMENT_STEPS = 32
 DEFAULT_PARALLEL_ENVS_CPU = 4
 DEFAULT_PARALLEL_ENVS_CUDA = 8
+DEFAULT_SIM_WORKERS = 0
 DEFAULT_SELF_PLAY_RATIO = 0.65
-MAX_SNAPSHOT_POOL = 4
+MAX_SNAPSHOT_POOL = 8
 SNAPSHOT_EVAL_COUNT = 2
 SNAPSHOT_EVAL_MAPS = 3
-DEFAULT_VALIDATION_HEURISTIC_GAMES = 2
-DEFAULT_VALIDATION_SELF_PLAY_GAMES = 2
+DEFAULT_VALIDATION_HEURISTIC_GAMES = 4
+DEFAULT_VALIDATION_SELF_PLAY_GAMES = 12
 DEFAULT_CHECKPOINT_DIR = "checkpoints"
+LEARNER_POLICY_KEY = "__learner__"
+REMOTE_BATCH_WAIT = 0.005
 ACTION_TYPES = (
     "wait",
     "move_wait",
@@ -87,6 +92,7 @@ HEURISTIC_ENSEMBLE = (
     RushStrategy,
     BalancedStrategy,
 )
+HEURISTIC_BY_NAME = {strategy.__name__: strategy for strategy in HEURISTIC_ENSEMBLE}
 EVAL_TEMPERATURES = {
     "ambush": 0.05,
     "archipelago": 0.30,
@@ -164,6 +170,16 @@ class PolicyDecisionRequest:
     teacher_index: int
 
 
+@dataclass
+class SimulationWorkerPool:
+    ctx: object
+    processes: dict[int, object]
+    connections: dict[int, object]
+    pending_requests: dict[int, dict] = field(default_factory=dict)
+    idle_workers: set[int] = field(default_factory=set)
+    next_worker_id: int = 0
+
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
@@ -226,6 +242,33 @@ def normalize_heuristics(heuristic_tensor: torch.Tensor) -> torch.Tensor:
             heuristic_tensor.std(unbiased=False) + 1e-6
         )
     return heuristic_tensor
+
+
+def resolve_heuristic_strategy(name: str):
+    strategy_cls = HEURISTIC_BY_NAME.get(name)
+    if strategy_cls is None:
+        raise ValueError(f"Unknown heuristic strategy: {name}")
+    return strategy_cls()
+
+
+def tensor_on_device(tensor: torch.Tensor) -> torch.Tensor:
+    return tensor.to(device) if tensor.device != device else tensor
+
+
+def request_tensors_on_device(request_like) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    return (
+        tensor_on_device(request_like.board_tensor),
+        tensor_on_device(request_like.candidate_tensor),
+        tensor_on_device(request_like.heuristic_tensor),
+    )
+
+
+def transition_tensors_on_device(transition: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    return (
+        tensor_on_device(transition["board_tensor"]),
+        tensor_on_device(transition["candidate_tensor"]),
+        tensor_on_device(transition["heuristic_tensor"]),
+    )
 
 
 def checkpoint_path(checkpoint_dir: str | None) -> Path | None:
@@ -377,12 +420,12 @@ def add_snapshot(
     self_play_score: float,
     heuristic_score: float,
     generation: int,
-) -> None:
-    snapshot_pool.append(
-        make_policy_snapshot(policy, self_play_score, heuristic_score, generation)
-    )
+) -> PolicySnapshot:
+    snapshot = make_policy_snapshot(policy, self_play_score, heuristic_score, generation)
+    snapshot_pool.append(snapshot)
     if len(snapshot_pool) > MAX_SNAPSHOT_POOL:
         snapshot_pool.pop(0)
+    return snapshot
 
 
 def sample_training_opponent(
@@ -966,41 +1009,56 @@ def store_transition(
     )
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        return F.relu(out + residual)
+
+
 class PolicyValueNet(nn.Module):
     def __init__(self, feature_dim: int):
         super().__init__()
         self.board_encoder = nn.Sequential(
-            nn.Conv2d(BOARD_CHANNELS, 32, kernel_size=3, padding=1),
+            nn.Conv2d(BOARD_CHANNELS, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
+            ResidualBlock(64),
+            ResidualBlock(64),
+            ResidualBlock(64),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
         )
         self.state_proj = nn.Sequential(
-            nn.Linear(64, 128),
+            nn.Linear(64, 192),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(192, 192),
             nn.ReLU(),
         )
         self.candidate_proj = nn.Sequential(
-            nn.Linear(feature_dim, 128),
-            nn.LayerNorm(128),
+            nn.Linear(feature_dim, 192),
+            nn.LayerNorm(192),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(192, 192),
             nn.ReLU(),
         )
         self.policy_head = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(384, 192),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(192, 1),
         )
         self.value_head = nn.Sequential(
-            nn.Linear(128, 128),
+            nn.Linear(192, 192),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(192, 1),
         )
         self.logit_prior_scale = nn.Parameter(torch.tensor(3.0))
         nn.init.zeros_(self.policy_head[-1].weight)
@@ -1172,6 +1230,171 @@ def spawn_training_env(
     return env
 
 
+def sample_training_opponent_spec(
+    snapshot_pool: list[PolicySnapshot],
+    map_name: str,
+    seed: int,
+    self_play_ratio: float,
+) -> tuple[str, str, float]:
+    if snapshot_pool and random.random() < self_play_ratio:
+        snapshot = random.choice(snapshot_pool)
+        return "snapshot", snapshot.name, evaluation_temperature(map_name)
+
+    heuristic = make_ensemble_opponent(map_name, seed)
+    return "heuristic", heuristic.__class__.__name__, evaluation_temperature(map_name)
+
+
+def spawn_worker_training_env(
+    map_name: str,
+    seed: int,
+    learner_temperature: float,
+    opponent_kind: str,
+    opponent_name: str,
+    opponent_temperature: float,
+) -> TrainingEnv:
+    opponent_strategy = resolve_heuristic_strategy(opponent_name) if opponent_kind == "heuristic" else None
+    opponent_policy = opponent_name if opponent_kind == "snapshot" else None
+    env = TrainingEnv(
+        state=load_map(map_name),
+        rng=random.Random(seed),
+        learner_temperature=learner_temperature,
+        opponent_strategy=opponent_strategy,
+        opponent_policy=opponent_policy,
+        opponent_name=opponent_name,
+        opponent_temperature=opponent_temperature,
+    )
+    prepare_policy_turn(env)
+    return env
+
+
+def remote_request_payload(
+    worker_id: int,
+    request: PolicyDecisionRequest,
+    flush_transitions: list[dict] | None,
+) -> dict:
+    policy_key = request.policy if isinstance(request.policy, str) else LEARNER_POLICY_KEY
+    return {
+        "type": "policy_request",
+        "worker_id": worker_id,
+        "policy_key": policy_key,
+        "board_tensor": request.board_tensor.cpu(),
+        "candidate_tensor": request.candidate_tensor.cpu(),
+        "heuristic_tensor": request.heuristic_tensor.cpu(),
+        "temperature": request.temperature,
+        "flush_transitions": flush_transitions,
+    }
+
+
+def apply_single_policy_decision(request: PolicyDecisionRequest, action_index: int) -> None:
+    selected = request.candidates[action_index]
+    execute_candidate(request.env.state, request.unit, selected, request.env.rng)
+    after_metrics = current_metrics(request.env.state, request.player)
+
+    if request.record_transition:
+        store_transition(
+            request.env.transitions,
+            request.board_tensor,
+            request.candidate_tensor,
+            request.heuristic_tensor,
+            action_index,
+            immediate_reward(
+                request.before_metrics,
+                after_metrics,
+                request.player,
+                request.unit,
+                selected,
+                request.env.state,
+            ),
+            request.teacher_index,
+            request.temperature,
+        )
+
+
+def worker_next_message(
+    worker_id: int,
+    env: TrainingEnv,
+    max_width: int,
+    max_height: int,
+    rollout_fragment_steps: int,
+) -> tuple[dict, PolicyDecisionRequest | None]:
+    request = ensure_policy_request(env, max_width, max_height, LEARNER_POLICY_KEY)
+    if request is None:
+        transitions = env.transitions
+        env.transitions = []
+        return (
+            {
+                "type": "game_complete",
+                "worker_id": worker_id,
+                "winner": env.state.winner,
+                "transitions": transitions,
+            },
+            None,
+        )
+
+    flush_transitions = None
+    if request.record_transition and len(env.transitions) >= rollout_fragment_steps:
+        flush_transitions = env.transitions
+        env.transitions = []
+
+    return remote_request_payload(worker_id, request, flush_transitions), request
+
+
+def simulation_worker_main(
+    connection,
+    worker_id: int,
+    max_width: int,
+    max_height: int,
+    rollout_fragment_steps: int,
+) -> None:
+    global device
+    device = torch.device("cpu")
+    seed_everything(BASE_SEED + worker_id)
+    env = None
+    pending_request = None
+
+    while True:
+        message = connection.recv()
+        command = message["type"]
+
+        if command == "shutdown":
+            break
+
+        if command == "start_env":
+            env = spawn_worker_training_env(
+                map_name=message["map_name"],
+                seed=message["seed"],
+                learner_temperature=message["learner_temperature"],
+                opponent_kind=message["opponent_kind"],
+                opponent_name=message["opponent_name"],
+                opponent_temperature=message["opponent_temperature"],
+            )
+            outgoing, pending_request = worker_next_message(
+                worker_id,
+                env,
+                max_width,
+                max_height,
+                rollout_fragment_steps,
+            )
+            connection.send(outgoing)
+            continue
+
+        if command == "action":
+            if env is None or pending_request is None:
+                raise RuntimeError("Worker received action without a pending request")
+            apply_single_policy_decision(pending_request, int(message["action_index"]))
+            outgoing, pending_request = worker_next_message(
+                worker_id,
+                env,
+                max_width,
+                max_height,
+                rollout_fragment_steps,
+            )
+            connection.send(outgoing)
+            continue
+
+        raise ValueError(f"Unknown worker command: {command}")
+
+
 def next_policy_request(
     env: TrainingEnv,
     max_width: int,
@@ -1281,9 +1504,9 @@ def batched_policy_decisions(requests: list[PolicyDecisionRequest]):
 
     for grouped in grouped_requests.values():
         policy = grouped[0].policy
-        board_batch = torch.stack([request.board_tensor for request in grouped], dim=0)
-        candidate_batch = torch.cat([request.candidate_tensor for request in grouped], dim=0)
-        heuristic_batch = torch.cat([request.heuristic_tensor for request in grouped], dim=0)
+        board_batch = torch.stack([tensor_on_device(request.board_tensor) for request in grouped], dim=0)
+        candidate_batch = torch.cat([tensor_on_device(request.candidate_tensor) for request in grouped], dim=0)
+        heuristic_batch = torch.cat([tensor_on_device(request.heuristic_tensor) for request in grouped], dim=0)
         candidate_counts = [request.candidate_tensor.size(0) for request in grouped]
 
         context = torch.enable_grad() if any(request.record_transition for request in grouped) else torch.no_grad()
@@ -1335,12 +1558,140 @@ def apply_policy_decisions(decisions) -> None:
             )
 
 
+def start_simulation_worker_pool(
+    num_workers: int,
+    max_width: int,
+    max_height: int,
+    rollout_fragment_steps: int,
+) -> SimulationWorkerPool:
+    ctx = mp.get_context("spawn")
+    processes = {}
+    connections = {}
+
+    for worker_id in range(num_workers):
+        parent_conn, child_conn = ctx.Pipe()
+        process = ctx.Process(
+            target=simulation_worker_main,
+            args=(child_conn, worker_id, max_width, max_height, rollout_fragment_steps),
+            daemon=True,
+        )
+        process.start()
+        child_conn.close()
+        processes[worker_id] = process
+        connections[worker_id] = parent_conn
+
+    return SimulationWorkerPool(
+        ctx=ctx,
+        processes=processes,
+        connections=connections,
+        idle_workers=set(processes.keys()),
+        next_worker_id=num_workers,
+    )
+
+
+def shutdown_simulation_worker_pool(worker_pool: SimulationWorkerPool | None) -> None:
+    if worker_pool is None:
+        return
+
+    for connection in worker_pool.connections.values():
+        try:
+            connection.send({"type": "shutdown"})
+        except (BrokenPipeError, EOFError):
+            pass
+
+    for connection in worker_pool.connections.values():
+        try:
+            connection.close()
+        except OSError:
+            pass
+
+    for process in worker_pool.processes.values():
+        process.join(timeout=1.0)
+        if process.is_alive():
+            process.kill()
+
+
+def maybe_start_worker_env(
+    worker_pool: SimulationWorkerPool,
+    worker_id: int,
+    map_names: list[str],
+    snapshot_pool: list[PolicySnapshot],
+    self_play_ratio: float,
+    temperature: float,
+) -> None:
+    if worker_id not in worker_pool.idle_workers:
+        return
+
+    map_name = random.choice(map_names)
+    seed = random.randint(0, 1_000_000)
+    opponent_kind, opponent_name, opponent_temperature = sample_training_opponent_spec(
+        snapshot_pool,
+        map_name,
+        seed,
+        self_play_ratio,
+    )
+    worker_pool.connections[worker_id].send(
+        {
+            "type": "start_env",
+            "map_name": map_name,
+            "seed": seed,
+            "learner_temperature": temperature,
+            "opponent_kind": opponent_kind,
+            "opponent_name": opponent_name,
+            "opponent_temperature": opponent_temperature,
+        }
+    )
+    worker_pool.idle_workers.discard(worker_id)
+
+
+def batched_remote_policy_decisions(
+    pending_requests: dict[int, dict],
+    policy_registry: dict[str, PolicyValueNet],
+):
+    if not pending_requests:
+        return []
+
+    decisions = []
+    grouped_requests = {}
+    for request in pending_requests.values():
+        grouped_requests.setdefault(request["policy_key"], []).append(request)
+
+    for policy_key, grouped in grouped_requests.items():
+        policy = policy_registry[policy_key]
+        board_batch = torch.stack([tensor_on_device(request["board_tensor"]) for request in grouped], dim=0)
+        candidate_batch = torch.cat([tensor_on_device(request["candidate_tensor"]) for request in grouped], dim=0)
+        heuristic_batch = torch.cat([tensor_on_device(request["heuristic_tensor"]) for request in grouped], dim=0)
+        candidate_counts = [request["candidate_tensor"].size(0) for request in grouped]
+
+        with torch.no_grad():
+            state_embeddings = policy.encode_state(board_batch)
+            flat_logits = policy.score_candidates(
+                state_embeddings,
+                candidate_batch,
+                heuristic_batch,
+                candidate_counts,
+            )
+            values = policy.predict_value(state_embeddings)
+
+        offset = 0
+        for idx, request in enumerate(grouped):
+            count = candidate_counts[idx]
+            logits = flat_logits[offset : offset + count]
+            distribution = torch.distributions.Categorical(logits=logits / request["temperature"])
+            action_index = int(distribution.sample().item())
+            decisions.append((request, values[idx].detach(), action_index))
+            offset += count
+
+    return decisions
+
+
 def estimate_request_value(policy: PolicyValueNet, request: PolicyDecisionRequest) -> torch.Tensor:
+    board_tensor, candidate_tensor, heuristic_tensor = request_tensors_on_device(request)
     with torch.no_grad():
         _, value = policy(
-            request.board_tensor,
-            request.candidate_tensor,
-            request.heuristic_tensor,
+            board_tensor,
+            candidate_tensor,
+            heuristic_tensor,
         )
     return value.squeeze(0).detach()
 
@@ -1362,10 +1713,11 @@ def update_rollout(
 
     recomputed = []
     for transition in transitions:
+        board_tensor, candidate_tensor, heuristic_tensor = transition_tensors_on_device(transition)
         logits, value = policy(
-            transition["board_tensor"],
-            transition["candidate_tensor"],
-            transition["heuristic_tensor"],
+            board_tensor,
+            candidate_tensor,
+            heuristic_tensor,
         )
         value = value.squeeze(0)
         distribution = torch.distributions.Categorical(
@@ -1435,8 +1787,9 @@ def maybe_update_rollout_fragment(
     policy: PolicyValueNet,
     optimizer,
     imitation_weight: float,
+    rollout_fragment_steps: int,
 ) -> bool:
-    if not request.record_transition or len(env.transitions) < ROLLOUT_FRAGMENT_STEPS:
+    if not request.record_transition or len(env.transitions) < rollout_fragment_steps:
         return False
 
     update_rollout(
@@ -1491,6 +1844,8 @@ def run_parallel_training(
     train_deadline: float,
     parallel_envs: int,
     active_envs: list[TrainingEnv],
+    rollout_fragment_steps: int,
+    imitation_weight: float = IMITATION_WEIGHT,
 ):
     games_played = 0
     wins = 0
@@ -1528,7 +1883,8 @@ def run_parallel_training(
                     request,
                     policy,
                     optimizer,
-                    IMITATION_WEIGHT,
+                    imitation_weight,
+                    rollout_fragment_steps,
                 ):
                     updates += 1
                 requests.append(request)
@@ -1543,7 +1899,7 @@ def run_parallel_training(
             active_envs,
             policy,
             optimizer,
-            IMITATION_WEIGHT,
+            imitation_weight,
         )
         games_played += completed_games
         wins += completed_wins
@@ -1553,6 +1909,189 @@ def run_parallel_training(
             break
 
     return active_envs, games_played, wins, decisions, batches, updates
+
+
+def handle_remote_worker_message(
+    worker_pool: SimulationWorkerPool,
+    message: dict,
+    policy: PolicyValueNet,
+    optimizer,
+    map_names: list[str],
+    snapshot_pool: list[PolicySnapshot],
+    self_play_ratio: float,
+    temperature: float,
+    train_deadline: float,
+    imitation_weight: float = IMITATION_WEIGHT,
+) -> tuple[int, int, int]:
+    message_type = message["type"]
+
+    if message_type == "policy_request":
+        worker_pool.pending_requests[message["worker_id"]] = message
+        return 0, 0, 0
+
+    if message_type == "game_complete":
+        updates = 0
+        transitions = message.get("transitions", [])
+        if transitions:
+            update_rollout(
+                policy,
+                transitions,
+                player=1,
+                optimizer=optimizer,
+                imitation_weight=imitation_weight,
+                winner=message["winner"],
+            )
+            updates += 1
+        worker_id = message["worker_id"]
+        worker_pool.idle_workers.add(worker_id)
+        if time.perf_counter() < train_deadline:
+            maybe_start_worker_env(
+                worker_pool,
+                worker_id,
+                map_names,
+                snapshot_pool,
+                self_play_ratio,
+                temperature,
+            )
+        return 1, 1 if message["winner"] == 1 else 0, updates
+
+    raise ValueError(f"Unknown worker message: {message_type}")
+
+
+def run_parallel_training_remote(
+    policy: PolicyValueNet,
+    optimizer,
+    max_width: int,
+    max_height: int,
+    map_names: list[str],
+    snapshot_pool: list[PolicySnapshot],
+    policy_registry: dict[str, PolicyValueNet],
+    self_play_ratio: float,
+    start_time: float,
+    train_deadline: float,
+    parallel_envs: int,
+    worker_pool: SimulationWorkerPool | None,
+    rollout_fragment_steps: int,
+    imitation_weight: float = IMITATION_WEIGHT,
+):
+    if worker_pool is None:
+        worker_pool = start_simulation_worker_pool(
+            parallel_envs,
+            max_width,
+            max_height,
+            rollout_fragment_steps,
+        )
+
+    games_played = 0
+    wins = 0
+    decisions = 0
+    batches = 0
+    updates = 0
+
+    while time.perf_counter() < train_deadline:
+        temperature = max(
+            0.22,
+            0.70
+            - 0.45
+            * ((time.perf_counter() - start_time) / max(1.0, train_deadline - start_time)),
+        )
+
+        for worker_id in list(worker_pool.idle_workers):
+            if time.perf_counter() >= train_deadline:
+                break
+            maybe_start_worker_env(
+                worker_pool,
+                worker_id,
+                map_names,
+                snapshot_pool,
+                self_play_ratio,
+                temperature,
+            )
+
+        if worker_pool.pending_requests:
+            accumulate_deadline = time.perf_counter() + REMOTE_BATCH_WAIT
+            while time.perf_counter() < accumulate_deadline and len(worker_pool.pending_requests) < parallel_envs:
+                ready_connections = wait_for_connections(
+                    list(worker_pool.connections.values()),
+                    timeout=max(0.0, accumulate_deadline - time.perf_counter()),
+                )
+                if not ready_connections:
+                    break
+                connection_to_worker = {
+                    connection: worker_id
+                    for worker_id, connection in worker_pool.connections.items()
+                }
+                for connection in ready_connections:
+                    worker_id = connection_to_worker[connection]
+                    batch_games, batch_wins, batch_updates = handle_remote_worker_message(
+                        worker_pool,
+                        connection.recv(),
+                        policy,
+                        optimizer,
+                        map_names,
+                        snapshot_pool,
+                        self_play_ratio,
+                        temperature,
+                        train_deadline,
+                        imitation_weight,
+                    )
+                    games_played += batch_games
+                    wins += batch_wins
+                    updates += batch_updates
+            decisions_batch = batched_remote_policy_decisions(worker_pool.pending_requests, policy_registry)
+            for request, bootstrap_value, action_index in decisions_batch:
+                flush_transitions = request.get("flush_transitions")
+                if flush_transitions:
+                    update_rollout(
+                        policy,
+                        flush_transitions,
+                        player=1,
+                        optimizer=optimizer,
+                        imitation_weight=imitation_weight,
+                        bootstrap_value=bootstrap_value,
+                    )
+                    updates += 1
+                worker_id = request["worker_id"]
+                worker_pool.connections[worker_id].send(
+                    {"type": "action", "action_index": action_index}
+                )
+                del worker_pool.pending_requests[worker_id]
+            decisions += len(decisions_batch)
+            batches += 1
+            continue
+
+        ready_connections = wait_for_connections(
+            list(worker_pool.connections.values()),
+            timeout=max(0.0, min(0.05, train_deadline - time.perf_counter())),
+        )
+        if not ready_connections:
+            if worker_pool.idle_workers == set(worker_pool.connections.keys()):
+                break
+            continue
+
+        connection_to_worker = {
+            connection: worker_id
+            for worker_id, connection in worker_pool.connections.items()
+        }
+        for connection in ready_connections:
+            batch_games, batch_wins, batch_updates = handle_remote_worker_message(
+                worker_pool,
+                connection.recv(),
+                policy,
+                optimizer,
+                map_names,
+                snapshot_pool,
+                self_play_ratio,
+                temperature,
+                train_deadline,
+                imitation_weight,
+            )
+            games_played += batch_games
+            wins += batch_wins
+            updates += batch_updates
+
+    return worker_pool, games_played, wins, decisions, batches, updates
+
 
 def evaluate_snapshot_pool(
     policy,
@@ -1695,6 +2234,7 @@ def evaluate_until_deadline(policy, max_width: int, max_height: int, map_names: 
     was_training = policy.training
     policy.eval()
 
+    remaining = deadline - time.perf_counter()
     try:
         while time.perf_counter() + 0.6 < deadline:
             map_name = map_names[map_index % len(map_names)]
@@ -1720,6 +2260,8 @@ def evaluate_until_deadline(policy, max_width: int, max_height: int, map_names: 
     finally:
         policy.train(was_training)
 
+    if games == 0:
+        print(f"WARNING: final eval played 0 games (budget was {remaining:.1f}s)")
     return wins / max(1, games)
 
 
@@ -1732,7 +2274,9 @@ def make_run_record(
     final_eval_budget: float,
     validation_interval: float,
     parallel_envs: int,
+    sim_workers: int,
     self_play_ratio: float,
+    rollout_fragment_steps: int,
     validation_heuristic_games: int,
     validation_self_play_games: int,
     games_played: int,
@@ -1757,7 +2301,9 @@ def make_run_record(
         "final_eval_budget": final_eval_budget,
         "validation_interval": validation_interval,
         "parallel_envs": parallel_envs,
+        "sim_workers": sim_workers,
         "self_play_ratio": self_play_ratio,
+        "rollout_fragment_steps": rollout_fragment_steps,
         "validation_heuristic_games": validation_heuristic_games,
         "validation_self_play_games": validation_self_play_games,
         "games_played": games_played,
@@ -1777,7 +2323,9 @@ def train(
     final_eval_budget: float = FINAL_EVAL_BUDGET,
     validation_interval: float = VALIDATION_INTERVAL,
     parallel_envs: int | None = None,
+    sim_workers: int = DEFAULT_SIM_WORKERS,
     self_play_ratio: float = DEFAULT_SELF_PLAY_RATIO,
+    rollout_fragment_steps: int = DEFAULT_ROLLOUT_FRAGMENT_STEPS,
     validation_heuristic_games: int = DEFAULT_VALIDATION_HEURISTIC_GAMES,
     validation_self_play_games: int = DEFAULT_VALIDATION_SELF_PLAY_GAMES,
     checkpoint_dir: str | None = DEFAULT_CHECKPOINT_DIR,
@@ -1789,6 +2337,9 @@ def train(
     if parallel_envs is None:
         parallel_envs = default_parallel_envs()
     parallel_envs = max(1, parallel_envs)
+    sim_workers = max(0, sim_workers)
+    if sim_workers > 0:
+        parallel_envs = min(parallel_envs, sim_workers)
 
     map_names = list_maps()
     if not map_names:
@@ -1835,23 +2386,36 @@ def train(
         validation_seeds,
         max_games=validation_heuristic_games,
     )
-    best_self_play_score = float(resume_state.get("best_self_play_score", 0.0)) if resume_state else 0.0
     best_heuristic_score = float(
         max(best_heuristic_score, resume_state.get("best_heuristic_score", 0.0))
     ) if resume_state else best_heuristic_score
+    snapshot_pool_for_eval: list[PolicySnapshot] = list(resume_state.get("snapshot_pool", [])) if resume_state else []
+    best_self_play_score = evaluate_snapshot_pool(
+        policy,
+        max_width,
+        max_height,
+        snapshot_pool_for_eval,
+        validation_maps,
+        validation_seeds,
+        max_games=validation_self_play_games,
+    ) if snapshot_pool_for_eval else 0.0
     best_metric = (best_self_play_score, best_heuristic_score)
     best_state = copy.deepcopy(policy.state_dict())
     snapshot_pool: list[PolicySnapshot] = list(resume_state.get("snapshot_pool", [])) if resume_state else []
+    policy_registry = {LEARNER_POLICY_KEY: policy}
+    for snapshot in snapshot_pool:
+        policy_registry[snapshot.name] = snapshot.policy
     snapshot_generation = int(resume_state.get("snapshot_generation", 0)) if resume_state else 0
     if self_play_ratio > 0.0:
         if not snapshot_pool:
-            add_snapshot(
+            snapshot = add_snapshot(
                 snapshot_pool,
                 policy,
                 self_play_score=best_self_play_score,
                 heuristic_score=best_heuristic_score,
                 generation=snapshot_generation,
             )
+            policy_registry[snapshot.name] = snapshot.policy
     start_time = time.perf_counter()
     deadline = start_time + duration
     train_deadline = deadline - final_eval_budget
@@ -1863,10 +2427,13 @@ def train(
     batches = 0
     updates = 0
     active_envs: list[TrainingEnv] = []
+    worker_pool: SimulationWorkerPool | None = None
 
     print(f"Using device: {device}")
     print(f"Run seed: {run_seed}")
     print(f"Parallel envs: {parallel_envs}")
+    if sim_workers > 0:
+        print(f"Sim workers: {sim_workers}")
     if resume_state is not None and checkpoint_file is not None:
         print(
             f"Resuming from {checkpoint_file} "
@@ -1876,73 +2443,100 @@ def train(
         print(f"Checkpoint dir: {checkpoint_file.parent}")
     print(f"Starting {duration:.0f}-second training run...")
 
-    while time.perf_counter() < train_deadline:
-        policy.train()
-        active_envs, batch_games, batch_wins, batch_decisions, batch_count, batch_updates = run_parallel_training(
-            policy=policy,
-            optimizer=optimizer,
-            max_width=max_width,
-            max_height=max_height,
-            map_names=map_names,
-            snapshot_pool=snapshot_pool,
-            self_play_ratio=self_play_ratio,
-            start_time=start_time,
-            train_deadline=min(train_deadline, next_validation),
-            parallel_envs=parallel_envs,
-            active_envs=active_envs,
-        )
-        games_played += batch_games
-        wins += batch_wins
-        decisions += batch_decisions
-        batches += batch_count
-        updates += batch_updates
+    try:
+        while time.perf_counter() < train_deadline:
+            policy.train()
+            progress = (time.perf_counter() - start_time) / max(1.0, train_deadline - start_time)
+            imitation_weight = IMITATION_WEIGHT * max(0.05, 1.0 - progress)
+            if sim_workers > 0:
+                worker_pool, batch_games, batch_wins, batch_decisions, batch_count, batch_updates = run_parallel_training_remote(
+                    policy=policy,
+                    optimizer=optimizer,
+                    max_width=max_width,
+                    max_height=max_height,
+                    map_names=map_names,
+                    snapshot_pool=snapshot_pool,
+                    policy_registry=policy_registry,
+                    self_play_ratio=self_play_ratio,
+                    start_time=start_time,
+                    train_deadline=min(train_deadline, next_validation),
+                    parallel_envs=parallel_envs,
+                    worker_pool=worker_pool,
+                    rollout_fragment_steps=rollout_fragment_steps,
+                    imitation_weight=imitation_weight,
+                )
+            else:
+                active_envs, batch_games, batch_wins, batch_decisions, batch_count, batch_updates = run_parallel_training(
+                    policy=policy,
+                    optimizer=optimizer,
+                    max_width=max_width,
+                    max_height=max_height,
+                    map_names=map_names,
+                    snapshot_pool=snapshot_pool,
+                    self_play_ratio=self_play_ratio,
+                    start_time=start_time,
+                    train_deadline=min(train_deadline, next_validation),
+                    parallel_envs=parallel_envs,
+                    active_envs=active_envs,
+                    rollout_fragment_steps=rollout_fragment_steps,
+                    imitation_weight=imitation_weight,
+                )
+            games_played += batch_games
+            wins += batch_wins
+            decisions += batch_decisions
+            batches += batch_count
+            updates += batch_updates
 
-        now = time.perf_counter()
-        if now >= next_validation:
-            heuristic_score = evaluate_fixed(
-                policy,
-                max_width,
-                max_height,
-                validation_maps,
-                validation_seeds,
-                max_games=validation_heuristic_games,
-            )
-            self_play_score = evaluate_snapshot_pool(
-                policy,
-                max_width,
-                max_height,
-                snapshot_pool,
-                validation_maps,
-                validation_seeds,
-                max_games=validation_self_play_games,
-            )
-            metric = (self_play_score if snapshot_pool else 0.0, heuristic_score)
-            if not snapshot_pool or metric > best_metric:
-                best_metric = metric
-                best_self_play_score, best_heuristic_score = metric
-                best_state = copy.deepcopy(policy.state_dict())
+            now = time.perf_counter()
+            if now >= next_validation:
+                heuristic_score = evaluate_fixed(
+                    policy,
+                    max_width,
+                    max_height,
+                    validation_maps,
+                    validation_seeds,
+                    max_games=validation_heuristic_games,
+                )
+                self_play_score = evaluate_snapshot_pool(
+                    policy,
+                    max_width,
+                    max_height,
+                    snapshot_pool,
+                    validation_maps,
+                    validation_seeds,
+                    max_games=validation_self_play_games,
+                )
+                metric = (self_play_score if snapshot_pool else 0.0, heuristic_score)
+                if not snapshot_pool or metric > best_metric:
+                    best_metric = metric
+                    best_self_play_score, best_heuristic_score = metric
+                    best_state = copy.deepcopy(policy.state_dict())
                 snapshot_generation += 1
-                add_snapshot(
+                snapshot = add_snapshot(
                     snapshot_pool,
                     policy,
                     self_play_score,
                     heuristic_score,
                     snapshot_generation,
                 )
-            print(
-                f"[{now - start_time:6.1f}s] "
-                f"games={games_played:4d} train_win_rate={wins / max(1, games_played):.3f} "
-                f"decisions={decisions:5d} updates={updates:4d} avg_batch={decisions / max(1, batches):.1f} "
-                f"heuristic={heuristic_score:.3f} self_play={self_play_score:.3f} "
-                f"best_self_play={best_self_play_score:.3f} snapshots={len(snapshot_pool)}"
-            )
-            next_validation += validation_interval
+                policy_registry[snapshot.name] = snapshot.policy
+                print(
+                    f"[{now - start_time:6.1f}s] "
+                    f"games={games_played:4d} train_win_rate={wins / max(1, games_played):.3f} "
+                    f"decisions={decisions:5d} updates={updates:4d} avg_batch={decisions / max(1, batches):.1f} "
+                    f"heuristic={heuristic_score:.3f} self_play={self_play_score:.3f} "
+                    f"best_self_play={best_self_play_score:.3f} snapshots={len(snapshot_pool)}"
+                )
+                next_validation += validation_interval
 
-    policy.load_state_dict(best_state)
-    final_win_rate = evaluate_until_deadline(policy, max_width, max_height, map_names, deadline)
+        policy.load_state_dict(best_state)
+        eval_deadline = max(deadline, time.perf_counter() + final_eval_budget)
+        final_win_rate = evaluate_until_deadline(policy, max_width, max_height, map_names, eval_deadline)
 
-    while time.perf_counter() < deadline:
-        time.sleep(0.01)
+        while time.perf_counter() < deadline:
+            time.sleep(0.01)
+    finally:
+        shutdown_simulation_worker_pool(worker_pool)
 
     completed_runs = previous_runs + 1
     checkpoint_file_str = str(checkpoint_file) if checkpoint_file is not None else None
@@ -1955,7 +2549,9 @@ def train(
         final_eval_budget=final_eval_budget,
         validation_interval=validation_interval,
         parallel_envs=parallel_envs,
+        sim_workers=sim_workers,
         self_play_ratio=self_play_ratio,
+        rollout_fragment_steps=rollout_fragment_steps,
         validation_heuristic_games=validation_heuristic_games,
         validation_self_play_games=validation_self_play_games,
         games_played=games_played,
@@ -2012,10 +2608,22 @@ if __name__ == "__main__":
         help="Number of simultaneous training games (default: device-dependent)",
     )
     parser.add_argument(
+        "--sim-workers",
+        type=int,
+        default=DEFAULT_SIM_WORKERS,
+        help="Number of worker processes used for CPU-side simulator parallelism (0 disables it)",
+    )
+    parser.add_argument(
         "--self-play-ratio",
         type=float,
         default=DEFAULT_SELF_PLAY_RATIO,
         help="Probability of sampling a frozen self-play snapshot opponent for each new training game",
+    )
+    parser.add_argument(
+        "--rollout-fragment-steps",
+        type=int,
+        default=DEFAULT_ROLLOUT_FRAGMENT_STEPS,
+        help="Learner decisions to accumulate before bootstrapped mid-game updates",
     )
     parser.add_argument(
         "--validation-heuristic-games",
@@ -2052,7 +2660,9 @@ if __name__ == "__main__":
         final_eval_budget=args.final_eval_budget,
         validation_interval=args.validation_interval,
         parallel_envs=args.parallel_envs,
+        sim_workers=args.sim_workers,
         self_play_ratio=args.self_play_ratio,
+        rollout_fragment_steps=args.rollout_fragment_steps,
         validation_heuristic_games=args.validation_heuristic_games,
         validation_self_play_games=args.validation_self_play_games,
         checkpoint_dir=args.checkpoint_dir,
