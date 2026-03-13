@@ -1,0 +1,17 @@
+[package]
+name = "hashfront_sim"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hashfront_sim"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+rand = { version = "0.9", features = ["small_rng"] }
+rand_pcg = "0.9"
+
+[profile.release]
+opt-level = 3
+lto = true

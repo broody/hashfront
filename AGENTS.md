@@ -44,6 +44,7 @@ Contracts (`contracts/src/helpers/unit_stats.cairo`) must match those values.
 
 - `autoresearch/program.md` is the task contract for autonomous model-improvement work
 - Unless the simulator API changes, limit autoresearch edits to `autoresearch/train.py`
+- Build the Rust simulator first: `cd autoresearch && uv run maturin develop --release --manifest-path ../tools/hashfront_sim/Cargo.toml`
 - Run training from `autoresearch/` with `uv run train.py`
 - The trainer now auto-resumes from `autoresearch/checkpoints/best.pt` and writes run metrics to `autoresearch/checkpoints/history.jsonl` and `autoresearch/checkpoints/last_run.json`
 - Recommended full self-play run: `uv run train.py --parallel-envs 8 --sim-workers 8 --self-play-ratio 1.0 --validation-interval 150`

@@ -16,40 +16,212 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-simulator_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "tools")
-)
-if simulator_path not in sys.path:
-    sys.path.insert(0, simulator_path)
-
 try:
-    from simulator import (
-        AggressiveStrategy,
-        BalancedStrategy,
-        DEFENSE_BONUS,
-        DefensiveStrategy,
-        RushStrategy,
-        TileType,
-        UnitType,
-        UNIT_HP,
-        UNIT_MAX_RANGE,
-        UNIT_MIN_RANGE,
-        can_capture,
-        do_attack,
-        do_capture,
-        do_move,
-        do_wait,
-        end_turn,
-        expected_damage,
-        list_maps,
-        load_map,
-        manhattan,
-        reachable_tiles,
-        run_game,
+    import hashfront_sim as _hs
+
+    MAPS_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "contracts", "scripts", "maps")
     )
-except ImportError as exc:
-    print(f"Failed to import simulator: {exc}")
-    sys.exit(1)
+
+    def load_map(name):
+        return _hs.load_map(name, MAPS_DIR)
+
+    def list_maps():
+        return _hs.list_maps(MAPS_DIR)
+
+    def do_move(state, uid, tx, ty):
+        _hs.do_move(state, uid, tx, ty)
+
+    def do_attack(state, rng, attacker_uid, defender_uid):
+        return _hs.do_attack(state, rng, attacker_uid, defender_uid)
+
+    def do_capture(state, uid):
+        return _hs.do_capture(state, uid)
+
+    def do_wait(state, uid):
+        _hs.do_wait(state, uid)
+
+    def end_turn(state):
+        _hs.end_turn(state)
+
+    def reachable_tiles(state, uid):
+        return _hs.reachable_tiles(state, uid)
+
+    def best_move_toward(state, uid, tx, ty, occupied=None):
+        return _hs.best_move_toward(state, uid, tx, ty, occupied)
+
+    manhattan = _hs.manhattan_py
+    can_capture = _hs.can_capture_py
+    expected_damage = _hs.expected_damage_py
+    defense_bonus = _hs.defense_bonus_py
+
+    UNIT_HP = dict(_hs.UNIT_HP)
+    UNIT_MIN_RANGE = dict(_hs.UNIT_MIN_RANGE)
+    UNIT_MAX_RANGE = dict(_hs.UNIT_MAX_RANGE)
+    INFANTRY = _hs.INFANTRY
+    TANK = _hs.TANK
+    ARTILLERY = _hs.ARTILLERY
+
+    GameRng = _hs.GameRng
+
+    def play_heuristic_turn(state, player, strategy_name, rng):
+        _hs.play_heuristic_turn(state, player, strategy_name, rng)
+
+    class _GameResult:
+        __slots__ = ("winner", "rounds", "win_type")
+        def __init__(self, winner, rounds, win_type):
+            self.winner = winner
+            self.rounds = rounds
+            self.win_type = win_type
+
+    def run_game(p1_strat, p2_strat, map_name, seed, verbose=False, replay=False):
+        """Run a game. Strategies can be strings (heuristic names) or objects with play_turn."""
+        p1_is_str = isinstance(p1_strat, str)
+        p2_is_str = isinstance(p2_strat, str)
+        p1_name = p1_strat if p1_is_str else None
+        p2_name = p2_strat if p2_is_str else None
+        # If both are native heuristic strings, run entirely in Rust
+        if p1_is_str and p2_is_str:
+            w, r, wt = _hs.run_game(p1_name, p2_name, map_name, seed, MAPS_DIR)
+            return _GameResult(w, r, wt)
+        # Otherwise run in Python with Rust GameState
+        state = load_map(map_name)
+        rng = GameRng(seed)
+        strategies = {1: p1_strat, 2: p2_strat}
+        while state.winner is None and state.round_num <= 100:
+            player = state.current_player
+            strat = strategies[player]
+            if isinstance(strat, str):
+                play_heuristic_turn(state, player, strat, rng)
+            else:
+                strat.play_turn(state, player, rng)
+            if state.winner is None:
+                end_turn(state)
+        winner = state.winner
+        if winner is None:
+            p1u = state.player_units(1)
+            p2u = state.player_units(2)
+            hp1 = sum(u.hp for u in p1u)
+            hp2 = sum(u.hp for u in p2u)
+            winner = 1 if hp1 >= hp2 else 2
+        return _GameResult(winner, state.round_num, "game")
+
+    _USE_RUST_SIM = True
+    print("Using Rust simulator (hashfront_sim)")
+except ImportError:
+    simulator_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "tools")
+    )
+    if simulator_path not in sys.path:
+        sys.path.insert(0, simulator_path)
+    try:
+        from simulator import (
+            DEFENSE_BONUS as _DEFENSE_BONUS_DICT,
+            UNIT_HP as _UNIT_HP_DICT,
+            UNIT_MAX_RANGE as _UNIT_MAX_RANGE_DICT,
+            UNIT_MIN_RANGE as _UNIT_MIN_RANGE_DICT,
+            TileType,
+            UnitType,
+            can_capture as _can_capture_py,
+            do_attack as _do_attack_py,
+            do_capture as _do_capture_py,
+            do_move as _do_move_py,
+            do_wait as _do_wait_py,
+            end_turn as _end_turn_py,
+            expected_damage as _expected_damage_py,
+            list_maps,
+            load_map,
+            manhattan,
+            reachable_tiles as _reachable_tiles_py,
+            run_game as _run_game_py,
+        )
+        from simulator import (
+            AggressiveStrategy,
+            BalancedStrategy,
+            DefensiveStrategy,
+            RushStrategy,
+        )
+
+        INFANTRY = UnitType.INFANTRY.value
+        TANK = UnitType.TANK.value
+        ARTILLERY = UnitType.ARTILLERY.value
+        UNIT_HP = {ut.value: hp for ut, hp in _UNIT_HP_DICT.items()}
+        UNIT_MIN_RANGE = {ut.value: r for ut, r in _UNIT_MIN_RANGE_DICT.items()}
+        UNIT_MAX_RANGE = {ut.value: r for ut, r in _UNIT_MAX_RANGE_DICT.items()}
+
+        _TILE_STR = {t: t.name for t in TileType}
+        _UT_INT = {UnitType.INFANTRY: 1, UnitType.TANK: 2, UnitType.ARTILLERY: 3}
+
+        def defense_bonus(tile):
+            if isinstance(tile, str):
+                tile = TileType[tile]
+            return _DEFENSE_BONUS_DICT[tile]
+
+        def can_capture(ut):
+            if isinstance(ut, int):
+                ut = UnitType(ut)
+            return _can_capture_py(ut)
+
+        def expected_damage(atk, deft, tile, moved, dist):
+            if isinstance(atk, int):
+                atk = UnitType(atk)
+            if isinstance(deft, int):
+                deft = UnitType(deft)
+            if isinstance(tile, str):
+                tile = TileType[tile]
+            return _expected_damage_py(atk, deft, tile, moved, dist)
+
+        def reachable_tiles(state, uid_or_unit):
+            if isinstance(uid_or_unit, int):
+                unit = next(u for u in state.units if u.uid == uid_or_unit)
+            else:
+                unit = uid_or_unit
+            return _reachable_tiles_py(state, unit)
+
+        def do_move(state, uid, tx, ty):
+            unit = next(u for u in state.units if u.uid == uid)
+            _do_move_py(state, unit, tx, ty)
+
+        def do_attack(state, rng, atk_uid, def_uid):
+            atk = next(u for u in state.units if u.uid == atk_uid)
+            deft = next(u for u in state.units if u.uid == def_uid)
+            return _do_attack_py(state, rng, atk, deft)
+
+        def do_capture(state, uid):
+            unit = next(u for u in state.units if u.uid == uid)
+            return _do_capture_py(state, unit)
+
+        def do_wait(state, uid):
+            unit = next(u for u in state.units if u.uid == uid)
+            _do_wait_py(unit)
+
+        def end_turn(state):
+            _end_turn_py(state)
+
+        _HEURISTIC_MAP = {
+            "aggressive": AggressiveStrategy,
+            "defensive": DefensiveStrategy,
+            "rush": RushStrategy,
+            "balanced": BalancedStrategy,
+        }
+
+        class _FallbackRng:
+            def __init__(self, seed):
+                self._rng = random.Random(seed)
+            def randint(self, a, b):
+                return self._rng.randint(a, b)
+
+        GameRng = _FallbackRng
+
+        def play_heuristic_turn(state, player, strategy_name, rng):
+            strat = _HEURISTIC_MAP[strategy_name]()
+            strat.play_turn(state, player, rng._rng if hasattr(rng, '_rng') else rng)
+
+        _USE_RUST_SIM = False
+        print("Using Python simulator (fallback)")
+    except ImportError as exc:
+        print(f"Failed to import simulator: {exc}")
+        sys.exit(1)
 
 
 TOTAL_DURATION = 300.0
@@ -74,8 +246,9 @@ MAX_SNAPSHOT_POOL = 8
 SNAPSHOT_EVAL_COUNT = 2
 SNAPSHOT_EVAL_MAPS = 3
 DEFAULT_VALIDATION_HEURISTIC_GAMES = 4
-DEFAULT_VALIDATION_SELF_PLAY_GAMES = 12
+DEFAULT_VALIDATION_SELF_PLAY_GAMES = 6
 DEFAULT_CHECKPOINT_DIR = "checkpoints"
+MAX_TRAINING_TURNS = 50
 LEARNER_POLICY_KEY = "__learner__"
 REMOTE_BATCH_WAIT = 0.005
 ACTION_TYPES = (
@@ -86,13 +259,13 @@ ACTION_TYPES = (
     "capture",
     "move_capture",
 )
-HEURISTIC_ENSEMBLE = (
-    AggressiveStrategy,
-    DefensiveStrategy,
-    RushStrategy,
-    BalancedStrategy,
+HEURISTIC_NAMES = (
+    "aggressive",
+    "defensive",
+    "rush",
+    "balanced",
 )
-HEURISTIC_BY_NAME = {strategy.__name__: strategy for strategy in HEURISTIC_ENSEMBLE}
+HEURISTIC_BY_NAME = {name: name for name in HEURISTIC_NAMES}
 EVAL_TEMPERATURES = {
     "ambush": 0.05,
     "archipelago": 0.30,
@@ -191,9 +364,10 @@ def stable_map_token(map_name: str) -> int:
     return sum((idx + 1) * ord(ch) for idx, ch in enumerate(map_name))
 
 
-def make_ensemble_opponent(map_name: str, seed: int):
+def make_ensemble_opponent(map_name: str, seed: int) -> str:
+    """Return a heuristic strategy name."""
     rng = random.Random(seed * 9973 + stable_map_token(map_name) * 37)
-    return rng.choice(HEURISTIC_ENSEMBLE)()
+    return rng.choice(HEURISTIC_NAMES)
 
 
 def evaluation_temperature(map_name: str) -> float:
@@ -244,11 +418,11 @@ def normalize_heuristics(heuristic_tensor: torch.Tensor) -> torch.Tensor:
     return heuristic_tensor
 
 
-def resolve_heuristic_strategy(name: str):
-    strategy_cls = HEURISTIC_BY_NAME.get(name)
-    if strategy_cls is None:
+def resolve_heuristic_strategy(name: str) -> str:
+    """Return a validated heuristic strategy name."""
+    if name not in HEURISTIC_BY_NAME:
         raise ValueError(f"Unknown heuristic strategy: {name}")
-    return strategy_cls()
+    return name
 
 
 def tensor_on_device(tensor: torch.Tensor) -> torch.Tensor:
@@ -438,8 +612,8 @@ def sample_training_opponent(
         snapshot = random.choice(snapshot_pool)
         return None, snapshot.policy, snapshot.name, evaluation_temperature(map_name)
 
-    heuristic = make_ensemble_opponent(map_name, seed)
-    return heuristic, None, heuristic.name, evaluation_temperature(map_name)
+    heuristic_name = make_ensemble_opponent(map_name, seed)
+    return heuristic_name, None, heuristic_name, evaluation_temperature(map_name)
 
 
 def build_danger_maps(state, player: int):
@@ -447,13 +621,13 @@ def build_danger_maps(state, player: int):
     height = state.height
     danger_by_type = {
         unit_type: [[0.0 for _ in range(width)] for _ in range(height)]
-        for unit_type in (UnitType.INFANTRY, UnitType.TANK, UnitType.ARTILLERY)
+        for unit_type in (INFANTRY, TANK, ARTILLERY)
     }
 
     for enemy in state.enemy_units(player):
         candidate_tiles = [(enemy.x, enemy.y)]
-        if enemy.unit_type != UnitType.ARTILLERY:
-            candidate_tiles.extend(reachable_tiles(state, enemy).keys())
+        if enemy.unit_type != ARTILLERY:
+            candidate_tiles.extend(reachable_tiles(state, enemy.uid).keys())
 
         for ex, ey in candidate_tiles:
             moved = (ex, ey) != (enemy.x, enemy.y)
@@ -481,10 +655,10 @@ def encode_board(state, player: int, focus_uid: int, max_width: int, max_height:
     for y in range(state.height):
         for x in range(state.width):
             tile = state.tile_at(x, y)
-            board[0, y, x] = DEFENSE_BONUS[tile] / 2.0
-            board[1, y, x] = 1.0 if tile in (TileType.ROAD, TileType.DIRT_ROAD) else 0.0
-            board[2, y, x] = 1.0 if tile == TileType.MOUNTAIN else 0.0
-            board[3, y, x] = 1.0 if tile == TileType.TREE else 0.0
+            board[0, y, x] = defense_bonus(tile) / 2.0
+            board[1, y, x] = 1.0 if tile in ("ROAD", "DIRT_ROAD") else 0.0
+            board[2, y, x] = 1.0 if tile == "MOUNTAIN" else 0.0
+            board[3, y, x] = 1.0 if tile == "TREE" else 0.0
 
     for building in state.buildings:
         if building.owner == player:
@@ -498,17 +672,17 @@ def encode_board(state, player: int, focus_uid: int, max_width: int, max_height:
 
         if unit.player == player:
             base = {
-                UnitType.INFANTRY: 4,
-                UnitType.TANK: 5,
-                UnitType.ARTILLERY: 6,
+                INFANTRY: 4,
+                TANK: 5,
+                ARTILLERY: 6,
             }[unit.unit_type]
             board[7, unit.y, unit.x] = unit.hp / UNIT_HP[unit.unit_type]
             board[8, unit.y, unit.x] = 0.0 if unit.has_acted else 1.0
         else:
             base = {
-                UnitType.INFANTRY: 9,
-                UnitType.TANK: 10,
-                UnitType.ARTILLERY: 11,
+                INFANTRY: 9,
+                TANK: 10,
+                ARTILLERY: 11,
             }[unit.unit_type]
             board[12, unit.y, unit.x] = unit.hp / UNIT_HP[unit.unit_type]
 
@@ -544,9 +718,9 @@ def unit_order(state, player: int, rusher_uid: int | None):
         return min(manhattan(unit.x, unit.y, enemy.x, enemy.y) for enemy in enemies)
 
     type_priority = {
-        UnitType.ARTILLERY: 0,
-        UnitType.TANK: 1,
-        UnitType.INFANTRY: 2,
+        ARTILLERY: 0,
+        TANK: 1,
+        INFANTRY: 2,
     }
 
     units = state.player_units(player)
@@ -573,20 +747,20 @@ def action_priority_key(
     enemy_hq = state.player_hq(state.other_player(player))
     own_hq = state.player_hq(player)
     x, y = tile
-    defense = DEFENSE_BONUS[state.tile_at(x, y)]
+    tile_defense = defense_bonus(state.tile_at(x, y))
     danger = danger_map[y][x]
     nearest_enemy = min((manhattan(x, y, enemy.x, enemy.y) for enemy in enemies), default=state.width + state.height)
     enemy_hq_dist = manhattan(x, y, enemy_hq.x, enemy_hq.y) if enemy_hq else state.width + state.height
     own_hq_dist = manhattan(x, y, own_hq.x, own_hq.y) if own_hq else 0
     hp_bias = 0.7 * nearest_enemy if unit.hp <= 1 else -0.4 * nearest_enemy
     rusher_bias = -enemy_hq_dist if unit.uid == rusher_uid else 0.0
-    return defense * 1.4 - danger * 0.8 + hp_bias + rusher_bias - own_hq_dist * 0.15
+    return tile_defense * 1.4 - danger * 0.8 + hp_bias + rusher_bias - own_hq_dist * 0.15
 
 
 def candidate_targets(state, unit, move_to: tuple[int, int]):
     x, y = move_to
     moved = (x, y) != (unit.x, unit.y)
-    if unit.unit_type == UnitType.ARTILLERY and moved:
+    if unit.unit_type == ARTILLERY and moved:
         return []
 
     min_range = UNIT_MIN_RANGE[unit.unit_type]
@@ -619,7 +793,7 @@ def candidate_feature_vector(
     moved = 1.0 if (x, y) != (unit.x, unit.y) else 0.0
     action_one_hot = one_hot(ACTION_TYPES.index(kind), len(ACTION_TYPES))
     unit_one_hot = one_hot(
-        {UnitType.INFANTRY: 0, UnitType.TANK: 1, UnitType.ARTILLERY: 2}[unit.unit_type],
+        {INFANTRY: 0, TANK: 1, ARTILLERY: 2}[unit.unit_type],
         3,
     )
 
@@ -631,7 +805,7 @@ def candidate_feature_vector(
         kill_flag = 0.0
     else:
         target_one_hot = one_hot(
-            {UnitType.INFANTRY: 0, UnitType.TANK: 1, UnitType.ARTILLERY: 2}[target.unit_type],
+            {INFANTRY: 0, TANK: 1, ARTILLERY: 2}[target.unit_type],
             4,
         )
         distance = manhattan(x, y, target.x, target.y)
@@ -660,7 +834,7 @@ def candidate_feature_vector(
     nearest_enemy = min((manhattan(x, y, enemy.x, enemy.y) for enemy in enemy_units), default=state.width + state.height)
     own_support = sum(1 for ally in own_units if ally.uid != unit.uid and manhattan(x, y, ally.x, ally.y) <= 2)
     enemy_support = sum(1 for enemy in enemy_units if manhattan(x, y, enemy.x, enemy.y) <= 2)
-    defense = DEFENSE_BONUS[state.tile_at(x, y)] / 2.0
+    defense = defense_bonus(state.tile_at(x, y)) / 2.0
     danger = danger_map[y][x] / 8.0
 
     enemy_hq_dist = 0.0
@@ -734,7 +908,7 @@ def score_candidate(
     enemy_hq = state.player_hq(state.other_player(player))
     x, y = move_to
     moved = (x, y) != (unit.x, unit.y)
-    defense = DEFENSE_BONUS[state.tile_at(x, y)]
+    defense = defense_bonus(state.tile_at(x, y))
     danger = danger_map[y][x]
     enemies = state.enemy_units(player)
 
@@ -767,9 +941,9 @@ def score_candidate(
         score += damage * 4.3 - counter * 2.6
         if damage >= target.hp:
             score += 7.5
-        if target.unit_type == UnitType.TANK:
+        if target.unit_type == TANK:
             score += 2.5
-        elif target.unit_type == UnitType.ARTILLERY:
+        elif target.unit_type == ARTILLERY:
             score += 1.3
 
     if "capture" in kind:
@@ -779,9 +953,9 @@ def score_candidate(
 
     if unit.hp <= 1:
         score += nearest_enemy * 0.8 - own_hq_dist * 0.5
-    elif unit.unit_type == UnitType.ARTILLERY:
+    elif unit.unit_type == ARTILLERY:
         score += 2.5 - 1.3 * abs(nearest_enemy - 2.5)
-    elif unit.unit_type == UnitType.TANK:
+    elif unit.unit_type == TANK:
         score -= nearest_enemy * 0.45
     else:
         score -= nearest_enemy * 0.28
@@ -825,7 +999,7 @@ def enumerate_candidates(
             rusher_uid,
         )
     }
-    for tile in reachable_tiles(state, unit).keys():
+    for tile in reachable_tiles(state, unit.uid).keys():
         tile_scores[tile] = action_priority_key(
             state,
             player,
@@ -938,21 +1112,19 @@ def enumerate_candidates(
     return candidates
 
 
-def execute_candidate(state, unit, candidate: ActionCandidate, rng: random.Random):
+def execute_candidate(state, unit, candidate: ActionCandidate, rng):
     if candidate.move_to != (unit.x, unit.y):
-        do_move(state, unit, candidate.move_to[0], candidate.move_to[1])
+        do_move(state, unit.uid, candidate.move_to[0], candidate.move_to[1])
 
     if candidate.kind.endswith("capture"):
-        do_capture(state, unit)
+        do_capture(state, unit.uid)
         return
 
     if "attack" in candidate.kind and candidate.target_uid is not None:
-        target = next((enemy for enemy in state.units if enemy.uid == candidate.target_uid and enemy.alive), None)
-        if target is not None:
-            do_attack(state, rng, unit, target)
-            return
+        do_attack(state, rng, unit.uid, candidate.target_uid)
+        return
 
-    do_wait(unit)
+    do_wait(state, unit.uid)
 
 
 def immediate_reward(
@@ -980,7 +1152,7 @@ def immediate_reward(
 
     if state.winner == player:
         reward += 20.0
-    elif state.winner is not None and state.winner != player:
+    elif state.winner is not None and state.winner == state.other_player(player):
         reward -= 20.0
 
     return reward
@@ -1219,7 +1391,7 @@ def spawn_training_env(
     )
     env = TrainingEnv(
         state=load_map(map_name),
-        rng=random.Random(seed),
+        rng=GameRng(seed),
         learner_temperature=learner_temperature,
         opponent_strategy=opponent_strategy,
         opponent_policy=opponent_policy,
@@ -1240,8 +1412,8 @@ def sample_training_opponent_spec(
         snapshot = random.choice(snapshot_pool)
         return "snapshot", snapshot.name, evaluation_temperature(map_name)
 
-    heuristic = make_ensemble_opponent(map_name, seed)
-    return "heuristic", heuristic.__class__.__name__, evaluation_temperature(map_name)
+    heuristic_name = make_ensemble_opponent(map_name, seed)
+    return "heuristic", heuristic_name, evaluation_temperature(map_name)
 
 
 def spawn_worker_training_env(
@@ -1256,7 +1428,7 @@ def spawn_worker_training_env(
     opponent_policy = opponent_name if opponent_kind == "snapshot" else None
     env = TrainingEnv(
         state=load_map(map_name),
-        rng=random.Random(seed),
+        rng=GameRng(seed),
         learner_temperature=learner_temperature,
         opponent_strategy=opponent_strategy,
         opponent_policy=opponent_policy,
@@ -1442,6 +1614,13 @@ def next_policy_request(
     return None
 
 
+def _check_turn_limit(state) -> bool:
+    if state.winner is None and state.round_num >= MAX_TRAINING_TURNS:
+        state.winner = -1
+        return True
+    return False
+
+
 def ensure_policy_request(
     env: TrainingEnv,
     max_width: int,
@@ -1478,9 +1657,10 @@ def ensure_policy_request(
             )
         else:
             clear_policy_turn(env)
-            env.opponent_strategy.play_turn(env.state, player, env.rng)
+            play_heuristic_turn(env.state, player, env.opponent_strategy, env.rng)
             if env.state.winner is None:
                 end_turn(env.state)
+            _check_turn_limit(env.state)
             continue
 
         if request is not None:
@@ -1489,6 +1669,7 @@ def ensure_policy_request(
         clear_policy_turn(env)
         if env.state.winner is None:
             end_turn(env.state)
+        _check_turn_limit(env.state)
 
     return None
 
@@ -1708,8 +1889,10 @@ def update_rollout(
     if not transitions:
         return
 
-    if winner is not None:
-        transitions[-1]["reward"] += 12.0 if winner == player else -12.0
+    if winner == player:
+        transitions[-1]["reward"] += 12.0
+    elif winner is not None and winner > 0:
+        transitions[-1]["reward"] -= 12.0
 
     recomputed = []
     for transition in transitions:
