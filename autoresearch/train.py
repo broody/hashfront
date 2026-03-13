@@ -1,0 +1,2061 @@
+import argparse
+import copy
+import json
+import os
+import random
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+
+simulator_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "tools")
+)
+if simulator_path not in sys.path:
+    sys.path.insert(0, simulator_path)
+
+try:
+    from simulator import (
+        AggressiveStrategy,
+        BalancedStrategy,
+        DEFENSE_BONUS,
+        DefensiveStrategy,
+        RushStrategy,
+        TileType,
+        UnitType,
+        UNIT_HP,
+        UNIT_MAX_RANGE,
+        UNIT_MIN_RANGE,
+        can_capture,
+        do_attack,
+        do_capture,
+        do_move,
+        do_wait,
+        end_turn,
+        expected_damage,
+        list_maps,
+        load_map,
+        manhattan,
+        reachable_tiles,
+        run_game,
+    )
+except ImportError as exc:
+    print(f"Failed to import simulator: {exc}")
+    sys.exit(1)
+
+
+TOTAL_DURATION = 300.0
+FINAL_EVAL_BUDGET = 30.0
+VALIDATION_INTERVAL = 30.0
+BASE_SEED = 1337
+GAMMA = 0.97
+LAMBDA = 0.90
+ENTROPY_WEIGHT = 0.012
+VALUE_WEIGHT = 0.45
+IMITATION_WEIGHT = 0.35
+LEARNING_RATE = 3e-4
+WEIGHT_DECAY = 1e-4
+MAX_TILE_CANDIDATES = 8
+BOARD_CHANNELS = 16
+ROLLOUT_FRAGMENT_STEPS = 64
+DEFAULT_PARALLEL_ENVS_CPU = 4
+DEFAULT_PARALLEL_ENVS_CUDA = 8
+DEFAULT_SELF_PLAY_RATIO = 0.65
+MAX_SNAPSHOT_POOL = 4
+SNAPSHOT_EVAL_COUNT = 2
+SNAPSHOT_EVAL_MAPS = 3
+DEFAULT_VALIDATION_HEURISTIC_GAMES = 2
+DEFAULT_VALIDATION_SELF_PLAY_GAMES = 2
+DEFAULT_CHECKPOINT_DIR = "checkpoints"
+ACTION_TYPES = (
+    "wait",
+    "move_wait",
+    "attack",
+    "move_attack",
+    "capture",
+    "move_capture",
+)
+HEURISTIC_ENSEMBLE = (
+    AggressiveStrategy,
+    DefensiveStrategy,
+    RushStrategy,
+    BalancedStrategy,
+)
+EVAL_TEMPERATURES = {
+    "ambush": 0.05,
+    "archipelago": 0.30,
+    "bridgehead": 0.05,
+    "cliffside": 0.05,
+    "contested": 0.05,
+    "coral_strait": 0.05,
+    "coral_strait_v2": 0.05,
+    "coral_strait_v3": 0.20,
+    "coral_strait_v4": 0.20,
+    "crossroads": 0.05,
+    "fortress": 0.05,
+    "gauntlet": 0.05,
+    "industrial": 0.05,
+    "no_mans_land": 0.05,
+    "ridgeline": 0.05,
+    "scattered": 0.05,
+    "sprawl": 0.05,
+    "terrain": 0.05,
+    "twinpeaks": 0.10,
+    "valley": 0.05,
+    "warfront": 0.05,
+}
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+@dataclass
+class ActionCandidate:
+    kind: str
+    move_to: tuple[int, int]
+    target_uid: int | None
+    features: list[float]
+    heuristic_score: float
+
+
+@dataclass
+class TrainingEnv:
+    state: object
+    rng: random.Random
+    learner_temperature: float
+    opponent_strategy: object | None = None
+    opponent_policy: object | None = None
+    opponent_name: str = "heuristic"
+    opponent_temperature: float = 0.10
+    transitions: list[dict] = field(default_factory=list)
+    turn_units: list = field(default_factory=list)
+    turn_cursor: int = 0
+    danger_maps: dict | None = None
+    rusher_uid: int | None = None
+    turn_player: int | None = None
+
+
+@dataclass
+class PolicySnapshot:
+    name: str
+    policy: object
+    self_play_score: float
+    heuristic_score: float
+
+
+@dataclass
+class PolicyDecisionRequest:
+    env: TrainingEnv
+    player: int
+    policy: object
+    unit: object
+    board_tensor: torch.Tensor
+    candidate_tensor: torch.Tensor
+    heuristic_tensor: torch.Tensor
+    candidates: list[ActionCandidate]
+    before_metrics: tuple[int, int, int, int]
+    temperature: float
+    record_transition: bool
+    teacher_index: int
+
+
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def stable_map_token(map_name: str) -> int:
+    return sum((idx + 1) * ord(ch) for idx, ch in enumerate(map_name))
+
+
+def make_ensemble_opponent(map_name: str, seed: int):
+    rng = random.Random(seed * 9973 + stable_map_token(map_name) * 37)
+    return rng.choice(HEURISTIC_ENSEMBLE)()
+
+
+def evaluation_temperature(map_name: str) -> float:
+    return EVAL_TEMPERATURES.get(map_name, 0.20)
+
+
+def default_parallel_envs() -> int:
+    return DEFAULT_PARALLEL_ENVS_CUDA if device.type == "cuda" else DEFAULT_PARALLEL_ENVS_CPU
+
+
+def compute_board_limits(map_names: list[str]) -> tuple[int, int]:
+    max_width = 0
+    max_height = 0
+    for map_name in map_names:
+        state = load_map(map_name)
+        max_width = max(max_width, state.width)
+        max_height = max(max_height, state.height)
+    return max_width, max_height
+
+
+def one_hot(index: int, size: int) -> list[float]:
+    values = [0.0] * size
+    if 0 <= index < size:
+        values[index] = 1.0
+    return values
+
+
+def find_building(state, x: int, y: int):
+    for building in state.buildings:
+        if building.x == x and building.y == y:
+            return building
+    return None
+
+
+def current_metrics(state, player: int) -> tuple[int, int, int, int]:
+    own_units = state.player_units(player)
+    enemy_units = state.enemy_units(player)
+    own_hp = sum(unit.hp for unit in own_units)
+    enemy_hp = sum(unit.hp for unit in enemy_units)
+    return own_hp, enemy_hp, len(own_units), len(enemy_units)
+
+
+def normalize_heuristics(heuristic_tensor: torch.Tensor) -> torch.Tensor:
+    if heuristic_tensor.numel() > 1:
+        heuristic_tensor = (heuristic_tensor - heuristic_tensor.mean()) / (
+            heuristic_tensor.std(unbiased=False) + 1e-6
+        )
+    return heuristic_tensor
+
+
+def checkpoint_path(checkpoint_dir: str | None) -> Path | None:
+    if not checkpoint_dir:
+        return None
+    return Path(checkpoint_dir) / "best.pt"
+
+
+def history_path(checkpoint_dir: str | None) -> Path | None:
+    if not checkpoint_dir:
+        return None
+    return Path(checkpoint_dir) / "history.jsonl"
+
+
+def last_run_path(checkpoint_dir: str | None) -> Path | None:
+    if not checkpoint_dir:
+        return None
+    return Path(checkpoint_dir) / "last_run.json"
+
+
+def cpu_state_dict(model_or_state) -> dict[str, torch.Tensor]:
+    state_dict = model_or_state if isinstance(model_or_state, dict) else model_or_state.state_dict()
+    return {
+        key: value.detach().cpu().clone()
+        for key, value in state_dict.items()
+    }
+
+
+def serialize_snapshot_pool(snapshot_pool: list[PolicySnapshot]) -> list[dict]:
+    serialized = []
+    for snapshot in snapshot_pool:
+        serialized.append(
+            {
+                "name": snapshot.name,
+                "self_play_score": snapshot.self_play_score,
+                "heuristic_score": snapshot.heuristic_score,
+                "state_dict": cpu_state_dict(snapshot.policy),
+            }
+        )
+    return serialized
+
+
+def deserialize_snapshot_pool(raw_snapshots: list[dict], feature_dim: int) -> list[PolicySnapshot]:
+    snapshot_pool = []
+    for raw_snapshot in raw_snapshots:
+        snapshot_policy = PolicyValueNet(feature_dim).to(device)
+        snapshot_policy.load_state_dict(raw_snapshot["state_dict"])
+        snapshot_policy.eval()
+        snapshot_policy.requires_grad_(False)
+        snapshot_pool.append(
+            PolicySnapshot(
+                name=raw_snapshot.get("name", "snapshot"),
+                policy=snapshot_policy,
+                self_play_score=float(raw_snapshot.get("self_play_score", 0.0)),
+                heuristic_score=float(raw_snapshot.get("heuristic_score", 0.0)),
+            )
+        )
+    return snapshot_pool
+
+
+def load_training_checkpoint(
+    checkpoint_dir: str | None,
+    feature_dim: int,
+) -> dict | None:
+    path = checkpoint_path(checkpoint_dir)
+    if path is None or not path.exists():
+        return None
+
+    checkpoint = torch.load(path, map_location="cpu")
+    raw_snapshots = checkpoint.get("snapshot_pool", [])
+    checkpoint["snapshot_pool"] = deserialize_snapshot_pool(raw_snapshots, feature_dim)
+    return checkpoint
+
+
+def save_training_checkpoint(
+    checkpoint_dir: str | None,
+    *,
+    best_state: dict[str, torch.Tensor],
+    best_self_play_score: float,
+    best_heuristic_score: float,
+    snapshot_pool: list[PolicySnapshot],
+    snapshot_generation: int,
+    sample_features: int,
+    completed_runs: int,
+    run_record: dict,
+) -> Path | None:
+    path = checkpoint_path(checkpoint_dir)
+    if path is None:
+        return None
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sample_features": sample_features,
+        "policy_state": cpu_state_dict(best_state),
+        "best_self_play_score": best_self_play_score,
+        "best_heuristic_score": best_heuristic_score,
+        "snapshot_generation": snapshot_generation,
+        "snapshot_pool": serialize_snapshot_pool(snapshot_pool),
+        "completed_runs": completed_runs,
+        "last_run": run_record,
+    }
+    torch.save(payload, path)
+    return path
+
+
+def append_history(checkpoint_dir: str | None, run_record: dict) -> None:
+    path = history_path(checkpoint_dir)
+    if path is None:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(run_record, sort_keys=True) + "\n")
+
+
+def write_last_run(checkpoint_dir: str | None, run_record: dict) -> None:
+    path = last_run_path(checkpoint_dir)
+    if path is None:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(run_record, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def make_policy_snapshot(
+    policy: "PolicyValueNet",
+    self_play_score: float,
+    heuristic_score: float,
+    generation: int,
+) -> PolicySnapshot:
+    snapshot_policy = copy.deepcopy(policy).to(device)
+    snapshot_policy.eval()
+    snapshot_policy.requires_grad_(False)
+    return PolicySnapshot(
+        name=f"snapshot_{generation}",
+        policy=snapshot_policy,
+        self_play_score=self_play_score,
+        heuristic_score=heuristic_score,
+    )
+
+
+def add_snapshot(
+    snapshot_pool: list[PolicySnapshot],
+    policy: "PolicyValueNet",
+    self_play_score: float,
+    heuristic_score: float,
+    generation: int,
+) -> None:
+    snapshot_pool.append(
+        make_policy_snapshot(policy, self_play_score, heuristic_score, generation)
+    )
+    if len(snapshot_pool) > MAX_SNAPSHOT_POOL:
+        snapshot_pool.pop(0)
+
+
+def sample_training_opponent(
+    snapshot_pool: list[PolicySnapshot],
+    map_name: str,
+    seed: int,
+    self_play_ratio: float,
+):
+    if snapshot_pool and random.random() < self_play_ratio:
+        snapshot = random.choice(snapshot_pool)
+        return None, snapshot.policy, snapshot.name, evaluation_temperature(map_name)
+
+    heuristic = make_ensemble_opponent(map_name, seed)
+    return heuristic, None, heuristic.name, evaluation_temperature(map_name)
+
+
+def build_danger_maps(state, player: int):
+    width = state.width
+    height = state.height
+    danger_by_type = {
+        unit_type: [[0.0 for _ in range(width)] for _ in range(height)]
+        for unit_type in (UnitType.INFANTRY, UnitType.TANK, UnitType.ARTILLERY)
+    }
+
+    for enemy in state.enemy_units(player):
+        candidate_tiles = [(enemy.x, enemy.y)]
+        if enemy.unit_type != UnitType.ARTILLERY:
+            candidate_tiles.extend(reachable_tiles(state, enemy).keys())
+
+        for ex, ey in candidate_tiles:
+            moved = (ex, ey) != (enemy.x, enemy.y)
+            min_range = UNIT_MIN_RANGE[enemy.unit_type]
+            max_range = UNIT_MAX_RANGE[enemy.unit_type]
+            for tx in range(max(0, ex - max_range), min(width, ex + max_range + 1)):
+                for ty in range(max(0, ey - max_range), min(height, ey + max_range + 1)):
+                    distance = manhattan(ex, ey, tx, ty)
+                    if min_range <= distance <= max_range:
+                        tile = state.tile_at(tx, ty)
+                        for defender_type, danger in danger_by_type.items():
+                            danger[ty][tx] += expected_damage(
+                                enemy.unit_type,
+                                defender_type,
+                                tile,
+                                moved,
+                                distance,
+                            )
+    return danger_by_type
+
+
+def encode_board(state, player: int, focus_uid: int, max_width: int, max_height: int):
+    board = torch.zeros((BOARD_CHANNELS, max_height, max_width), dtype=torch.float32, device=device)
+
+    for y in range(state.height):
+        for x in range(state.width):
+            tile = state.tile_at(x, y)
+            board[0, y, x] = DEFENSE_BONUS[tile] / 2.0
+            board[1, y, x] = 1.0 if tile in (TileType.ROAD, TileType.DIRT_ROAD) else 0.0
+            board[2, y, x] = 1.0 if tile == TileType.MOUNTAIN else 0.0
+            board[3, y, x] = 1.0 if tile == TileType.TREE else 0.0
+
+    for building in state.buildings:
+        if building.owner == player:
+            board[13, building.y, building.x] = 1.0
+        else:
+            board[14, building.y, building.x] = 1.0
+
+    for unit in state.units:
+        if not unit.alive:
+            continue
+
+        if unit.player == player:
+            base = {
+                UnitType.INFANTRY: 4,
+                UnitType.TANK: 5,
+                UnitType.ARTILLERY: 6,
+            }[unit.unit_type]
+            board[7, unit.y, unit.x] = unit.hp / UNIT_HP[unit.unit_type]
+            board[8, unit.y, unit.x] = 0.0 if unit.has_acted else 1.0
+        else:
+            base = {
+                UnitType.INFANTRY: 9,
+                UnitType.TANK: 10,
+                UnitType.ARTILLERY: 11,
+            }[unit.unit_type]
+            board[12, unit.y, unit.x] = unit.hp / UNIT_HP[unit.unit_type]
+
+        board[base, unit.y, unit.x] = 1.0
+        if unit.uid == focus_uid:
+            board[15, unit.y, unit.x] = 1.0
+
+    return board
+
+
+def choose_rusher(state, player: int):
+    enemy_hq = state.player_hq(state.other_player(player))
+    if enemy_hq is None:
+        return None
+
+    candidates = [unit for unit in state.player_units(player) if can_capture(unit.unit_type)]
+    if not candidates:
+        return None
+
+    closest = min(
+        candidates,
+        key=lambda unit: manhattan(unit.x, unit.y, enemy_hq.x, enemy_hq.y),
+    )
+    return closest.uid
+
+
+def unit_order(state, player: int, rusher_uid: int | None):
+    enemies = state.enemy_units(player)
+
+    def nearest_enemy_distance(unit) -> int:
+        if not enemies:
+            return state.width + state.height
+        return min(manhattan(unit.x, unit.y, enemy.x, enemy.y) for enemy in enemies)
+
+    type_priority = {
+        UnitType.ARTILLERY: 0,
+        UnitType.TANK: 1,
+        UnitType.INFANTRY: 2,
+    }
+
+    units = state.player_units(player)
+    units.sort(
+        key=lambda unit: (
+            0 if unit.uid == rusher_uid else 1,
+            nearest_enemy_distance(unit),
+            type_priority[unit.unit_type],
+            -unit.hp,
+        )
+    )
+    return units
+
+
+def action_priority_key(
+    state,
+    player: int,
+    unit,
+    tile: tuple[int, int],
+    danger_map: list[list[float]],
+    rusher_uid: int | None,
+):
+    enemies = state.enemy_units(player)
+    enemy_hq = state.player_hq(state.other_player(player))
+    own_hq = state.player_hq(player)
+    x, y = tile
+    defense = DEFENSE_BONUS[state.tile_at(x, y)]
+    danger = danger_map[y][x]
+    nearest_enemy = min((manhattan(x, y, enemy.x, enemy.y) for enemy in enemies), default=state.width + state.height)
+    enemy_hq_dist = manhattan(x, y, enemy_hq.x, enemy_hq.y) if enemy_hq else state.width + state.height
+    own_hq_dist = manhattan(x, y, own_hq.x, own_hq.y) if own_hq else 0
+    hp_bias = 0.7 * nearest_enemy if unit.hp <= 1 else -0.4 * nearest_enemy
+    rusher_bias = -enemy_hq_dist if unit.uid == rusher_uid else 0.0
+    return defense * 1.4 - danger * 0.8 + hp_bias + rusher_bias - own_hq_dist * 0.15
+
+
+def candidate_targets(state, unit, move_to: tuple[int, int]):
+    x, y = move_to
+    moved = (x, y) != (unit.x, unit.y)
+    if unit.unit_type == UnitType.ARTILLERY and moved:
+        return []
+
+    min_range = UNIT_MIN_RANGE[unit.unit_type]
+    max_range = UNIT_MAX_RANGE[unit.unit_type]
+    targets = []
+    for enemy in state.enemy_units(unit.player):
+        distance = manhattan(x, y, enemy.x, enemy.y)
+        if min_range <= distance <= max_range:
+            targets.append(enemy)
+    return targets
+
+
+def candidate_feature_vector(
+    state,
+    player: int,
+    unit,
+    move_to: tuple[int, int],
+    target,
+    kind: str,
+    danger_map: list[list[float]],
+    heuristic_score: float,
+    rusher_uid: int | None,
+):
+    own_units = state.player_units(player)
+    enemy_units = state.enemy_units(player)
+    own_hq = state.player_hq(player)
+    enemy_hq = state.player_hq(state.other_player(player))
+
+    x, y = move_to
+    moved = 1.0 if (x, y) != (unit.x, unit.y) else 0.0
+    action_one_hot = one_hot(ACTION_TYPES.index(kind), len(ACTION_TYPES))
+    unit_one_hot = one_hot(
+        {UnitType.INFANTRY: 0, UnitType.TANK: 1, UnitType.ARTILLERY: 2}[unit.unit_type],
+        3,
+    )
+
+    if target is None:
+        target_one_hot = one_hot(3, 4)
+        target_hp = 0.0
+        damage = 0.0
+        counter = 0.0
+        kill_flag = 0.0
+    else:
+        target_one_hot = one_hot(
+            {UnitType.INFANTRY: 0, UnitType.TANK: 1, UnitType.ARTILLERY: 2}[target.unit_type],
+            4,
+        )
+        distance = manhattan(x, y, target.x, target.y)
+        damage = expected_damage(
+            unit.unit_type,
+            target.unit_type,
+            state.tile_at(target.x, target.y),
+            bool(moved),
+            distance,
+        )
+        counter = 0.0
+        if damage < target.hp:
+            target_min = UNIT_MIN_RANGE[target.unit_type]
+            target_max = UNIT_MAX_RANGE[target.unit_type]
+            if target_min <= distance <= target_max:
+                counter = expected_damage(
+                    target.unit_type,
+                    unit.unit_type,
+                    state.tile_at(x, y),
+                    False,
+                    distance,
+                )
+        target_hp = target.hp / UNIT_HP[target.unit_type]
+        kill_flag = 1.0 if damage >= target.hp else 0.0
+
+    nearest_enemy = min((manhattan(x, y, enemy.x, enemy.y) for enemy in enemy_units), default=state.width + state.height)
+    own_support = sum(1 for ally in own_units if ally.uid != unit.uid and manhattan(x, y, ally.x, ally.y) <= 2)
+    enemy_support = sum(1 for enemy in enemy_units if manhattan(x, y, enemy.x, enemy.y) <= 2)
+    defense = DEFENSE_BONUS[state.tile_at(x, y)] / 2.0
+    danger = danger_map[y][x] / 8.0
+
+    enemy_hq_dist = 0.0
+    own_hq_dist = 0.0
+    delta_enemy_hq = 0.0
+    if enemy_hq:
+        enemy_hq_dist = manhattan(x, y, enemy_hq.x, enemy_hq.y) / (state.width + state.height)
+        delta_enemy_hq = (
+            manhattan(unit.x, unit.y, enemy_hq.x, enemy_hq.y)
+            - manhattan(x, y, enemy_hq.x, enemy_hq.y)
+        ) / (state.width + state.height)
+    if own_hq:
+        own_hq_dist = manhattan(x, y, own_hq.x, own_hq.y) / (state.width + state.height)
+
+    delta_enemy = (
+        min((manhattan(unit.x, unit.y, enemy.x, enemy.y) for enemy in enemy_units), default=state.width + state.height)
+        - nearest_enemy
+    ) / (state.width + state.height)
+
+    own_hp, enemy_hp, own_count, enemy_count = current_metrics(state, player)
+    on_enemy_hq = 1.0 if enemy_hq and (x, y) == (enemy_hq.x, enemy_hq.y) else 0.0
+    on_own_hq = 1.0 if own_hq and (x, y) == (own_hq.x, own_hq.y) else 0.0
+    capture_flag = 1.0 if "capture" in kind else 0.0
+    is_rusher = 1.0 if unit.uid == rusher_uid else 0.0
+
+    features = []
+    features.extend(action_one_hot)
+    features.extend(unit_one_hot)
+    features.extend(target_one_hot)
+    features.extend(
+        [
+            unit.hp / UNIT_HP[unit.unit_type],
+            target_hp,
+            moved,
+            defense,
+            danger,
+            own_support / 4.0,
+            enemy_support / 4.0,
+            nearest_enemy / (state.width + state.height),
+            enemy_hq_dist,
+            own_hq_dist,
+            delta_enemy_hq,
+            delta_enemy,
+            damage / 5.0,
+            counter / 5.0,
+            kill_flag,
+            capture_flag,
+            on_enemy_hq,
+            on_own_hq,
+            is_rusher,
+            state.round_num / 30.0,
+            max(-1.0, min(1.0, (own_count - enemy_count) / 6.0)),
+            max(-1.0, min(1.0, (own_hp - enemy_hp) / 15.0)),
+            heuristic_score / 20.0,
+        ]
+    )
+    return features
+
+
+def score_candidate(
+    state,
+    player: int,
+    unit,
+    move_to: tuple[int, int],
+    target,
+    kind: str,
+    danger_map: list[list[float]],
+    rusher_uid: int | None,
+):
+    own_hq = state.player_hq(player)
+    enemy_hq = state.player_hq(state.other_player(player))
+    x, y = move_to
+    moved = (x, y) != (unit.x, unit.y)
+    defense = DEFENSE_BONUS[state.tile_at(x, y)]
+    danger = danger_map[y][x]
+    enemies = state.enemy_units(player)
+
+    nearest_enemy = min((manhattan(x, y, enemy.x, enemy.y) for enemy in enemies), default=state.width + state.height)
+    own_hq_dist = manhattan(x, y, own_hq.x, own_hq.y) if own_hq else 0
+    enemy_hq_dist = manhattan(x, y, enemy_hq.x, enemy_hq.y) if enemy_hq else state.width + state.height
+    score = defense * 1.2 - danger * 1.0
+
+    if target is not None:
+        distance = manhattan(x, y, target.x, target.y)
+        damage = expected_damage(
+            unit.unit_type,
+            target.unit_type,
+            state.tile_at(target.x, target.y),
+            moved,
+            distance,
+        )
+        counter = 0.0
+        if damage < target.hp:
+            target_min = UNIT_MIN_RANGE[target.unit_type]
+            target_max = UNIT_MAX_RANGE[target.unit_type]
+            if target_min <= distance <= target_max:
+                counter = expected_damage(
+                    target.unit_type,
+                    unit.unit_type,
+                    state.tile_at(x, y),
+                    False,
+                    distance,
+                )
+        score += damage * 4.3 - counter * 2.6
+        if damage >= target.hp:
+            score += 7.5
+        if target.unit_type == UnitType.TANK:
+            score += 2.5
+        elif target.unit_type == UnitType.ARTILLERY:
+            score += 1.3
+
+    if "capture" in kind:
+        score += 13.0
+        if enemy_hq and (x, y) == (enemy_hq.x, enemy_hq.y):
+            score += 22.0
+
+    if unit.hp <= 1:
+        score += nearest_enemy * 0.8 - own_hq_dist * 0.5
+    elif unit.unit_type == UnitType.ARTILLERY:
+        score += 2.5 - 1.3 * abs(nearest_enemy - 2.5)
+    elif unit.unit_type == UnitType.TANK:
+        score -= nearest_enemy * 0.45
+    else:
+        score -= nearest_enemy * 0.28
+
+    if can_capture(unit.unit_type) and enemy_hq:
+        if unit.uid == rusher_uid:
+            score -= enemy_hq_dist * 0.95
+        else:
+            score -= enemy_hq_dist * 0.25
+        if (x, y) == (enemy_hq.x, enemy_hq.y):
+            score += 6.0
+
+    if own_hq:
+        closest_enemy_to_hq = min(
+            (manhattan(enemy.x, enemy.y, own_hq.x, own_hq.y) for enemy in enemies),
+            default=99,
+        )
+        if closest_enemy_to_hq <= 5:
+            score -= own_hq_dist * 0.35
+
+    if kind.endswith("wait"):
+        score -= 0.4
+
+    return score
+
+
+def enumerate_candidates(
+    state,
+    player: int,
+    unit,
+    danger_map: list[list[float]],
+    rusher_uid: int | None,
+):
+    tile_scores = {
+        (unit.x, unit.y): action_priority_key(
+            state,
+            player,
+            unit,
+            (unit.x, unit.y),
+            danger_map,
+            rusher_uid,
+        )
+    }
+    for tile in reachable_tiles(state, unit).keys():
+        tile_scores[tile] = action_priority_key(
+            state,
+            player,
+            unit,
+            tile,
+            danger_map,
+            rusher_uid,
+        )
+
+    ranked_tiles = [
+        tile for tile, _ in sorted(tile_scores.items(), key=lambda item: item[1], reverse=True)
+    ][:MAX_TILE_CANDIDATES]
+
+    if (unit.x, unit.y) not in ranked_tiles:
+        ranked_tiles.append((unit.x, unit.y))
+
+    candidates: list[ActionCandidate] = []
+    seen = set()
+
+    for tile in ranked_tiles:
+        building = find_building(state, tile[0], tile[1])
+        moved = tile != (unit.x, unit.y)
+
+        if building and building.owner != player and can_capture(unit.unit_type):
+            kind = "move_capture" if moved else "capture"
+            heuristic = score_candidate(state, player, unit, tile, None, kind, danger_map, rusher_uid)
+            features = candidate_feature_vector(
+                state,
+                player,
+                unit,
+                tile,
+                None,
+                kind,
+                danger_map,
+                heuristic,
+                rusher_uid,
+            )
+            key = (kind, tile, None)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(ActionCandidate(kind, tile, None, features, heuristic))
+
+        targets = candidate_targets(state, unit, tile)
+        targets.sort(
+            key=lambda enemy: score_candidate(
+                state,
+                player,
+                unit,
+                tile,
+                enemy,
+                "move_attack" if moved else "attack",
+                danger_map,
+                rusher_uid,
+            ),
+            reverse=True,
+        )
+
+        for target in targets[:3]:
+            kind = "move_attack" if moved else "attack"
+            heuristic = score_candidate(state, player, unit, tile, target, kind, danger_map, rusher_uid)
+            features = candidate_feature_vector(
+                state,
+                player,
+                unit,
+                tile,
+                target,
+                kind,
+                danger_map,
+                heuristic,
+                rusher_uid,
+            )
+            key = (kind, tile, target.uid)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(ActionCandidate(kind, tile, target.uid, features, heuristic))
+
+        kind = "move_wait" if moved else "wait"
+        heuristic = score_candidate(state, player, unit, tile, None, kind, danger_map, rusher_uid)
+        features = candidate_feature_vector(
+            state,
+            player,
+            unit,
+            tile,
+            None,
+            kind,
+            danger_map,
+            heuristic,
+            rusher_uid,
+        )
+        key = (kind, tile, None)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(ActionCandidate(kind, tile, None, features, heuristic))
+
+    if not candidates:
+        heuristic = 0.0
+        features = candidate_feature_vector(
+            state,
+            player,
+            unit,
+            (unit.x, unit.y),
+            None,
+            "wait",
+            danger_map,
+            heuristic,
+            rusher_uid,
+        )
+        candidates.append(ActionCandidate("wait", (unit.x, unit.y), None, features, heuristic))
+
+    return candidates
+
+
+def execute_candidate(state, unit, candidate: ActionCandidate, rng: random.Random):
+    if candidate.move_to != (unit.x, unit.y):
+        do_move(state, unit, candidate.move_to[0], candidate.move_to[1])
+
+    if candidate.kind.endswith("capture"):
+        do_capture(state, unit)
+        return
+
+    if "attack" in candidate.kind and candidate.target_uid is not None:
+        target = next((enemy for enemy in state.units if enemy.uid == candidate.target_uid and enemy.alive), None)
+        if target is not None:
+            do_attack(state, rng, unit, target)
+            return
+
+    do_wait(unit)
+
+
+def immediate_reward(
+    before: tuple[int, int, int, int],
+    after: tuple[int, int, int, int],
+    player: int,
+    unit,
+    candidate: ActionCandidate,
+    state,
+):
+    own_hp_before, enemy_hp_before, own_count_before, enemy_count_before = before
+    own_hp_after, enemy_hp_after, own_count_after, enemy_count_after = after
+
+    hp_swing = (enemy_hp_before - enemy_hp_after) - 0.7 * (own_hp_before - own_hp_after)
+    kill_swing = (enemy_count_before - enemy_count_after) - 0.5 * (own_count_before - own_count_after)
+    reward = hp_swing + kill_swing * 3.0
+
+    if candidate.kind.endswith("capture"):
+        reward += 4.0
+        building = find_building(state, unit.x, unit.y)
+        if building and building.owner == player:
+            reward += 8.0
+            if building.building_type == "hq":
+                reward += 18.0
+
+    if state.winner == player:
+        reward += 20.0
+    elif state.winner is not None and state.winner != player:
+        reward -= 20.0
+
+    return reward
+
+
+def store_transition(
+    transitions: list[dict],
+    board_tensor: torch.Tensor,
+    candidate_tensor: torch.Tensor,
+    heuristic_tensor: torch.Tensor,
+    action_index: torch.Tensor | int,
+    reward: float,
+    teacher_index: int,
+    temperature: float,
+) -> None:
+    transitions.append(
+        {
+            "board_tensor": board_tensor.detach(),
+            "candidate_tensor": candidate_tensor.detach(),
+            "heuristic_tensor": heuristic_tensor.detach(),
+            "action_index": int(action_index.item()) if isinstance(action_index, torch.Tensor) else int(action_index),
+            "reward": float(reward),
+            "teacher_index": teacher_index,
+            "temperature": float(temperature),
+        }
+    )
+
+
+class PolicyValueNet(nn.Module):
+    def __init__(self, feature_dim: int):
+        super().__init__()
+        self.board_encoder = nn.Sequential(
+            nn.Conv2d(BOARD_CHANNELS, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+        )
+        self.state_proj = nn.Sequential(
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+        )
+        self.candidate_proj = nn.Sequential(
+            nn.Linear(feature_dim, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+        )
+        self.policy_head = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+        )
+        self.value_head = nn.Sequential(
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+        )
+        self.logit_prior_scale = nn.Parameter(torch.tensor(3.0))
+        nn.init.zeros_(self.policy_head[-1].weight)
+        nn.init.zeros_(self.policy_head[-1].bias)
+
+    def encode_state(self, board_tensor: torch.Tensor) -> torch.Tensor:
+        if board_tensor.dim() == 3:
+            board_tensor = board_tensor.unsqueeze(0)
+        return self.state_proj(self.board_encoder(board_tensor))
+
+    def score_candidates(
+        self,
+        state_embedding: torch.Tensor,
+        candidate_tensor: torch.Tensor,
+        heuristic_prior: torch.Tensor,
+        candidate_counts: list[int] | None = None,
+    ) -> torch.Tensor:
+        if state_embedding.dim() == 1:
+            state_embedding = state_embedding.unsqueeze(0)
+        candidate_embedding = self.candidate_proj(candidate_tensor)
+        if candidate_counts is None:
+            expanded_state = state_embedding.expand(candidate_tensor.size(0), -1)
+        elif len(candidate_counts) == 1:
+            expanded_state = state_embedding.expand(candidate_tensor.size(0), -1)
+        else:
+            counts = torch.tensor(candidate_counts, device=state_embedding.device, dtype=torch.long)
+            expanded_state = state_embedding.repeat_interleave(counts, dim=0)
+        joint = torch.cat(
+            [candidate_embedding, expanded_state],
+            dim=-1,
+        )
+        logits = self.policy_head(joint).squeeze(-1)
+        return logits + self.logit_prior_scale * heuristic_prior
+
+    def predict_value(self, state_embedding: torch.Tensor) -> torch.Tensor:
+        if state_embedding.dim() == 1:
+            state_embedding = state_embedding.unsqueeze(0)
+        return self.value_head(state_embedding).squeeze(-1)
+
+    def forward(self, board_tensor, candidate_tensor, heuristic_prior):
+        state_embedding = self.encode_state(board_tensor)
+        logits = self.score_candidates(state_embedding, candidate_tensor, heuristic_prior)
+        value = self.predict_value(state_embedding)
+        return logits, value
+
+
+class PolicyStrategy:
+    def __init__(
+        self,
+        policy: PolicyValueNet,
+        max_width: int,
+        max_height: int,
+        training: bool,
+        temperature: float,
+    ):
+        self.policy = policy
+        self.max_width = max_width
+        self.max_height = max_height
+        self.training = training
+        self.temperature = temperature
+        self.name = "policy"
+        self.transitions = []
+
+    def play_turn(self, state, player: int, rng: random.Random):
+        danger_maps = build_danger_maps(state, player)
+        rusher_uid = choose_rusher(state, player)
+
+        for unit in unit_order(state, player, rusher_uid):
+            if not unit.alive or unit.has_acted:
+                continue
+
+            danger_map = danger_maps[unit.unit_type]
+
+            board_tensor = encode_board(
+                state,
+                player,
+                unit.uid,
+                self.max_width,
+                self.max_height,
+            )
+            candidates = enumerate_candidates(state, player, unit, danger_map, rusher_uid)
+            candidate_tensor = torch.tensor(
+                [candidate.features for candidate in candidates],
+                dtype=torch.float32,
+                device=device,
+            )
+            heuristic_tensor = torch.tensor(
+                [candidate.heuristic_score for candidate in candidates],
+                dtype=torch.float32,
+                device=device,
+            )
+            heuristic_tensor = normalize_heuristics(heuristic_tensor)
+
+            context = torch.enable_grad() if self.training else torch.no_grad()
+            with context:
+                logits, value = self.policy(board_tensor, candidate_tensor, heuristic_tensor)
+                scaled_logits = logits / self.temperature
+                distribution = torch.distributions.Categorical(logits=scaled_logits)
+                action_index = distribution.sample()
+
+            selected = candidates[action_index.item()]
+            before_metrics = current_metrics(state, player)
+            execute_candidate(state, unit, selected, rng)
+            after_metrics = current_metrics(state, player)
+
+            if self.training:
+                teacher_index = int(torch.argmax(heuristic_tensor).item())
+                store_transition(
+                    self.transitions,
+                    board_tensor,
+                    candidate_tensor,
+                    heuristic_tensor,
+                    action_index,
+                    immediate_reward(
+                        before_metrics,
+                        after_metrics,
+                        player,
+                        unit,
+                        selected,
+                        state,
+                    ),
+                    teacher_index,
+                    self.temperature,
+                )
+
+            if state.winner is not None:
+                return
+
+
+def clear_policy_turn(env: TrainingEnv) -> None:
+    env.turn_units = []
+    env.turn_cursor = 0
+    env.danger_maps = None
+    env.rusher_uid = None
+    env.turn_player = None
+
+
+def prepare_policy_turn(env: TrainingEnv, player: int = 1) -> None:
+    env.danger_maps = build_danger_maps(env.state, player)
+    env.rusher_uid = choose_rusher(env.state, player)
+    env.turn_units = unit_order(env.state, player, env.rusher_uid)
+    env.turn_cursor = 0
+    env.turn_player = player
+
+
+def spawn_training_env(
+    map_name: str,
+    seed: int,
+    learner_temperature: float,
+    snapshot_pool: list[PolicySnapshot],
+    self_play_ratio: float,
+) -> TrainingEnv:
+    opponent_strategy, opponent_policy, opponent_name, opponent_temperature = sample_training_opponent(
+        snapshot_pool,
+        map_name,
+        seed,
+        self_play_ratio,
+    )
+    env = TrainingEnv(
+        state=load_map(map_name),
+        rng=random.Random(seed),
+        learner_temperature=learner_temperature,
+        opponent_strategy=opponent_strategy,
+        opponent_policy=opponent_policy,
+        opponent_name=opponent_name,
+        opponent_temperature=opponent_temperature,
+    )
+    prepare_policy_turn(env)
+    return env
+
+
+def next_policy_request(
+    env: TrainingEnv,
+    max_width: int,
+    max_height: int,
+    player: int,
+    policy,
+    temperature: float,
+    record_transition: bool,
+) -> PolicyDecisionRequest | None:
+    while env.turn_cursor < len(env.turn_units):
+        unit = env.turn_units[env.turn_cursor]
+        env.turn_cursor += 1
+        if not unit.alive or unit.has_acted:
+            continue
+
+        danger_map = env.danger_maps[unit.unit_type]
+        candidates = enumerate_candidates(env.state, player, unit, danger_map, env.rusher_uid)
+        candidate_tensor = torch.tensor(
+            [candidate.features for candidate in candidates],
+            dtype=torch.float32,
+            device=device,
+        )
+        heuristic_tensor = torch.tensor(
+            [candidate.heuristic_score for candidate in candidates],
+            dtype=torch.float32,
+            device=device,
+        )
+        heuristic_tensor = normalize_heuristics(heuristic_tensor)
+
+        return PolicyDecisionRequest(
+            env=env,
+            player=player,
+            policy=policy,
+            unit=unit,
+            board_tensor=encode_board(env.state, player, unit.uid, max_width, max_height),
+            candidate_tensor=candidate_tensor,
+            heuristic_tensor=heuristic_tensor,
+            candidates=candidates,
+            before_metrics=current_metrics(env.state, player),
+            temperature=temperature,
+            record_transition=record_transition,
+            teacher_index=int(torch.argmax(heuristic_tensor).item()) if record_transition else 0,
+        )
+
+    return None
+
+
+def ensure_policy_request(
+    env: TrainingEnv,
+    max_width: int,
+    max_height: int,
+    learner_policy: "PolicyValueNet",
+) -> PolicyDecisionRequest | None:
+    while env.state.winner is None:
+        player = env.state.current_player
+        if player == 1:
+            if env.turn_player != player or env.danger_maps is None:
+                clear_policy_turn(env)
+                prepare_policy_turn(env, player)
+            request = next_policy_request(
+                env,
+                max_width,
+                max_height,
+                player=1,
+                policy=learner_policy,
+                temperature=env.learner_temperature,
+                record_transition=True,
+            )
+        elif env.opponent_policy is not None:
+            if env.turn_player != player or env.danger_maps is None:
+                clear_policy_turn(env)
+                prepare_policy_turn(env, player)
+            request = next_policy_request(
+                env,
+                max_width,
+                max_height,
+                player=player,
+                policy=env.opponent_policy,
+                temperature=env.opponent_temperature,
+                record_transition=False,
+            )
+        else:
+            clear_policy_turn(env)
+            env.opponent_strategy.play_turn(env.state, player, env.rng)
+            if env.state.winner is None:
+                end_turn(env.state)
+            continue
+
+        if request is not None:
+            return request
+
+        clear_policy_turn(env)
+        if env.state.winner is None:
+            end_turn(env.state)
+
+    return None
+
+
+def batched_policy_decisions(requests: list[PolicyDecisionRequest]):
+    if not requests:
+        return []
+
+    decisions = []
+    grouped_requests = {}
+    for request in requests:
+        grouped_requests.setdefault(id(request.policy), []).append(request)
+
+    for grouped in grouped_requests.values():
+        policy = grouped[0].policy
+        board_batch = torch.stack([request.board_tensor for request in grouped], dim=0)
+        candidate_batch = torch.cat([request.candidate_tensor for request in grouped], dim=0)
+        heuristic_batch = torch.cat([request.heuristic_tensor for request in grouped], dim=0)
+        candidate_counts = [request.candidate_tensor.size(0) for request in grouped]
+
+        context = torch.enable_grad() if any(request.record_transition for request in grouped) else torch.no_grad()
+        with context:
+            state_embeddings = policy.encode_state(board_batch)
+            flat_logits = policy.score_candidates(
+                state_embeddings,
+                candidate_batch,
+                heuristic_batch,
+                candidate_counts,
+            )
+            values = policy.predict_value(state_embeddings)
+
+        offset = 0
+        for idx, request in enumerate(grouped):
+            count = candidate_counts[idx]
+            logits = flat_logits[offset : offset + count]
+            distribution = torch.distributions.Categorical(logits=logits / request.temperature)
+            action_index = distribution.sample()
+            decisions.append((request, logits, values[idx], distribution, action_index))
+            offset += count
+
+    return decisions
+
+
+def apply_policy_decisions(decisions) -> None:
+    for request, logits, value, distribution, action_index in decisions:
+        selected = request.candidates[action_index.item()]
+        execute_candidate(request.env.state, request.unit, selected, request.env.rng)
+        after_metrics = current_metrics(request.env.state, request.player)
+
+        if request.record_transition:
+            store_transition(
+                request.env.transitions,
+                request.board_tensor,
+                request.candidate_tensor,
+                request.heuristic_tensor,
+                action_index,
+                immediate_reward(
+                    request.before_metrics,
+                    after_metrics,
+                    request.player,
+                    request.unit,
+                    selected,
+                    request.env.state,
+                ),
+                request.teacher_index,
+                request.temperature,
+            )
+
+
+def estimate_request_value(policy: PolicyValueNet, request: PolicyDecisionRequest) -> torch.Tensor:
+    with torch.no_grad():
+        _, value = policy(
+            request.board_tensor,
+            request.candidate_tensor,
+            request.heuristic_tensor,
+        )
+    return value.squeeze(0).detach()
+
+
+def update_rollout(
+    policy: PolicyValueNet,
+    transitions,
+    player: int,
+    optimizer,
+    imitation_weight: float,
+    bootstrap_value: torch.Tensor | None = None,
+    winner: int | None = None,
+):
+    if not transitions:
+        return
+
+    if winner is not None:
+        transitions[-1]["reward"] += 12.0 if winner == player else -12.0
+
+    recomputed = []
+    for transition in transitions:
+        logits, value = policy(
+            transition["board_tensor"],
+            transition["candidate_tensor"],
+            transition["heuristic_tensor"],
+        )
+        value = value.squeeze(0)
+        distribution = torch.distributions.Categorical(
+            logits=logits / transition["temperature"],
+        )
+        recomputed.append(
+            {
+                "logits": logits,
+                "value": value,
+                "distribution": distribution,
+                "action_index": torch.tensor(transition["action_index"], device=device, dtype=torch.long),
+                "reward": transition["reward"],
+                "teacher_index": transition["teacher_index"],
+            }
+        )
+
+    returns = []
+    advantages = []
+    gae = torch.zeros((), dtype=torch.float32, device=device)
+    next_value = bootstrap_value if bootstrap_value is not None else torch.zeros((), dtype=torch.float32, device=device)
+
+    for transition in reversed(recomputed):
+        reward = torch.tensor(transition["reward"], dtype=torch.float32, device=device)
+        value = transition["value"]
+        delta = reward + GAMMA * next_value - value
+        gae = delta + GAMMA * LAMBDA * gae
+        advantages.append(gae)
+        returns.append(gae + value)
+        next_value = value.detach()
+
+    advantages.reverse()
+    returns.reverse()
+    advantage_tensor = torch.stack(advantages)
+    return_tensor = torch.stack(returns).detach()
+    advantage_tensor = (advantage_tensor - advantage_tensor.mean()) / (advantage_tensor.std(unbiased=False) + 1e-6)
+
+    policy_loss = torch.zeros((), dtype=torch.float32, device=device)
+    value_loss = torch.zeros((), dtype=torch.float32, device=device)
+    entropy_bonus = torch.zeros((), dtype=torch.float32, device=device)
+    imitation_loss = torch.zeros((), dtype=torch.float32, device=device)
+
+    for idx, transition in enumerate(recomputed):
+        policy_loss = policy_loss - transition["distribution"].log_prob(transition["action_index"]) * advantage_tensor[idx].detach()
+        value_loss = value_loss + F.smooth_l1_loss(transition["value"], return_tensor[idx])
+        entropy_bonus = entropy_bonus + transition["distribution"].entropy()
+        target = torch.tensor([transition["teacher_index"]], device=device)
+        imitation_loss = imitation_loss + F.cross_entropy(transition["logits"].unsqueeze(0), target)
+
+    count = float(len(transitions))
+    loss = (
+        policy_loss / count
+        + VALUE_WEIGHT * (value_loss / count)
+        + imitation_weight * (imitation_loss / count)
+        - ENTROPY_WEIGHT * (entropy_bonus / count)
+    )
+
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    params = [param for group in optimizer.param_groups for param in group["params"]]
+    torch.nn.utils.clip_grad_norm_(params, 1.0)
+    optimizer.step()
+
+
+def maybe_update_rollout_fragment(
+    env: TrainingEnv,
+    request: PolicyDecisionRequest,
+    policy: PolicyValueNet,
+    optimizer,
+    imitation_weight: float,
+) -> bool:
+    if not request.record_transition or len(env.transitions) < ROLLOUT_FRAGMENT_STEPS:
+        return False
+
+    update_rollout(
+        policy,
+        env.transitions,
+        player=1,
+        optimizer=optimizer,
+        imitation_weight=imitation_weight,
+        bootstrap_value=estimate_request_value(policy, request),
+    )
+    env.transitions.clear()
+    return True
+
+
+def finalize_finished_envs(active_envs, policy: PolicyValueNet, optimizer, imitation_weight: float):
+    remaining_envs = []
+    games_completed = 0
+    wins = 0
+    updates = 0
+
+    for env in active_envs:
+        if env.state.winner is None:
+            remaining_envs.append(env)
+            continue
+
+        if env.transitions:
+            update_rollout(
+                policy,
+                env.transitions,
+                player=1,
+                optimizer=optimizer,
+                imitation_weight=imitation_weight,
+                winner=env.state.winner,
+            )
+            env.transitions.clear()
+            updates += 1
+        games_completed += 1
+        wins += 1 if env.state.winner == 1 else 0
+
+    return remaining_envs, games_completed, wins, updates
+
+
+def run_parallel_training(
+    policy: PolicyValueNet,
+    optimizer,
+    max_width: int,
+    max_height: int,
+    map_names: list[str],
+    snapshot_pool: list[PolicySnapshot],
+    self_play_ratio: float,
+    start_time: float,
+    train_deadline: float,
+    parallel_envs: int,
+    active_envs: list[TrainingEnv],
+):
+    games_played = 0
+    wins = 0
+    decisions = 0
+    batches = 0
+    updates = 0
+
+    while time.perf_counter() < train_deadline:
+        temperature = max(
+            0.22,
+            0.70
+            - 0.45
+            * ((time.perf_counter() - start_time) / max(1.0, train_deadline - start_time)),
+        )
+
+        while len(active_envs) < parallel_envs and time.perf_counter() < train_deadline:
+            map_name = random.choice(map_names)
+            seed = random.randint(0, 1_000_000)
+            active_envs.append(
+                spawn_training_env(
+                    map_name,
+                    seed,
+                    temperature,
+                    snapshot_pool,
+                    self_play_ratio,
+                )
+            )
+
+        requests = []
+        for env in active_envs:
+            request = ensure_policy_request(env, max_width, max_height, policy)
+            if request is not None:
+                if maybe_update_rollout_fragment(
+                    env,
+                    request,
+                    policy,
+                    optimizer,
+                    IMITATION_WEIGHT,
+                ):
+                    updates += 1
+                requests.append(request)
+
+        if requests:
+            decisions_batch = batched_policy_decisions(requests)
+            apply_policy_decisions(decisions_batch)
+            decisions += len(decisions_batch)
+            batches += 1
+
+        active_envs, completed_games, completed_wins, completed_updates = finalize_finished_envs(
+            active_envs,
+            policy,
+            optimizer,
+            IMITATION_WEIGHT,
+        )
+        games_played += completed_games
+        wins += completed_wins
+        updates += completed_updates
+
+        if not requests and not active_envs:
+            break
+
+    return active_envs, games_played, wins, decisions, batches, updates
+
+def evaluate_snapshot_pool(
+    policy,
+    max_width: int,
+    max_height: int,
+    snapshots: list[PolicySnapshot],
+    map_names: list[str],
+    seeds: list[int],
+    max_games: int | None = None,
+) -> float:
+    if not snapshots:
+        return 0.0
+
+    was_training = policy.training
+    policy.eval()
+    wins = 0
+    games = 0
+
+    try:
+        eval_snapshots = snapshots[-SNAPSHOT_EVAL_COUNT:]
+        eval_maps = map_names[:SNAPSHOT_EVAL_MAPS] or map_names
+
+        for snapshot in eval_snapshots:
+            if max_games is not None and games >= max_games:
+                break
+            for map_name in eval_maps:
+                if max_games is not None and games >= max_games:
+                    break
+                temperature = evaluation_temperature(map_name)
+                for seed in seeds:
+                    if max_games is not None and games >= max_games:
+                        break
+                    learner_first = PolicyStrategy(
+                        policy=policy,
+                        max_width=max_width,
+                        max_height=max_height,
+                        training=False,
+                        temperature=temperature,
+                    )
+                    snapshot_second = PolicyStrategy(
+                        policy=snapshot.policy,
+                        max_width=max_width,
+                        max_height=max_height,
+                        training=False,
+                        temperature=temperature,
+                    )
+                    result = run_game(
+                        learner_first,
+                        snapshot_second,
+                        map_name,
+                        seed,
+                        verbose=False,
+                        replay=False,
+                    )
+                    wins += 1 if result.winner == 1 else 0
+                    games += 1
+                    if max_games is not None and games >= max_games:
+                        break
+
+                    snapshot_first = PolicyStrategy(
+                        policy=snapshot.policy,
+                        max_width=max_width,
+                        max_height=max_height,
+                        training=False,
+                        temperature=temperature,
+                    )
+                    learner_second = PolicyStrategy(
+                        policy=policy,
+                        max_width=max_width,
+                        max_height=max_height,
+                        training=False,
+                        temperature=temperature,
+                    )
+                    swapped_result = run_game(
+                        snapshot_first,
+                        learner_second,
+                        map_name,
+                        seed + 50_000,
+                        verbose=False,
+                        replay=False,
+                    )
+                    wins += 1 if swapped_result.winner == 2 else 0
+                    games += 1
+    finally:
+        policy.train(was_training)
+
+    return wins / max(1, games)
+
+
+def evaluate_fixed(
+    policy,
+    max_width: int,
+    max_height: int,
+    map_names: list[str],
+    seeds: list[int],
+    max_games: int | None = None,
+) -> float:
+    seed_everything(1337)
+    wins = 0
+    games = 0
+    was_training = policy.training
+    policy.eval()
+
+    try:
+        for map_name in map_names:
+            if max_games is not None and games >= max_games:
+                break
+            for seed in seeds:
+                if max_games is not None and games >= max_games:
+                    break
+                strategy = PolicyStrategy(
+                    policy=policy,
+                    max_width=max_width,
+                    max_height=max_height,
+                    training=False,
+                    temperature=evaluation_temperature(map_name),
+                )
+                result = run_game(
+                    strategy,
+                    make_ensemble_opponent(map_name, seed),
+                    map_name,
+                    seed,
+                    verbose=False,
+                    replay=False,
+                )
+                wins += 1 if result.winner == 1 else 0
+                games += 1
+    finally:
+        policy.train(was_training)
+
+    return wins / max(1, games)
+
+
+def evaluate_until_deadline(policy, max_width: int, max_height: int, map_names: list[str], deadline: float) -> float:
+    seed_everything(1337)
+    wins = 0
+    games = 0
+    seed = 10_000
+    map_index = 0
+    was_training = policy.training
+    policy.eval()
+
+    try:
+        while time.perf_counter() + 0.6 < deadline:
+            map_name = map_names[map_index % len(map_names)]
+            strategy = PolicyStrategy(
+                policy=policy,
+                max_width=max_width,
+                max_height=max_height,
+                training=False,
+                temperature=evaluation_temperature(map_name),
+            )
+            result = run_game(
+                strategy,
+                make_ensemble_opponent(map_name, seed),
+                map_name,
+                seed,
+                verbose=False,
+                replay=False,
+            )
+            wins += 1 if result.winner == 1 else 0
+            games += 1
+            seed += 1
+            map_index += 1
+    finally:
+        policy.train(was_training)
+
+    return wins / max(1, games)
+
+
+def make_run_record(
+    *,
+    seed: int,
+    resumed_from: str | None,
+    checkpoint_file: str | None,
+    duration: float,
+    final_eval_budget: float,
+    validation_interval: float,
+    parallel_envs: int,
+    self_play_ratio: float,
+    validation_heuristic_games: int,
+    validation_self_play_games: int,
+    games_played: int,
+    wins: int,
+    decisions: int,
+    updates: int,
+    batches: int,
+    best_self_play_score: float,
+    best_heuristic_score: float,
+    final_win_rate: float,
+    snapshot_count: int,
+    completed_runs: int,
+) -> dict:
+    return {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "seed": seed,
+        "device": str(device),
+        "resumed_from": resumed_from,
+        "checkpoint_file": checkpoint_file,
+        "completed_runs": completed_runs,
+        "duration": duration,
+        "final_eval_budget": final_eval_budget,
+        "validation_interval": validation_interval,
+        "parallel_envs": parallel_envs,
+        "self_play_ratio": self_play_ratio,
+        "validation_heuristic_games": validation_heuristic_games,
+        "validation_self_play_games": validation_self_play_games,
+        "games_played": games_played,
+        "train_win_rate": wins / max(1, games_played),
+        "decisions": decisions,
+        "updates": updates,
+        "avg_batch": decisions / max(1, batches),
+        "best_self_play_validation": best_self_play_score,
+        "best_heuristic_validation": best_heuristic_score,
+        "final_win_rate": final_win_rate,
+        "snapshot_count": snapshot_count,
+    }
+
+
+def train(
+    duration: float = TOTAL_DURATION,
+    final_eval_budget: float = FINAL_EVAL_BUDGET,
+    validation_interval: float = VALIDATION_INTERVAL,
+    parallel_envs: int | None = None,
+    self_play_ratio: float = DEFAULT_SELF_PLAY_RATIO,
+    validation_heuristic_games: int = DEFAULT_VALIDATION_HEURISTIC_GAMES,
+    validation_self_play_games: int = DEFAULT_VALIDATION_SELF_PLAY_GAMES,
+    checkpoint_dir: str | None = DEFAULT_CHECKPOINT_DIR,
+    resume: bool = True,
+    seed: int | None = None,
+):
+    if device.type == "cuda":
+        torch.set_float32_matmul_precision("high")
+    if parallel_envs is None:
+        parallel_envs = default_parallel_envs()
+    parallel_envs = max(1, parallel_envs)
+
+    map_names = list_maps()
+    if not map_names:
+        print("No maps found.")
+        return
+
+    max_width, max_height = compute_board_limits(map_names)
+    initial_state = load_map(map_names[0])
+    initial_unit = initial_state.player_units(1)[0]
+    initial_danger = build_danger_maps(initial_state, 1)[initial_unit.unit_type]
+    sample_features = len(
+        candidate_feature_vector(
+            initial_state,
+            1,
+            initial_unit,
+            (initial_unit.x, initial_unit.y),
+            None,
+            "wait",
+            initial_danger,
+            0.0,
+            None,
+        )
+    )
+
+    checkpoint_file = checkpoint_path(checkpoint_dir)
+    resume_state = load_training_checkpoint(checkpoint_dir, sample_features) if resume else None
+    previous_runs = int(resume_state.get("completed_runs", 0)) if resume_state else 0
+    run_seed = seed if seed is not None else BASE_SEED + previous_runs
+    seed_everything(run_seed)
+
+    policy = PolicyValueNet(sample_features).to(device)
+    optimizer = optim.AdamW(policy.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+
+    if resume_state is not None:
+        policy.load_state_dict(resume_state["policy_state"])
+
+    validation_maps = map_names[::3] or map_names
+    validation_seeds = [3]
+    best_heuristic_score = evaluate_fixed(
+        policy,
+        max_width,
+        max_height,
+        validation_maps,
+        validation_seeds,
+        max_games=validation_heuristic_games,
+    )
+    best_self_play_score = float(resume_state.get("best_self_play_score", 0.0)) if resume_state else 0.0
+    best_heuristic_score = float(
+        max(best_heuristic_score, resume_state.get("best_heuristic_score", 0.0))
+    ) if resume_state else best_heuristic_score
+    best_metric = (best_self_play_score, best_heuristic_score)
+    best_state = copy.deepcopy(policy.state_dict())
+    snapshot_pool: list[PolicySnapshot] = list(resume_state.get("snapshot_pool", [])) if resume_state else []
+    snapshot_generation = int(resume_state.get("snapshot_generation", 0)) if resume_state else 0
+    if self_play_ratio > 0.0:
+        if not snapshot_pool:
+            add_snapshot(
+                snapshot_pool,
+                policy,
+                self_play_score=best_self_play_score,
+                heuristic_score=best_heuristic_score,
+                generation=snapshot_generation,
+            )
+    start_time = time.perf_counter()
+    deadline = start_time + duration
+    train_deadline = deadline - final_eval_budget
+    next_validation = start_time + validation_interval
+
+    games_played = 0
+    wins = 0
+    decisions = 0
+    batches = 0
+    updates = 0
+    active_envs: list[TrainingEnv] = []
+
+    print(f"Using device: {device}")
+    print(f"Run seed: {run_seed}")
+    print(f"Parallel envs: {parallel_envs}")
+    if resume_state is not None and checkpoint_file is not None:
+        print(
+            f"Resuming from {checkpoint_file} "
+            f"(runs={previous_runs}, best_self_play={best_self_play_score:.3f}, best_heuristic={best_heuristic_score:.3f})"
+        )
+    elif checkpoint_file is not None:
+        print(f"Checkpoint dir: {checkpoint_file.parent}")
+    print(f"Starting {duration:.0f}-second training run...")
+
+    while time.perf_counter() < train_deadline:
+        policy.train()
+        active_envs, batch_games, batch_wins, batch_decisions, batch_count, batch_updates = run_parallel_training(
+            policy=policy,
+            optimizer=optimizer,
+            max_width=max_width,
+            max_height=max_height,
+            map_names=map_names,
+            snapshot_pool=snapshot_pool,
+            self_play_ratio=self_play_ratio,
+            start_time=start_time,
+            train_deadline=min(train_deadline, next_validation),
+            parallel_envs=parallel_envs,
+            active_envs=active_envs,
+        )
+        games_played += batch_games
+        wins += batch_wins
+        decisions += batch_decisions
+        batches += batch_count
+        updates += batch_updates
+
+        now = time.perf_counter()
+        if now >= next_validation:
+            heuristic_score = evaluate_fixed(
+                policy,
+                max_width,
+                max_height,
+                validation_maps,
+                validation_seeds,
+                max_games=validation_heuristic_games,
+            )
+            self_play_score = evaluate_snapshot_pool(
+                policy,
+                max_width,
+                max_height,
+                snapshot_pool,
+                validation_maps,
+                validation_seeds,
+                max_games=validation_self_play_games,
+            )
+            metric = (self_play_score if snapshot_pool else 0.0, heuristic_score)
+            if not snapshot_pool or metric > best_metric:
+                best_metric = metric
+                best_self_play_score, best_heuristic_score = metric
+                best_state = copy.deepcopy(policy.state_dict())
+                snapshot_generation += 1
+                add_snapshot(
+                    snapshot_pool,
+                    policy,
+                    self_play_score,
+                    heuristic_score,
+                    snapshot_generation,
+                )
+            print(
+                f"[{now - start_time:6.1f}s] "
+                f"games={games_played:4d} train_win_rate={wins / max(1, games_played):.3f} "
+                f"decisions={decisions:5d} updates={updates:4d} avg_batch={decisions / max(1, batches):.1f} "
+                f"heuristic={heuristic_score:.3f} self_play={self_play_score:.3f} "
+                f"best_self_play={best_self_play_score:.3f} snapshots={len(snapshot_pool)}"
+            )
+            next_validation += validation_interval
+
+    policy.load_state_dict(best_state)
+    final_win_rate = evaluate_until_deadline(policy, max_width, max_height, map_names, deadline)
+
+    while time.perf_counter() < deadline:
+        time.sleep(0.01)
+
+    completed_runs = previous_runs + 1
+    checkpoint_file_str = str(checkpoint_file) if checkpoint_file is not None else None
+    resumed_from = checkpoint_file_str if resume_state is not None else None
+    run_record = make_run_record(
+        seed=run_seed,
+        resumed_from=resumed_from,
+        checkpoint_file=checkpoint_file_str,
+        duration=duration,
+        final_eval_budget=final_eval_budget,
+        validation_interval=validation_interval,
+        parallel_envs=parallel_envs,
+        self_play_ratio=self_play_ratio,
+        validation_heuristic_games=validation_heuristic_games,
+        validation_self_play_games=validation_self_play_games,
+        games_played=games_played,
+        wins=wins,
+        decisions=decisions,
+        updates=updates,
+        batches=batches,
+        best_self_play_score=best_self_play_score,
+        best_heuristic_score=best_heuristic_score,
+        final_win_rate=final_win_rate,
+        snapshot_count=len(snapshot_pool),
+        completed_runs=completed_runs,
+    )
+    saved_checkpoint = save_training_checkpoint(
+        checkpoint_dir,
+        best_state=best_state,
+        best_self_play_score=best_self_play_score,
+        best_heuristic_score=best_heuristic_score,
+        snapshot_pool=snapshot_pool,
+        snapshot_generation=snapshot_generation,
+        sample_features=sample_features,
+        completed_runs=completed_runs,
+        run_record=run_record,
+    )
+    append_history(checkpoint_dir, run_record)
+    write_last_run(checkpoint_dir, run_record)
+
+    if snapshot_pool:
+        print(f"Best self-play validation: {best_self_play_score:.4f}")
+    print(f"Final win rate: {final_win_rate:.4f}")
+    if saved_checkpoint is not None:
+        print(f"Saved checkpoint: {saved_checkpoint}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a Hashfront policy with batched multi-game rollouts")
+    parser.add_argument("--duration", type=float, default=TOTAL_DURATION, help="Total wall-clock budget in seconds")
+    parser.add_argument(
+        "--final-eval-budget",
+        type=float,
+        default=FINAL_EVAL_BUDGET,
+        help="Reserved wall-clock time for the final evaluation pass",
+    )
+    parser.add_argument(
+        "--validation-interval",
+        type=float,
+        default=VALIDATION_INTERVAL,
+        help="How often to run fixed validation during training",
+    )
+    parser.add_argument(
+        "--parallel-envs",
+        type=int,
+        default=None,
+        help="Number of simultaneous training games (default: device-dependent)",
+    )
+    parser.add_argument(
+        "--self-play-ratio",
+        type=float,
+        default=DEFAULT_SELF_PLAY_RATIO,
+        help="Probability of sampling a frozen self-play snapshot opponent for each new training game",
+    )
+    parser.add_argument(
+        "--validation-heuristic-games",
+        type=int,
+        default=DEFAULT_VALIDATION_HEURISTIC_GAMES,
+        help="Maximum heuristic validation games to play at each checkpoint",
+    )
+    parser.add_argument(
+        "--validation-self-play-games",
+        type=int,
+        default=DEFAULT_VALIDATION_SELF_PLAY_GAMES,
+        help="Maximum self-play validation games to play at each checkpoint",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=str,
+        default=DEFAULT_CHECKPOINT_DIR,
+        help="Directory for the incumbent checkpoint and run history",
+    )
+    parser.add_argument(
+        "--fresh-start",
+        action="store_true",
+        help="Ignore any existing checkpoint and start from scratch",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the training seed (defaults to a deterministic per-run seed)",
+    )
+    args = parser.parse_args()
+    train(
+        duration=args.duration,
+        final_eval_budget=args.final_eval_budget,
+        validation_interval=args.validation_interval,
+        parallel_envs=args.parallel_envs,
+        self_play_ratio=args.self_play_ratio,
+        validation_heuristic_games=args.validation_heuristic_games,
+        validation_self_play_games=args.validation_self_play_games,
+        checkpoint_dir=args.checkpoint_dir,
+        resume=not args.fresh_start,
+        seed=args.seed,
+    )

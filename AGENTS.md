@@ -39,3 +39,13 @@ Contracts (`contracts/src/helpers/unit_stats.cairo`) must match those values.
 - Use `type` imports for type-only symbols (`import type { Foo }`)
 - No TypeScript `enum` — use `as const` objects instead (erasableSyntaxOnly)
 - Data layer abstracted in `src/data/` for future Torii swap
+
+## Autoresearch
+
+- `autoresearch/program.md` is the task contract for autonomous model-improvement work
+- Unless the simulator API changes, limit autoresearch edits to `autoresearch/train.py`
+- Run training from `autoresearch/` with `uv run train.py`
+- The trainer now auto-resumes from `autoresearch/checkpoints/best.pt` and writes run metrics to `autoresearch/checkpoints/history.jsonl` and `autoresearch/checkpoints/last_run.json`
+- Recommended full self-play run: `uv run train.py --parallel-envs 8 --self-play-ratio 1.0 --validation-interval 150`
+- Use `--fresh-start` to ignore the saved incumbent, or `--checkpoint-dir <dir>` to branch a separate experiment line
+- Keep the 300-second wall-clock budget and ensure the run still prints `Final win rate: X.XXXX`
