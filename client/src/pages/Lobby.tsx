@@ -1410,38 +1410,6 @@ export default function Lobby() {
         </div>
       </div>
 
-      <footer className="flex justify-between border-t-[3px] border-white pt-5 mt-2 text-xs md:text-sm">
-        <span>
-          <a
-            href="https://www.cartridge.gg"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:underline"
-          >
-            CARTRIDGE
-          </a>{" "}
-          //{" "}
-          <a
-            href="https://www.dojoengine.org"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:underline"
-          >
-            DOJO
-          </a>{" "}
-          //{" "}
-          <a
-            href="https://www.starknet.io"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:underline"
-          >
-            STARKNET
-          </a>
-        </span>
-        <span className="hidden md:inline">VERSION: 0.1.3</span>
-      </footer>
-
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-blueprint-dark/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-2xl">
