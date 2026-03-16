@@ -1382,6 +1382,7 @@ impl GameRng {
 }
 
 #[pyclass]
+#[derive(Clone)]
 struct GameState {
     #[pyo3(get)]
     width: i32,
@@ -1404,6 +1405,10 @@ struct GameState {
 
 #[pymethods]
 impl GameState {
+    fn clone_state(&self) -> GameState {
+        self.clone()
+    }
+
     fn tile_at(&self, x: i32, y: i32) -> Option<String> {
         if x >= 0 && x < self.width && y >= 0 && y < self.height {
             Some(self.terrain[y as usize][x as usize].to_str().to_string())
@@ -1819,6 +1824,864 @@ fn play_heuristic_turn(state: &mut GameState, player: i32, strategy_name: &str, 
 }
 
 // ============================================================================
+// Training helper internals
+// ============================================================================
+
+const MAX_TILE_CANDIDATES: usize = 12;
+const BOARD_CHANNELS: usize = 16;
+
+const ACTION_TYPES: [&str; 6] = [
+    "wait",
+    "move_wait",
+    "attack",
+    "move_attack",
+    "capture",
+    "move_capture",
+];
+
+fn find_building_internal(buildings: &[BuildingData], x: i32, y: i32) -> Option<&BuildingData> {
+    buildings.iter().find(|b| b.x == x && b.y == y)
+}
+
+/// current_metrics: (own_hp, enemy_hp, own_count, enemy_count)
+fn current_metrics(units: &[UnitData], player: i32) -> (i32, i32, i32, i32) {
+    let mut own_hp = 0i32;
+    let mut enemy_hp = 0i32;
+    let mut own_count = 0i32;
+    let mut enemy_count = 0i32;
+    for u in units {
+        if !u.alive() { continue; }
+        if u.player == player {
+            own_hp += u.hp;
+            own_count += 1;
+        } else {
+            enemy_hp += u.hp;
+            enemy_count += 1;
+        }
+    }
+    (own_hp, enemy_hp, own_count, enemy_count)
+}
+
+fn one_hot(index: usize, size: usize) -> Vec<f32> {
+    let mut v = vec![0.0f32; size];
+    if index < size {
+        v[index] = 1.0;
+    }
+    v
+}
+
+/// Build danger maps for each of the three unit types.
+/// Returns HashMap<UnitType, Vec<Vec<f32>>> where each value is height x width.
+fn build_danger_maps_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    _buildings: &[BuildingData],
+    player: i32,
+) -> HashMap<UnitType, Vec<Vec<f32>>> {
+    let mut danger_by_type: HashMap<UnitType, Vec<Vec<f32>>> = HashMap::new();
+    for &ut in &[UnitType::Infantry, UnitType::Tank, UnitType::Artillery] {
+        danger_by_type.insert(ut, vec![vec![0.0f32; width as usize]; height as usize]);
+    }
+
+    // Iterate over enemy units
+    for (ei, enemy) in units.iter().enumerate() {
+        if !enemy.alive() || enemy.player == player { continue; }
+
+        // Candidate tiles: enemy's current position + reachable tiles (if not artillery)
+        let mut candidate_tiles: Vec<(i32, i32)> = vec![(enemy.x, enemy.y)];
+        if enemy.unit_type != UnitType::Artillery {
+            // Use empty occupied to compute reachable from enemy perspective
+            let reached = reachable_tiles_internal(terrain, width, height, units, ei, &[]);
+            for &(rx, ry) in reached.keys() {
+                candidate_tiles.push((rx, ry));
+            }
+        }
+
+        let min_range = enemy.unit_type.min_range();
+        let max_range = enemy.unit_type.max_range();
+
+        for &(ex, ey) in &candidate_tiles {
+            let moved = (ex, ey) != (enemy.x, enemy.y);
+            for tx in (ex - max_range).max(0)..=(ex + max_range).min(width - 1) {
+                for ty in (ey - max_range).max(0)..=(ey + max_range).min(height - 1) {
+                    let distance = manhattan(ex, ey, tx, ty);
+                    if distance < min_range || distance > max_range { continue; }
+                    let tile = terrain[ty as usize][tx as usize];
+                    for (&defender_type, danger_grid) in danger_by_type.iter_mut() {
+                        let dmg = expected_damage(
+                            enemy.unit_type,
+                            defender_type,
+                            tile,
+                            moved,
+                            distance,
+                        );
+                        danger_grid[ty as usize][tx as usize] += dmg as f32;
+                    }
+                }
+            }
+        }
+    }
+
+    danger_by_type
+}
+
+/// Encode the board into a flat f32 buffer of size BOARD_CHANNELS * max_height * max_width (CHW layout).
+fn encode_board_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+    focus_uid: i32,
+    max_width: usize,
+    max_height: usize,
+    _round_num: i32,
+) -> Vec<f32> {
+    let total = BOARD_CHANNELS * max_height * max_width;
+    let mut board = vec![0.0f32; total];
+
+    // Helper to index into CHW flat buffer
+    let idx = |c: usize, y: usize, x: usize| -> usize {
+        c * max_height * max_width + y * max_width + x
+    };
+
+    // Channels 0-3: terrain
+    for y in 0..height.min(max_height as i32) as usize {
+        for x in 0..width.min(max_width as i32) as usize {
+            let tile = terrain[y][x];
+            // Channel 0: defense_bonus / 2.0
+            board[idx(0, y, x)] = defense_bonus(tile) as f32 / 2.0;
+            // Channel 1: road
+            board[idx(1, y, x)] = if matches!(tile, TileType::Road | TileType::DirtRoad) { 1.0 } else { 0.0 };
+            // Channel 2: mountain
+            board[idx(2, y, x)] = if tile == TileType::Mountain { 1.0 } else { 0.0 };
+            // Channel 3: tree
+            board[idx(3, y, x)] = if tile == TileType::Tree { 1.0 } else { 0.0 };
+        }
+    }
+
+    // Channel 13/14: buildings (friendly / enemy)
+    for b in buildings {
+        let bx = b.x as usize;
+        let by = b.y as usize;
+        if bx < max_width && by < max_height {
+            if b.owner == player {
+                board[idx(13, by, bx)] = 1.0;
+            } else {
+                board[idx(14, by, bx)] = 1.0;
+            }
+        }
+    }
+
+    // Unit channels
+    // Friendly: base channel by type (Infantry=4, Tank=5, Artillery=6), hp channel=7, actionable channel=8
+    // Enemy: base channel by type (Infantry=9, Tank=10, Artillery=11), hp channel=12
+    // Channel 15: focus unit
+    let friendly_base = |ut: UnitType| -> usize {
+        match ut { UnitType::Infantry => 4, UnitType::Tank => 5, UnitType::Artillery => 6 }
+    };
+    let enemy_base = |ut: UnitType| -> usize {
+        match ut { UnitType::Infantry => 9, UnitType::Tank => 10, UnitType::Artillery => 11 }
+    };
+
+    for u in units {
+        if !u.alive() { continue; }
+        let ux = u.x as usize;
+        let uy = u.y as usize;
+        if ux >= max_width || uy >= max_height { continue; }
+
+        if u.player == player {
+            let base = friendly_base(u.unit_type);
+            board[idx(base, uy, ux)] = 1.0;
+            board[idx(7, uy, ux)] = u.hp as f32 / u.unit_type.hp() as f32;
+            board[idx(8, uy, ux)] = if u.has_acted { 0.0 } else { 1.0 };
+        } else {
+            let base = enemy_base(u.unit_type);
+            board[idx(base, uy, ux)] = 1.0;
+            board[idx(12, uy, ux)] = u.hp as f32 / u.unit_type.hp() as f32;
+        }
+
+        if u.uid == focus_uid {
+            board[idx(15, uy, ux)] = 1.0;
+        }
+    }
+
+    board
+}
+
+/// Choose the rusher: closest capturable unit to enemy HQ.
+fn choose_rusher_internal(
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+) -> Option<i32> {
+    let other = if player == 1 { 2 } else { 1 };
+    let enemy_hq = buildings.iter().find(|b| b.owner == other && b.building_type == "hq")?;
+
+    let mut best_uid: Option<i32> = None;
+    let mut best_dist = i32::MAX;
+    for u in units {
+        if !u.alive() || u.player != player { continue; }
+        if !u.unit_type.can_capture() { continue; }
+        let d = manhattan(u.x, u.y, enemy_hq.x, enemy_hq.y);
+        if d < best_dist {
+            best_dist = d;
+            best_uid = Some(u.uid);
+        }
+    }
+    best_uid
+}
+
+/// Unit ordering for the turn.
+fn unit_order_internal(
+    units: &[UnitData],
+    _buildings: &[BuildingData],
+    width: i32,
+    height: i32,
+    player: i32,
+    rusher_uid: Option<i32>,
+) -> Vec<usize> {
+    // Collect enemy positions for nearest-enemy computation
+    let enemies: Vec<(i32, i32)> = units.iter()
+        .filter(|u| u.alive() && u.player != player)
+        .map(|u| (u.x, u.y))
+        .collect();
+
+    let max_dist = width + height;
+
+    let mut own_indices: Vec<usize> = units.iter().enumerate()
+        .filter(|(_, u)| u.alive() && u.player == player)
+        .map(|(i, _)| i)
+        .collect();
+
+    own_indices.sort_by(|&a, &b| {
+        let ua = &units[a];
+        let ub = &units[b];
+
+        let rusher_a = if rusher_uid == Some(ua.uid) { 0 } else { 1 };
+        let rusher_b = if rusher_uid == Some(ub.uid) { 0 } else { 1 };
+
+        let ne_a = enemies.iter().map(|&(ex, ey)| manhattan(ua.x, ua.y, ex, ey)).min().unwrap_or(max_dist);
+        let ne_b = enemies.iter().map(|&(ex, ey)| manhattan(ub.x, ub.y, ex, ey)).min().unwrap_or(max_dist);
+
+        let type_pri = |ut: UnitType| -> i32 {
+            match ut { UnitType::Artillery => 0, UnitType::Tank => 1, UnitType::Infantry => 2 }
+        };
+
+        let key_a = (rusher_a, ne_a, type_pri(ua.unit_type), -ua.hp);
+        let key_b = (rusher_b, ne_b, type_pri(ub.unit_type), -ub.hp);
+        key_a.cmp(&key_b)
+    });
+
+    own_indices
+}
+
+/// Action priority key for a tile (used to rank which tiles to consider).
+fn action_priority_key_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+    unit_idx: usize,
+    tile: (i32, i32),
+    danger_map: &[Vec<f32>],
+    rusher_uid: Option<i32>,
+) -> f64 {
+    let unit = &units[unit_idx];
+    let (x, y) = tile;
+    let tile_defense = defense_bonus(terrain[y as usize][x as usize]) as f64;
+    let danger = danger_map[y as usize][x as usize] as f64;
+
+    let other = if player == 1 { 2 } else { 1 };
+    let enemies: Vec<(i32, i32)> = units.iter()
+        .filter(|u| u.alive() && u.player != player)
+        .map(|u| (u.x, u.y))
+        .collect();
+
+    let nearest_enemy = enemies.iter()
+        .map(|&(ex, ey)| manhattan(x, y, ex, ey))
+        .min()
+        .unwrap_or(width + height) as f64;
+
+    let enemy_hq = buildings.iter().find(|b| b.owner == other && b.building_type == "hq");
+    let enemy_hq_dist = enemy_hq.map(|h| manhattan(x, y, h.x, h.y) as f64)
+        .unwrap_or((width + height) as f64);
+
+    let own_hq = buildings.iter().find(|b| b.owner == player && b.building_type == "hq");
+    let own_hq_dist = own_hq.map(|h| manhattan(x, y, h.x, h.y) as f64).unwrap_or(0.0);
+
+    let hp_bias = if unit.hp <= 1 {
+        0.7 * nearest_enemy
+    } else {
+        -0.4 * nearest_enemy
+    };
+
+    let rusher_bias = if rusher_uid == Some(unit.uid) {
+        -enemy_hq_dist
+    } else {
+        0.0
+    };
+
+    tile_defense * 1.4 - danger * 0.8 + hp_bias + rusher_bias - own_hq_dist * 0.15
+}
+
+/// Get candidate attack targets from position (move_to) for a unit.
+fn candidate_targets_internal(
+    units: &[UnitData],
+    unit_idx: usize,
+    move_to: (i32, i32),
+) -> Vec<usize> {
+    let unit = &units[unit_idx];
+    let (x, y) = move_to;
+    let moved = (x, y) != (unit.x, unit.y);
+    if unit.unit_type == UnitType::Artillery && moved {
+        return vec![];
+    }
+
+    let min_range = unit.unit_type.min_range();
+    let max_range = unit.unit_type.max_range();
+    let mut targets = vec![];
+    for (i, enemy) in units.iter().enumerate() {
+        if !enemy.alive() || enemy.player == unit.player { continue; }
+        let distance = manhattan(x, y, enemy.x, enemy.y);
+        if min_range <= distance && distance <= max_range {
+            targets.push(i);
+        }
+    }
+    targets
+}
+
+/// Score a candidate action (heuristic).
+fn score_candidate_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+    unit_idx: usize,
+    move_to: (i32, i32),
+    target_idx: Option<usize>,
+    kind: &str,
+    danger_map: &[Vec<f32>],
+    rusher_uid: Option<i32>,
+) -> f64 {
+    let unit = &units[unit_idx];
+    let other = if player == 1 { 2 } else { 1 };
+    let (x, y) = move_to;
+    let moved = (x, y) != (unit.x, unit.y);
+    let defense = defense_bonus(terrain[y as usize][x as usize]) as f64;
+    let danger = danger_map[y as usize][x as usize] as f64;
+
+    let enemies: Vec<(i32, i32)> = units.iter()
+        .filter(|u| u.alive() && u.player != player)
+        .map(|u| (u.x, u.y))
+        .collect();
+
+    let nearest_enemy = enemies.iter()
+        .map(|&(ex, ey)| manhattan(x, y, ex, ey))
+        .min()
+        .unwrap_or(width + height) as f64;
+
+    let own_hq = buildings.iter().find(|b| b.owner == player && b.building_type == "hq");
+    let enemy_hq = buildings.iter().find(|b| b.owner == other && b.building_type == "hq");
+
+    let own_hq_dist = own_hq.map(|h| manhattan(x, y, h.x, h.y) as f64).unwrap_or(0.0);
+    let enemy_hq_dist = enemy_hq.map(|h| manhattan(x, y, h.x, h.y) as f64)
+        .unwrap_or((width + height) as f64);
+
+    let mut score = defense * 1.2 - danger * 1.0;
+
+    if let Some(ti) = target_idx {
+        let target = &units[ti];
+        let distance = manhattan(x, y, target.x, target.y);
+        let damage = expected_damage(
+            unit.unit_type,
+            target.unit_type,
+            terrain[target.y as usize][target.x as usize],
+            moved,
+            distance,
+        );
+        let mut counter = 0.0f64;
+        if damage < target.hp as f64 {
+            let target_min = target.unit_type.min_range();
+            let target_max = target.unit_type.max_range();
+            if target_min <= distance && distance <= target_max {
+                counter = expected_damage(
+                    target.unit_type,
+                    unit.unit_type,
+                    terrain[y as usize][x as usize],
+                    false,
+                    distance,
+                );
+            }
+        }
+        score += damage * 4.3 - counter * 2.6;
+        if damage >= target.hp as f64 {
+            score += 7.5;
+        }
+        if target.unit_type == UnitType::Tank {
+            score += 2.5;
+        } else if target.unit_type == UnitType::Artillery {
+            score += 1.3;
+        }
+    }
+
+    if kind.contains("capture") {
+        score += 13.0;
+        if let Some(ehq) = enemy_hq {
+            if x == ehq.x && y == ehq.y {
+                score += 22.0;
+            }
+        }
+    }
+
+    if unit.hp <= 1 {
+        score += nearest_enemy * 0.8 - own_hq_dist * 0.5;
+    } else if unit.unit_type == UnitType::Artillery {
+        score += 2.5 - 1.3 * (nearest_enemy - 2.5).abs();
+    } else if unit.unit_type == UnitType::Tank {
+        score -= nearest_enemy * 0.45;
+    } else {
+        score -= nearest_enemy * 0.28;
+    }
+
+    if unit.unit_type.can_capture() {
+        if let Some(ehq) = enemy_hq {
+            if rusher_uid == Some(unit.uid) {
+                score -= enemy_hq_dist * 0.95;
+            } else {
+                score -= enemy_hq_dist * 0.25;
+            }
+            if x == ehq.x && y == ehq.y {
+                score += 6.0;
+            }
+        }
+    }
+
+    if let Some(ohq) = own_hq {
+        let closest_enemy_to_hq = enemies.iter()
+            .map(|&(ex, ey)| manhattan(ex, ey, ohq.x, ohq.y))
+            .min()
+            .unwrap_or(99);
+        if closest_enemy_to_hq <= 5 {
+            score -= own_hq_dist * 0.35;
+        }
+    }
+
+    if kind.ends_with("wait") {
+        score -= 0.4;
+    }
+
+    score
+}
+
+/// Build the candidate feature vector.
+fn candidate_feature_vector_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+    unit_idx: usize,
+    move_to: (i32, i32),
+    target_idx: Option<usize>,
+    kind: &str,
+    danger_map: &[Vec<f32>],
+    heuristic_score: f64,
+    rusher_uid: Option<i32>,
+    round_num: i32,
+) -> Vec<f32> {
+    let unit = &units[unit_idx];
+    let other = if player == 1 { 2 } else { 1 };
+    let (x, y) = move_to;
+    let moved_f = if (x, y) != (unit.x, unit.y) { 1.0f32 } else { 0.0f32 };
+    let moved_bool = moved_f != 0.0;
+
+    // Action one-hot (6 elements)
+    let action_idx = ACTION_TYPES.iter().position(|&a| a == kind).unwrap_or(0);
+    let action_one_hot = one_hot(action_idx, 6);
+
+    // Unit type one-hot (3 elements)
+    let unit_type_idx = match unit.unit_type {
+        UnitType::Infantry => 0,
+        UnitType::Tank => 1,
+        UnitType::Artillery => 2,
+    };
+    let unit_one_hot = one_hot(unit_type_idx, 3);
+
+    // Target info
+    let (target_one_hot, target_hp, damage, counter, kill_flag);
+    if let Some(ti) = target_idx {
+        let target = &units[ti];
+        let t_idx = match target.unit_type {
+            UnitType::Infantry => 0,
+            UnitType::Tank => 1,
+            UnitType::Artillery => 2,
+        };
+        target_one_hot = one_hot(t_idx, 4);
+        let distance = manhattan(x, y, target.x, target.y);
+        let dmg = expected_damage(
+            unit.unit_type,
+            target.unit_type,
+            terrain[target.y as usize][target.x as usize],
+            moved_bool,
+            distance,
+        );
+        let mut cnt = 0.0f64;
+        if dmg < target.hp as f64 {
+            let t_min = target.unit_type.min_range();
+            let t_max = target.unit_type.max_range();
+            if t_min <= distance && distance <= t_max {
+                cnt = expected_damage(
+                    target.unit_type,
+                    unit.unit_type,
+                    terrain[y as usize][x as usize],
+                    false,
+                    distance,
+                );
+            }
+        }
+        target_hp = target.hp as f32 / target.unit_type.hp() as f32;
+        damage = dmg as f32;
+        counter = cnt as f32;
+        kill_flag = if dmg >= target.hp as f64 { 1.0f32 } else { 0.0f32 };
+    } else {
+        target_one_hot = one_hot(3, 4); // no-target slot
+        target_hp = 0.0;
+        damage = 0.0;
+        counter = 0.0;
+        kill_flag = 0.0;
+    }
+
+    // Collect enemy / ally positions
+    let own_units: Vec<(i32, i32, i32)> = units.iter()
+        .filter(|u| u.alive() && u.player == player)
+        .map(|u| (u.x, u.y, u.uid))
+        .collect();
+    let enemy_units: Vec<(i32, i32)> = units.iter()
+        .filter(|u| u.alive() && u.player != player)
+        .map(|u| (u.x, u.y))
+        .collect();
+
+    let max_dist = (width + height) as f32;
+
+    let nearest_enemy = enemy_units.iter()
+        .map(|&(ex, ey)| manhattan(x, y, ex, ey))
+        .min()
+        .unwrap_or(width + height) as f32;
+
+    let own_support = own_units.iter()
+        .filter(|&&(ax, ay, aid)| aid != unit.uid && manhattan(x, y, ax, ay) <= 2)
+        .count() as f32;
+
+    let enemy_support = enemy_units.iter()
+        .filter(|&&(ex, ey)| manhattan(x, y, ex, ey) <= 2)
+        .count() as f32;
+
+    let defense = defense_bonus(terrain[y as usize][x as usize]) as f32 / 2.0;
+    let danger = danger_map[y as usize][x as usize] / 8.0;
+
+    let own_hq = buildings.iter().find(|b| b.owner == player && b.building_type == "hq");
+    let enemy_hq = buildings.iter().find(|b| b.owner == other && b.building_type == "hq");
+
+    let mut enemy_hq_dist = 0.0f32;
+    let mut own_hq_dist = 0.0f32;
+    let mut delta_enemy_hq = 0.0f32;
+
+    if let Some(ehq) = enemy_hq {
+        enemy_hq_dist = manhattan(x, y, ehq.x, ehq.y) as f32 / max_dist;
+        delta_enemy_hq = (manhattan(unit.x, unit.y, ehq.x, ehq.y) - manhattan(x, y, ehq.x, ehq.y)) as f32 / max_dist;
+    }
+    if let Some(ohq) = own_hq {
+        own_hq_dist = manhattan(x, y, ohq.x, ohq.y) as f32 / max_dist;
+    }
+
+    // delta_enemy: change in nearest enemy distance
+    let orig_nearest_enemy = enemy_units.iter()
+        .map(|&(ex, ey)| manhattan(unit.x, unit.y, ex, ey))
+        .min()
+        .unwrap_or(width + height) as f32;
+    let delta_enemy = (orig_nearest_enemy - nearest_enemy) / max_dist;
+
+    let (own_hp, enemy_hp, own_count, enemy_count) = current_metrics(units, player);
+
+    let on_enemy_hq = if let Some(ehq) = enemy_hq { if x == ehq.x && y == ehq.y { 1.0f32 } else { 0.0 } } else { 0.0 };
+    let on_own_hq = if let Some(ohq) = own_hq { if x == ohq.x && y == ohq.y { 1.0f32 } else { 0.0 } } else { 0.0 };
+    let capture_flag = if kind.contains("capture") { 1.0f32 } else { 0.0 };
+    let is_rusher = if rusher_uid == Some(unit.uid) { 1.0f32 } else { 0.0 };
+
+    let mut features = Vec::with_capacity(36);
+    features.extend_from_slice(&action_one_hot);      // 6
+    features.extend_from_slice(&unit_one_hot);         // 3
+    features.extend_from_slice(&target_one_hot);       // 4
+    features.push(unit.hp as f32 / unit.unit_type.hp() as f32);
+    features.push(target_hp);
+    features.push(moved_f);
+    features.push(defense);
+    features.push(danger);
+    features.push(own_support / 4.0);
+    features.push(enemy_support / 4.0);
+    features.push(nearest_enemy / max_dist);
+    features.push(enemy_hq_dist);
+    features.push(own_hq_dist);
+    features.push(delta_enemy_hq);
+    features.push(delta_enemy);
+    features.push(damage / 5.0);
+    features.push(counter / 5.0);
+    features.push(kill_flag);
+    features.push(capture_flag);
+    features.push(on_enemy_hq);
+    features.push(on_own_hq);
+    features.push(is_rusher);
+    features.push(round_num as f32 / 30.0);
+    features.push(((own_count - enemy_count) as f32 / 6.0).clamp(-1.0, 1.0));
+    features.push(((own_hp - enemy_hp) as f32 / 15.0).clamp(-1.0, 1.0));
+    features.push(heuristic_score as f32 / 20.0);
+
+    features
+}
+
+/// Enumerate all candidate actions for a unit, returning (kind, move_to, target_uid, features, heuristic_score).
+fn enumerate_candidates_internal(
+    terrain: &[Vec<TileType>],
+    width: i32,
+    height: i32,
+    units: &[UnitData],
+    buildings: &[BuildingData],
+    player: i32,
+    unit_idx: usize,
+    danger_map: &[Vec<f32>],
+    rusher_uid: Option<i32>,
+    round_num: i32,
+) -> Vec<(String, (i32, i32), Option<i32>, Vec<f32>, f64)> {
+    let unit = &units[unit_idx];
+
+    // Score the unit's current tile and all reachable tiles
+    let mut tile_scores: Vec<((i32, i32), f64)> = Vec::new();
+
+    let current_tile = (unit.x, unit.y);
+    let current_score = action_priority_key_internal(
+        terrain, width, height, units, buildings, player,
+        unit_idx, current_tile, danger_map, rusher_uid,
+    );
+    tile_scores.push((current_tile, current_score));
+
+    let reached = reachable_tiles_internal(terrain, width, height, units, unit_idx, &[]);
+    for &tile in reached.keys() {
+        let score = action_priority_key_internal(
+            terrain, width, height, units, buildings, player,
+            unit_idx, tile, danger_map, rusher_uid,
+        );
+        tile_scores.push((tile, score));
+    }
+
+    // Sort by score descending, take top MAX_TILE_CANDIDATES
+    tile_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let mut ranked_tiles: Vec<(i32, i32)> = tile_scores.iter()
+        .take(MAX_TILE_CANDIDATES)
+        .map(|&(t, _)| t)
+        .collect();
+
+    // Ensure current tile is included
+    if !ranked_tiles.contains(&current_tile) {
+        ranked_tiles.push(current_tile);
+    }
+
+    let mut candidates: Vec<(String, (i32, i32), Option<i32>, Vec<f32>, f64)> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, (i32, i32), Option<i32>)> = std::collections::HashSet::new();
+
+    for &tile in &ranked_tiles {
+        let moved = tile != current_tile;
+
+        // Check for capture
+        if let Some(building) = find_building_internal(buildings, tile.0, tile.1) {
+            if building.owner != player && unit.unit_type.can_capture() {
+                let kind = if moved { "move_capture" } else { "capture" };
+                let heuristic = score_candidate_internal(
+                    terrain, width, height, units, buildings, player,
+                    unit_idx, tile, None, kind, danger_map, rusher_uid,
+                );
+                let key = (kind.to_string(), tile, None);
+                if !seen.contains(&key) {
+                    let features = candidate_feature_vector_internal(
+                        terrain, width, height, units, buildings, player,
+                        unit_idx, tile, None, kind, danger_map, heuristic,
+                        rusher_uid, round_num,
+                    );
+                    seen.insert(key);
+                    candidates.push((kind.to_string(), tile, None, features, heuristic));
+                }
+            }
+        }
+
+        // Attack targets from this tile
+        let mut targets = candidate_targets_internal(units, unit_idx, tile);
+
+        // Sort targets by score descending
+        targets.sort_by(|&a, &b| {
+            let kind_str = if moved { "move_attack" } else { "attack" };
+            let sa = score_candidate_internal(
+                terrain, width, height, units, buildings, player,
+                unit_idx, tile, Some(a), kind_str, danger_map, rusher_uid,
+            );
+            let sb = score_candidate_internal(
+                terrain, width, height, units, buildings, player,
+                unit_idx, tile, Some(b), kind_str, danger_map, rusher_uid,
+            );
+            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Take top 3 targets
+        for &ti in targets.iter().take(3) {
+            let kind = if moved { "move_attack" } else { "attack" };
+            let heuristic = score_candidate_internal(
+                terrain, width, height, units, buildings, player,
+                unit_idx, tile, Some(ti), kind, danger_map, rusher_uid,
+            );
+            let target_uid = units[ti].uid;
+            let key = (kind.to_string(), tile, Some(target_uid));
+            if !seen.contains(&key) {
+                let features = candidate_feature_vector_internal(
+                    terrain, width, height, units, buildings, player,
+                    unit_idx, tile, Some(ti), kind, danger_map, heuristic,
+                    rusher_uid, round_num,
+                );
+                seen.insert(key);
+                candidates.push((kind.to_string(), tile, Some(target_uid), features, heuristic));
+            }
+        }
+
+        // Wait/move_wait
+        let kind = if moved { "move_wait" } else { "wait" };
+        let heuristic = score_candidate_internal(
+            terrain, width, height, units, buildings, player,
+            unit_idx, tile, None, kind, danger_map, rusher_uid,
+        );
+        let key = (kind.to_string(), tile, None);
+        if !seen.contains(&key) {
+            let features = candidate_feature_vector_internal(
+                terrain, width, height, units, buildings, player,
+                unit_idx, tile, None, kind, danger_map, heuristic,
+                rusher_uid, round_num,
+            );
+            seen.insert(key);
+            candidates.push((kind.to_string(), tile, None, features, heuristic));
+        }
+    }
+
+    // Fallback: if no candidates, emit a plain "wait" at current position
+    if candidates.is_empty() {
+        let heuristic = 0.0;
+        let features = candidate_feature_vector_internal(
+            terrain, width, height, units, buildings, player,
+            unit_idx, current_tile, None, "wait", danger_map, heuristic,
+            rusher_uid, round_num,
+        );
+        candidates.push(("wait".to_string(), current_tile, None, features, heuristic));
+    }
+
+    candidates
+}
+
+// ============================================================================
+// Training helper PyO3 wrappers
+// ============================================================================
+
+#[pyfunction]
+#[pyo3(signature = (state, player, focus_uid, max_width, max_height))]
+fn encode_board_py(state: &GameState, player: i32, focus_uid: i32, max_width: usize, max_height: usize) -> Vec<f32> {
+    encode_board_internal(
+        &state.terrain,
+        state.width,
+        state.height,
+        &state.units,
+        &state.buildings,
+        player,
+        focus_uid,
+        max_width,
+        max_height,
+        state.round_num,
+    )
+}
+
+#[pyfunction]
+#[pyo3(signature = (state, player))]
+fn build_danger_maps_py(state: &GameState, player: i32) -> HashMap<i32, Vec<Vec<f32>>> {
+    let maps = build_danger_maps_internal(
+        &state.terrain,
+        state.width,
+        state.height,
+        &state.units,
+        &state.buildings,
+        player,
+    );
+    let mut result: HashMap<i32, Vec<Vec<f32>>> = HashMap::new();
+    for (ut, grid) in maps {
+        result.insert(ut.to_int(), grid);
+    }
+    result
+}
+
+#[pyfunction]
+#[pyo3(signature = (state, player))]
+fn choose_rusher_py(state: &GameState, player: i32) -> Option<i32> {
+    choose_rusher_internal(&state.units, &state.buildings, player)
+}
+
+#[pyfunction]
+#[pyo3(signature = (state, player, rusher_uid=None))]
+fn unit_order_py(state: &GameState, player: i32, rusher_uid: Option<i32>) -> Vec<Unit> {
+    let indices = unit_order_internal(
+        &state.units,
+        &state.buildings,
+        state.width,
+        state.height,
+        player,
+        rusher_uid,
+    );
+    indices.iter().map(|&i| {
+        let u = &state.units[i];
+        Unit {
+            uid: u.uid, x: u.x, y: u.y, hp: u.hp, player: u.player,
+            has_moved: u.has_moved, has_acted: u.has_acted, unit_type_inner: u.unit_type,
+        }
+    }).collect()
+}
+
+#[pyfunction]
+#[pyo3(signature = (state, player, unit_uid, danger_map, rusher_uid=None))]
+fn enumerate_candidates_py(
+    state: &GameState,
+    player: i32,
+    unit_uid: i32,
+    danger_map: Vec<Vec<f32>>,
+    rusher_uid: Option<i32>,
+) -> PyResult<Vec<(String, (i32, i32), Option<i32>, Vec<f32>, f64)>> {
+    let unit_idx = state.units.iter().position(|u| u.uid == unit_uid)
+        .ok_or_else(|| PyValueError::new_err(format!("No unit with uid {}", unit_uid)))?;
+
+    Ok(enumerate_candidates_internal(
+        &state.terrain,
+        state.width,
+        state.height,
+        &state.units,
+        &state.buildings,
+        player,
+        unit_idx,
+        &danger_map,
+        rusher_uid,
+        state.round_num,
+    ))
+}
+
+// ============================================================================
 // Module
 // ============================================================================
 
@@ -1848,6 +2711,11 @@ fn hashfront_sim(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(can_capture_py, m)?)?;
     m.add_function(wrap_pyfunction!(defense_bonus_py, m)?)?;
     m.add_function(wrap_pyfunction!(play_heuristic_turn, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_board_py, m)?)?;
+    m.add_function(wrap_pyfunction!(build_danger_maps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(choose_rusher_py, m)?)?;
+    m.add_function(wrap_pyfunction!(unit_order_py, m)?)?;
+    m.add_function(wrap_pyfunction!(enumerate_candidates_py, m)?)?;
 
     // Unit type constants (integers matching UnitType enum values)
     m.add("INFANTRY", 1)?;
