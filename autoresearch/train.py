@@ -2280,6 +2280,10 @@ def update_rollout(
         flat_logits = policy.score_candidates(state_embeddings, candidate_batch, heuristic_batch, candidate_counts)
         values = policy.predict_value(state_embeddings)
 
+    # Cast back to fp32 for stable loss computation
+    flat_logits = flat_logits.float()
+    values = values.float()
+
     # Split logits per transition and build distributions
     logit_splits = flat_logits.split(candidate_counts)
     distributions = [
@@ -2325,6 +2329,9 @@ def update_rollout(
         + imitation_weight * (imitation_loss / count)
         - ENTROPY_WEIGHT * (entropy_bonus / count)
     )
+
+    if torch.isnan(loss) or torch.isinf(loss):
+        return
 
     optimizer.zero_grad(set_to_none=True)
     if scaler is not None:
