@@ -109,7 +109,7 @@ try:
     # Rust-accelerated training helpers
     def encode_board_rust(state, player, focus_uid, max_width, max_height):
         flat = _hs.encode_board_py(state, player, focus_uid, max_width, max_height)
-        return torch.tensor(flat, dtype=torch.float32, device=device).reshape(16, max_height, max_width)
+        return torch.tensor(flat, dtype=torch.float32, device=device).reshape(BOARD_CHANNELS, max_height, max_width)
 
     def build_danger_maps_rust(state, player):
         return _hs.build_danger_maps_py(state, player)
@@ -258,7 +258,11 @@ IMITATION_WEIGHT = 0.35
 LEARNING_RATE = 4e-4
 WEIGHT_DECAY = 1e-4
 MAX_TILE_CANDIDATES = 12
-BOARD_CHANNELS = 16
+BOARD_CHANNELS = 18
+HEAVY_CHANNELS = 256
+HEAVY_BLOCKS = 12
+LIGHT_CHANNELS = 64
+LIGHT_BLOCKS = 5
 DEFAULT_ROLLOUT_FRAGMENT_STEPS = 32
 DEFAULT_PARALLEL_ENVS_CPU = 4
 DEFAULT_PARALLEL_ENVS_CUDA = 8
@@ -507,10 +511,10 @@ def serialize_snapshot_pool(snapshot_pool: list[PolicySnapshot]) -> list[dict]:
     return serialized
 
 
-def deserialize_snapshot_pool(raw_snapshots: list[dict], feature_dim: int) -> list[PolicySnapshot]:
+def deserialize_snapshot_pool(raw_snapshots: list[dict], feature_dim: int, channels: int = LIGHT_CHANNELS, blocks: int = LIGHT_BLOCKS) -> list[PolicySnapshot]:
     snapshot_pool = []
     for raw_snapshot in raw_snapshots:
-        snapshot_policy = PolicyValueNet(feature_dim).to(device)
+        snapshot_policy = PolicyValueNet(feature_dim, channels=channels, blocks=blocks).to(device)
         snapshot_policy.load_state_dict(raw_snapshot["state_dict"])
         snapshot_policy.eval()
         snapshot_policy.requires_grad_(False)
@@ -528,6 +532,8 @@ def deserialize_snapshot_pool(raw_snapshots: list[dict], feature_dim: int) -> li
 def load_training_checkpoint(
     checkpoint_dir: str | None,
     feature_dim: int,
+    channels: int = LIGHT_CHANNELS,
+    blocks: int = LIGHT_BLOCKS,
 ) -> dict | None:
     path = checkpoint_path(checkpoint_dir)
     if path is None or not path.exists():
@@ -535,7 +541,7 @@ def load_training_checkpoint(
 
     checkpoint = torch.load(path, map_location="cpu")
     raw_snapshots = checkpoint.get("snapshot_pool", [])
-    checkpoint["snapshot_pool"] = deserialize_snapshot_pool(raw_snapshots, feature_dim)
+    checkpoint["snapshot_pool"] = deserialize_snapshot_pool(raw_snapshots, feature_dim, channels=channels, blocks=blocks)
     return checkpoint
 
 
@@ -1237,9 +1243,9 @@ def store_transition(
 class ResidualBlock(nn.Module):
     def __init__(self, channels: int):
         super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -1250,44 +1256,44 @@ class ResidualBlock(nn.Module):
 
 
 class PolicyValueNet(nn.Module):
-    def __init__(self, feature_dim: int):
+    def __init__(self, feature_dim: int, channels: int = LIGHT_CHANNELS, blocks: int = LIGHT_BLOCKS):
         super().__init__()
-        self.conv_body = nn.Sequential(
-            nn.Conv2d(BOARD_CHANNELS, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            ResidualBlock(64),
-            ResidualBlock(64),
-            ResidualBlock(64),
-            ResidualBlock(64),
-            ResidualBlock(64),
-        )
+        layers = [
+            nn.Conv2d(BOARD_CHANNELS, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.SiLU(),
+        ]
+        for _ in range(blocks):
+            layers.append(ResidualBlock(channels))
+        
+        self.conv_body = nn.Sequential(*layers)
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
+        
         self.state_proj = nn.Sequential(
-            nn.Linear(128, 192),
-            nn.ReLU(),
-            nn.Linear(192, 192),
-            nn.ReLU(),
+            nn.Linear(channels * 2, channels * 2),
+            nn.SiLU(),
+            nn.Linear(channels * 2, channels * 2),
+            nn.SiLU(),
         )
         self.candidate_proj = nn.Sequential(
-            nn.Linear(feature_dim, 192),
-            nn.LayerNorm(192),
-            nn.ReLU(),
-            nn.Linear(192, 192),
-            nn.ReLU(),
+            nn.Linear(feature_dim, channels * 2),
+            nn.LayerNorm(channels * 2),
+            nn.SiLU(),
+            nn.Linear(channels * 2, channels * 2),
+            nn.SiLU(),
         )
         self.policy_head = nn.Sequential(
-            nn.Linear(384, 192),
-            nn.ReLU(),
+            nn.Linear(channels * 4, channels * 2),
+            nn.SiLU(),
             nn.Dropout(0.1),
-            nn.Linear(192, 1),
+            nn.Linear(channels * 2, 1),
         )
         self.value_head = nn.Sequential(
-            nn.Linear(192, 192),
-            nn.ReLU(),
+            nn.Linear(channels * 2, channels * 2),
+            nn.SiLU(),
             nn.Dropout(0.1),
-            nn.Linear(192, 1),
+            nn.Linear(channels * 2, 1),
         )
         self.logit_prior_scale = nn.Parameter(torch.tensor(3.0))
         nn.init.zeros_(self.policy_head[-1].weight)
@@ -2246,6 +2252,7 @@ def update_rollout(
     imitation_weight: float,
     bootstrap_value: torch.Tensor | None = None,
     winner: int | None = None,
+    scaler=None,
 ):
     if not transitions:
         return
@@ -2267,9 +2274,10 @@ def update_rollout(
     teacher_indices = torch.tensor([t["teacher_index"] for t in transitions], dtype=torch.long, device=device)
     rewards = torch.tensor([t["reward"] for t in transitions], dtype=torch.float32, device=device)
 
-    state_embeddings = policy.encode_state(board_batch)
-    flat_logits = policy.score_candidates(state_embeddings, candidate_batch, heuristic_batch, candidate_counts)
-    values = policy.predict_value(state_embeddings)
+    with torch.amp.autocast("cuda", enabled=scaler is not None):
+        state_embeddings = policy.encode_state(board_batch)
+        flat_logits = policy.score_candidates(state_embeddings, candidate_batch, heuristic_batch, candidate_counts)
+        values = policy.predict_value(state_embeddings)
 
     # Split logits per transition and build distributions
     logit_splits = flat_logits.split(candidate_counts)
@@ -2318,10 +2326,18 @@ def update_rollout(
     )
 
     optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    params = [param for group in optimizer.param_groups for param in group["params"]]
-    torch.nn.utils.clip_grad_norm_(params, 1.0)
-    optimizer.step()
+    if scaler is not None:
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        params = [param for group in optimizer.param_groups for param in group["params"]]
+        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+    else:
+        loss.backward()
+        params = [param for group in optimizer.param_groups for param in group["params"]]
+        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        optimizer.step()
 
 
 def maybe_update_rollout_fragment(
@@ -2331,6 +2347,7 @@ def maybe_update_rollout_fragment(
     optimizer,
     imitation_weight: float,
     rollout_fragment_steps: int,
+    scaler=None,
 ) -> bool:
     if not request.record_transition or len(env.transitions) < rollout_fragment_steps:
         return False
@@ -2342,12 +2359,13 @@ def maybe_update_rollout_fragment(
         optimizer=optimizer,
         imitation_weight=imitation_weight,
         bootstrap_value=estimate_request_value(policy, request),
+        scaler=scaler,
     )
     env.transitions.clear()
     return True
 
 
-def finalize_finished_envs(active_envs, policy: PolicyValueNet, optimizer, imitation_weight: float):
+def finalize_finished_envs(active_envs, policy: PolicyValueNet, optimizer, imitation_weight: float, scaler=None):
     remaining_envs = []
     games_completed = 0
     wins = 0
@@ -2366,6 +2384,7 @@ def finalize_finished_envs(active_envs, policy: PolicyValueNet, optimizer, imita
                 optimizer=optimizer,
                 imitation_weight=imitation_weight,
                 winner=env.state.winner,
+                scaler=scaler,
             )
             env.transitions.clear()
             updates += 1
@@ -2389,6 +2408,7 @@ def run_parallel_training(
     active_envs: list[TrainingEnv],
     rollout_fragment_steps: int,
     imitation_weight: float = IMITATION_WEIGHT,
+    scaler=None,
 ):
     games_played = 0
     wins = 0
@@ -2428,6 +2448,7 @@ def run_parallel_training(
                     optimizer,
                     imitation_weight,
                     rollout_fragment_steps,
+                    scaler=scaler,
                 ):
                     updates += 1
                 requests.append(request)
@@ -2443,6 +2464,7 @@ def run_parallel_training(
             policy,
             optimizer,
             imitation_weight,
+            scaler=scaler,
         )
         games_played += completed_games
         wins += completed_wins
@@ -2465,6 +2487,7 @@ def handle_remote_worker_message(
     temperature: float,
     train_deadline: float,
     imitation_weight: float = IMITATION_WEIGHT,
+    scaler=None,
 ) -> tuple[int, int, int]:
     message_type = message["type"]
 
@@ -2487,6 +2510,7 @@ def handle_remote_worker_message(
                 optimizer=optimizer,
                 imitation_weight=imitation_weight,
                 winner=message["winner"],
+                scaler=scaler,
             )
             updates += 1
         worker_id = message["worker_id"]
@@ -2520,6 +2544,7 @@ def run_parallel_training_remote(
     worker_pool: SimulationWorkerPool | None,
     rollout_fragment_steps: int,
     imitation_weight: float = IMITATION_WEIGHT,
+    scaler=None,
 ):
     if worker_pool is None:
         worker_pool = start_simulation_worker_pool(
@@ -2581,6 +2606,7 @@ def run_parallel_training_remote(
                         temperature,
                         train_deadline,
                         imitation_weight,
+                        scaler=scaler,
                     )
                     games_played += batch_games
                     wins += batch_wins
@@ -2638,6 +2664,7 @@ def run_parallel_training_remote(
                 temperature,
                 train_deadline,
                 imitation_weight,
+                scaler=scaler,
             )
             games_played += batch_games
             wins += batch_wins
@@ -2899,6 +2926,7 @@ def train(
     checkpoint_dir: str | None = DEFAULT_CHECKPOINT_DIR,
     resume: bool = True,
     seed: int | None = None,
+    heavy: bool = False,
 ):
     if device.type == "cuda":
         torch.set_float32_matmul_precision("high")
@@ -2932,13 +2960,16 @@ def train(
         )
     )
 
+    channels = HEAVY_CHANNELS if heavy else LIGHT_CHANNELS
+    blocks = HEAVY_BLOCKS if heavy else LIGHT_BLOCKS
+
     checkpoint_file = checkpoint_path(checkpoint_dir)
-    resume_state = load_training_checkpoint(checkpoint_dir, sample_features) if resume else None
+    resume_state = load_training_checkpoint(checkpoint_dir, sample_features, channels=channels, blocks=blocks) if resume else None
     previous_runs = int(resume_state.get("completed_runs", 0)) if resume_state else 0
     run_seed = seed if seed is not None else BASE_SEED + previous_runs
     seed_everything(run_seed)
-
-    policy = PolicyValueNet(sample_features).to(device)
+    policy = PolicyValueNet(sample_features, channels=channels, blocks=blocks).to(device)
+    scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
     optimizer = optim.AdamW(policy.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     if resume_state is not None:
@@ -3045,6 +3076,7 @@ def train(
                     worker_pool=worker_pool,
                     rollout_fragment_steps=rollout_fragment_steps,
                     imitation_weight=imitation_weight,
+                    scaler=scaler,
                 )
             else:
                 active_envs, batch_games, batch_wins, batch_decisions, batch_count, batch_updates = run_parallel_training(
@@ -3061,6 +3093,7 @@ def train(
                     active_envs=active_envs,
                     rollout_fragment_steps=rollout_fragment_steps,
                     imitation_weight=imitation_weight,
+                    scaler=scaler,
                 )
             games_played += batch_games
             wins += batch_wins
@@ -3235,6 +3268,11 @@ if __name__ == "__main__":
         default=None,
         help="Override the training seed (defaults to a deterministic per-run seed)",
     )
+    parser.add_argument(
+        "--heavy",
+        action="store_true",
+        help="Use the heavy architecture (256 channels, 12 blocks) and mixed precision",
+    )
     args = parser.parse_args()
     train(
         duration=args.duration,
@@ -3249,4 +3287,5 @@ if __name__ == "__main__":
         checkpoint_dir=args.checkpoint_dir,
         resume=not args.fresh_start,
         seed=args.seed,
+        heavy=args.heavy,
     )
