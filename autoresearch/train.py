@@ -2902,6 +2902,8 @@ def train(
     resume: bool = True,
     seed: int | None = None,
     heavy: bool = False,
+    lr: float | None = None,
+    weight_decay: float | None = None,
 ):
     if device.type == "cuda":
         torch.set_float32_matmul_precision("high")
@@ -2943,9 +2945,12 @@ def train(
     previous_runs = int(resume_state.get("completed_runs", 0)) if resume_state else 0
     run_seed = seed if seed is not None else BASE_SEED + previous_runs
     seed_everything(run_seed)
+    effective_lr = lr if lr is not None else (1e-4 if heavy else LEARNING_RATE)
+    effective_wd = weight_decay if weight_decay is not None else (1e-3 if heavy else WEIGHT_DECAY)
+
     policy = PolicyValueNet(sample_features, channels=channels, blocks=blocks).to(device)
     scaler = torch.amp.GradScaler("cuda") if device.type == "cuda" else None
-    optimizer = optim.AdamW(policy.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    optimizer = optim.AdamW(policy.parameters(), lr=effective_lr, weight_decay=effective_wd)
 
     if resume_state is not None:
         policy.load_state_dict(resume_state["policy_state"])
@@ -3030,9 +3035,9 @@ def train(
             policy.train()
             progress = (time.perf_counter() - start_time) / max(1.0, train_deadline - start_time)
             import math
-            cosine_lr = LEARNING_RATE * 0.5 * (1.0 + math.cos(math.pi * progress))
+            cosine_lr = effective_lr * 0.5 * (1.0 + math.cos(math.pi * progress))
             for pg in optimizer.param_groups:
-                pg["lr"] = max(cosine_lr, LEARNING_RATE * 0.1)
+                pg["lr"] = max(cosine_lr, effective_lr * 0.1)
             imitation_weight = IMITATION_WEIGHT * max(0.05, 1.0 - progress)
             effective_self_play_ratio = self_play_ratio * min(1.0, 0.5 + 0.5 * progress)
             if sim_workers > 0:
@@ -3248,6 +3253,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the heavy architecture (256 channels, 12 blocks) and mixed precision",
     )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=None,
+        help="Learning rate (default: 1e-4 for heavy, 4e-4 for light)",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=None,
+        help="Weight decay (default: 1e-3 for heavy, 1e-4 for light)",
+    )
     args = parser.parse_args()
     train(
         duration=args.duration,
@@ -3263,4 +3280,6 @@ if __name__ == "__main__":
         resume=not args.fresh_start,
         seed=args.seed,
         heavy=args.heavy,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
     )
