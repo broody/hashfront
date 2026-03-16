@@ -11,6 +11,7 @@ const ROW_JEEP = ROW_BUGGY + TILE;
 const ROW_ARTILLERY = ROW_JEEP + TILE;
 const ROW_TANK = ROW_ARTILLERY + TILE * 3; // skip two rows
 const ROW_HEAVY_TANK = ROW_TANK + TILE;
+const ROW_APC = ROW_HEAVY_TANK + TILE;
 
 function createUnitAtlas(image: string) {
   return {
@@ -757,6 +758,31 @@ function createUnitAtlas(image: string) {
       heavy_tank_death_3: {
         frame: { x: TILE * 27, y: ROW_HEAVY_TANK, w: TILE, h: TILE },
       },
+      // APC - Idle
+      apc_idle_0: { frame: { x: 0, y: ROW_APC, w: TILE, h: TILE } },
+      apc_idle_1: { frame: { x: TILE, y: ROW_APC, w: TILE, h: TILE } },
+      apc_idle_2: { frame: { x: TILE * 2, y: ROW_APC, w: TILE, h: TILE } },
+      apc_idle_3: { frame: { x: TILE * 3, y: ROW_APC, w: TILE, h: TILE } },
+      // APC - Walk Side
+      apc_walk_side_0: { frame: { x: TILE * 4, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_side_1: { frame: { x: TILE * 5, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_side_2: { frame: { x: TILE * 6, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_side_3: { frame: { x: TILE * 7, y: ROW_APC, w: TILE, h: TILE } },
+      // APC - Walk Down
+      apc_walk_down_0: { frame: { x: TILE * 8, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_down_1: { frame: { x: TILE * 9, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_down_2: { frame: { x: TILE * 10, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_down_3: { frame: { x: TILE * 11, y: ROW_APC, w: TILE, h: TILE } },
+      // APC - Walk Up
+      apc_walk_up_0: { frame: { x: TILE * 12, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_up_1: { frame: { x: TILE * 13, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_up_2: { frame: { x: TILE * 14, y: ROW_APC, w: TILE, h: TILE } },
+      apc_walk_up_3: { frame: { x: TILE * 15, y: ROW_APC, w: TILE, h: TILE } },
+      // APC - Death
+      apc_death_0: { frame: { x: TILE * 24, y: ROW_APC, w: TILE, h: TILE } },
+      apc_death_1: { frame: { x: TILE * 25, y: ROW_APC, w: TILE, h: TILE } },
+      apc_death_2: { frame: { x: TILE * 26, y: ROW_APC, w: TILE, h: TILE } },
+      apc_death_3: { frame: { x: TILE * 27, y: ROW_APC, w: TILE, h: TILE } },
     },
     animations: {
       civilian_idle: [
@@ -1137,6 +1163,31 @@ function createUnitAtlas(image: string) {
         "heavy_tank_death_1",
         "heavy_tank_death_2",
         "heavy_tank_death_3",
+      ],
+      apc_idle: ["apc_idle_0", "apc_idle_1", "apc_idle_2", "apc_idle_3"],
+      apc_walk_side: [
+        "apc_walk_side_0",
+        "apc_walk_side_1",
+        "apc_walk_side_2",
+        "apc_walk_side_3",
+      ],
+      apc_walk_down: [
+        "apc_walk_down_0",
+        "apc_walk_down_1",
+        "apc_walk_down_2",
+        "apc_walk_down_3",
+      ],
+      apc_walk_up: [
+        "apc_walk_up_0",
+        "apc_walk_up_1",
+        "apc_walk_up_2",
+        "apc_walk_up_3",
+      ],
+      apc_death: [
+        "apc_death_0",
+        "apc_death_1",
+        "apc_death_2",
+        "apc_death_3",
       ],
     },
     meta: {

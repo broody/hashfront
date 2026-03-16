@@ -1,7 +1,7 @@
 import { TileType } from "./types";
 import { UNIT_ROAD_BONUS } from "./balance";
 
-type UnitMoveType = "rifle" | "tank" | "artillery";
+type UnitMoveType = "rifle" | "tank" | "artillery" | "apc";
 
 /** Movement cost per tile type. -1 = impassable. */
 const TILE_COST: Record<TileType, number> = {
@@ -40,7 +40,8 @@ const DIRS = [
 ];
 
 function normalizeUnitType(unitType: string): UnitMoveType {
-  if (unitType === "tank" || unitType === "artillery") return unitType;
+  if (unitType === "tank" || unitType === "artillery" || unitType === "apc")
+    return unitType;
   return "rifle";
 }
 

@@ -1,4 +1,4 @@
-export const LOCAL_UNIT_TYPES = ["Infantry", "Tank", "Artillery"] as const;
+export const LOCAL_UNIT_TYPES = ["Infantry", "Tank", "Artillery", "APC"] as const;
 
 export type LocalUnitType = (typeof LOCAL_UNIT_TYPES)[number];
 

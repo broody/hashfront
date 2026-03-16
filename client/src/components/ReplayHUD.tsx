@@ -30,6 +30,7 @@ const UNIT_SPRITE_OFFSET: Record<string, { x: number; y: number }> = {
   rifle: { x: 0, y: 48 },
   tank: { x: 0, y: 432 },
   artillery: { x: 0, y: 336 },
+  apc: { x: 0, y: 496 },
 };
 
 const TERRAIN_NAMES: Record<number, string> = {

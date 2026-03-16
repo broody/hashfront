@@ -29,24 +29,28 @@ const UNIT_HP: Record<LocalUnitType, number> = {
   Infantry: DEFAULT_UNIT_HP,
   Tank: DEFAULT_UNIT_HP,
   Artillery: DEFAULT_UNIT_HP,
+  APC: DEFAULT_UNIT_HP,
 };
 
 const UNIT_MOVE: Record<LocalUnitType, number> = {
   Infantry: STORE_UNIT_MOVE_RANGE.rifle,
   Tank: STORE_UNIT_MOVE_RANGE.tank,
   Artillery: STORE_UNIT_MOVE_RANGE.artillery,
+  APC: STORE_UNIT_MOVE_RANGE.apc,
 };
 
 const UNIT_ATTACK_RANGE: Record<LocalUnitType, [number, number]> = {
   Infantry: STORE_UNIT_ATTACK_RANGE.rifle,
   Tank: STORE_UNIT_ATTACK_RANGE.tank,
   Artillery: STORE_UNIT_ATTACK_RANGE.artillery,
+  APC: STORE_UNIT_ATTACK_RANGE.apc,
 };
 
 const UNIT_TYPE_TO_MOVE: Record<LocalUnitType, StoreUnitType> = {
   Infantry: "rifle",
   Tank: "tank",
   Artillery: "artillery",
+  APC: "apc",
 };
 
 export {

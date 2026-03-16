@@ -479,11 +479,13 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
     vp.addChild(trailGfx);
 
     // --- Render units ---
+    const UNIT_SPRITE_TYPE: Record<string, string> = {};
     const unitSprites = new Map<number, AnimatedSprite>();
 
     function createUnitSprite(unit: Unit): AnimatedSprite {
       const sheet = unitSheets[unit.team];
-      const animKey = `${unit.type}_${unit.animation}`;
+      const spriteType = UNIT_SPRITE_TYPE[unit.type] ?? unit.type;
+      const animKey = `${spriteType}_${unit.animation}`;
       const frames = sheet.animations[animKey];
       const anim = new AnimatedSprite(frames);
       anim.animationSpeed = 0.1;
@@ -506,7 +508,8 @@ export default function GameViewport({ onLoaded }: { onLoaded?: () => void }) {
       anim: Unit["animation"],
       facing?: Unit["facing"],
     ) {
-      const newKey = `${unit.type}_${anim}`;
+      const spriteType = UNIT_SPRITE_TYPE[unit.type] ?? unit.type;
+      const newKey = `${spriteType}_${anim}`;
       const sheet = unitSheets[unit.team];
       const frames = sheet.animations[newKey];
       if (!frames) return;

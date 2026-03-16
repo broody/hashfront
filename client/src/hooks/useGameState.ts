@@ -257,7 +257,7 @@ export function useGameState(id: string | undefined): {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const subscriptionRef = useRef<{ free(): void } | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedIdRef = useRef<string | null>(null);
 
   const gameIdNum = Number.parseInt(id || "", 10);
@@ -403,44 +403,67 @@ export function useGameState(id: string | undefined): {
         if (!active) return;
 
         // Polling fallback: periodically fetch entities in case subscription drops
-        const POLL_INTERVAL = 3000;
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = setInterval(async () => {
-          if (!active) return;
-          try {
-            const [r1, r2] = await Promise.all([
-              sdk!.getEntities({
-                query: new ToriiQueryBuilder<Schema>()
-                  .withClause(
-                    KeysClause<Schema>(
-                      ["hashfront-Game", "hashfront-PlayerState"],
-                      [gameIdHex],
-                      "VariableLen",
-                    ).build(),
-                  )
-                  .withLimit(1000)
-                  .includeHashedKeys(),
-              }),
-              sdk!.getEntities({
-                query: new ToriiQueryBuilder<Schema>()
-                  .withClause(
-                    KeysClause<Schema>(
-                      ["hashfront-Unit", "hashfront-Building"],
-                      [gameIdHex],
-                      "VariableLen",
-                    ).build(),
-                  )
-                  .withLimit(1000)
-                  .includeHashedKeys(),
-              }),
-            ]);
+        const BASE_POLL_INTERVAL = 3000;
+        const MAX_POLL_INTERVAL = 30000;
+        const MAX_POLL_FAILURES = 10;
+        let pollDelay = BASE_POLL_INTERVAL;
+        let consecutiveFailures = 0;
+        if (pollRef.current) clearTimeout(pollRef.current);
+
+        function schedulePoll() {
+          pollRef.current = setTimeout(async () => {
             if (!active) return;
-            processEntityUpdates(r1.getItems(), gameIdNum);
-            processEntityUpdates(r2.getItems(), gameIdNum);
-          } catch (e) {
-            console.warn("[Torii] Poll failed:", e);
-          }
-        }, POLL_INTERVAL);
+            try {
+              const [r1, r2] = await Promise.all([
+                sdk!.getEntities({
+                  query: new ToriiQueryBuilder<Schema>()
+                    .withClause(
+                      KeysClause<Schema>(
+                        ["hashfront-Game", "hashfront-PlayerState"],
+                        [gameIdHex],
+                        "VariableLen",
+                      ).build(),
+                    )
+                    .withLimit(1000)
+                    .includeHashedKeys(),
+                }),
+                sdk!.getEntities({
+                  query: new ToriiQueryBuilder<Schema>()
+                    .withClause(
+                      KeysClause<Schema>(
+                        ["hashfront-Unit", "hashfront-Building"],
+                        [gameIdHex],
+                        "VariableLen",
+                      ).build(),
+                    )
+                    .withLimit(1000)
+                    .includeHashedKeys(),
+                }),
+              ]);
+              if (!active) return;
+              processEntityUpdates(r1.getItems(), gameIdNum);
+              processEntityUpdates(r2.getItems(), gameIdNum);
+              pollDelay = BASE_POLL_INTERVAL;
+              consecutiveFailures = 0;
+            } catch (e) {
+              consecutiveFailures++;
+              pollDelay = Math.min(
+                pollDelay * 2,
+                MAX_POLL_INTERVAL,
+              );
+              console.warn(
+                `[Torii] Poll failed (${consecutiveFailures}/${MAX_POLL_FAILURES}):`,
+                e,
+              );
+              if (consecutiveFailures >= MAX_POLL_FAILURES) {
+                console.warn("[Torii] Max poll retries reached, stopping poll.");
+                return;
+              }
+            }
+            if (active) schedulePoll();
+          }, pollDelay);
+        }
+        schedulePoll();
 
         loadedIdRef.current = id || null;
         setLoadError(null);
@@ -461,7 +484,7 @@ export function useGameState(id: string | undefined): {
       subscriptionRef.current?.free();
       subscriptionRef.current = null;
       if (pollRef.current) {
-        clearInterval(pollRef.current);
+        clearTimeout(pollRef.current);
         pollRef.current = null;
       }
     };

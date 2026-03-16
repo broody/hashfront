@@ -4,7 +4,14 @@ import { PixelPanel } from "../components/PixelPanel";
 import { PixelButton } from "../components/PixelButton";
 import { terrainAtlas } from "../game/spritesheets/terrain";
 import {
+  unitAtlasBlue,
+  unitAtlasRed,
+  unitAtlasGreen,
+  unitAtlasYellow,
+} from "../game/spritesheets/units";
+import {
   Application,
+  AnimatedSprite,
   Assets,
   Spritesheet,
   Sprite,
@@ -32,7 +39,25 @@ const UNIT_TYPES = [
   "Artillery",
   "Jeep",
   "Buggy",
+  "APC",
 ];
+
+const UNIT_SPRITE_KEY: Record<string, string> = {
+  Infantry: "rifle",
+  Tank: "tank",
+  HeavyTank: "heavy_tank",
+  Artillery: "artillery",
+  Jeep: "jeep",
+  Buggy: "buggy",
+  APC: "apc",
+};
+
+const PLAYER_TEAM: Record<number, string> = {
+  1: "blue",
+  2: "red",
+  3: "green",
+  4: "yellow",
+};
 
 interface Building {
   type: string;
@@ -735,6 +760,7 @@ export default function MapEditor() {
   const appRef = useRef<Application | null>(null);
   const mapContainerRef = useRef<Container | null>(null);
   const sheetRef = useRef<Spritesheet | null>(null);
+  const unitSheetsRef = useRef<Record<string, Spritesheet> | null>(null);
 
   // Use refs for callbacks inside Pixi events to avoid recreation
   const applyToolRef = useRef(applyTool);
@@ -801,13 +827,48 @@ export default function MapEditor() {
         if (containerRef.current)
           containerRef.current.appendChild(app.canvas as HTMLCanvasElement);
 
-        const texture = await Assets.load({
-          src: "/tilesets/terrain.png",
-          data: { scaleMode: "nearest" },
-        });
+        const [texture, blueTexture, redTexture, greenTexture, yellowTexture] =
+          await Promise.all([
+            Assets.load({
+              src: "/tilesets/terrain.png",
+              data: { scaleMode: "nearest" },
+            }),
+            Assets.load({
+              src: "/tilesets/units_blue.png",
+              data: { scaleMode: "nearest" },
+            }),
+            Assets.load({
+              src: "/tilesets/units_red.png",
+              data: { scaleMode: "nearest" },
+            }),
+            Assets.load({
+              src: "/tilesets/units_green.png",
+              data: { scaleMode: "nearest" },
+            }),
+            Assets.load({
+              src: "/tilesets/units_yellow.png",
+              data: { scaleMode: "nearest" },
+            }),
+          ]);
         const sheet = new Spritesheet(texture, terrainAtlas);
-        await sheet.parse();
+        const blueSheet = new Spritesheet(blueTexture, unitAtlasBlue);
+        const redSheet = new Spritesheet(redTexture, unitAtlasRed);
+        const greenSheet = new Spritesheet(greenTexture, unitAtlasGreen);
+        const yellowSheet = new Spritesheet(yellowTexture, unitAtlasYellow);
+        await Promise.all([
+          sheet.parse(),
+          blueSheet.parse(),
+          redSheet.parse(),
+          greenSheet.parse(),
+          yellowSheet.parse(),
+        ]);
         sheetRef.current = sheet;
+        unitSheetsRef.current = {
+          blue: blueSheet,
+          red: redSheet,
+          green: greenSheet,
+          yellow: yellowSheet,
+        };
 
         const vp = new Viewport({
           screenWidth: app.screen.width,
@@ -1046,13 +1107,25 @@ export default function MapEditor() {
                   "#ffffff",
                   "top",
                 );
-              } else if (tool === "unit") {
-                addPreviewText(
-                  selectedUnitRef.current.substring(0, 3).toUpperCase(),
-                  10,
-                  "#ff5555",
-                  "bottom",
-                );
+              } else if (tool === "unit" && unitSheetsRef.current) {
+                const team =
+                  PLAYER_TEAM[selectedPlayerRef.current] || "blue";
+                const spriteKey =
+                  UNIT_SPRITE_KEY[selectedUnitRef.current] || "rifle";
+                const animKey = `${spriteKey}_idle`;
+                const uSheet = unitSheetsRef.current[team];
+                const frames = uSheet?.animations[animKey];
+                if (frames) {
+                  const anim = new AnimatedSprite(frames);
+                  anim.animationSpeed = 0.1;
+                  anim.play();
+                  anim.anchor.set(0.5, 0.5);
+                  anim.x = 16;
+                  anim.y = 16;
+                  anim.width = 32;
+                  anim.height = 32;
+                  highlightPreview.addChild(anim);
+                }
               }
             }
 
@@ -1154,15 +1227,23 @@ export default function MapEditor() {
         }
 
         const unit = !isEdge && units.find((u) => u.x === x && u.y === y);
-        if (unit) {
-          addText(
-            `${unit.type.substring(0, 3).toUpperCase()}`,
-            x,
-            y,
-            10,
-            "#ff5555",
-            "bottom",
-          );
+        if (unit && unitSheetsRef.current) {
+          const team = PLAYER_TEAM[unit.player] || "blue";
+          const spriteKey = UNIT_SPRITE_KEY[unit.type] || "rifle";
+          const animKey = `${spriteKey}_idle`;
+          const uSheet = unitSheetsRef.current[team];
+          const frames = uSheet?.animations[animKey];
+          if (frames) {
+            const anim = new AnimatedSprite(frames);
+            anim.animationSpeed = 0.1;
+            anim.play();
+            anim.anchor.set(0.5, 0.5);
+            anim.x = x * 32 + 16;
+            anim.y = y * 32 + 16;
+            anim.width = 32;
+            anim.height = 32;
+            container.addChild(anim);
+          }
         }
       }
     }

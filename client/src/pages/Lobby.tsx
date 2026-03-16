@@ -285,6 +285,7 @@ export default function Lobby() {
   const [searchQuery, setSearchQuery] = useState("");
   const gamesListRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const toriiFailCountRef = useRef(0);
   const [statsInProgress, setStatsInProgress] = useState<number | null>(null);
   const [statsCompleted, setStatsCompleted] = useState<number | null>(null);
   const [statsTransactions, setStatsTransactions] = useState<number | null>(
@@ -668,6 +669,7 @@ export default function Lobby() {
 
         const rows = await fetchToriiSql<GameModelNode>(query);
         if (active.current) {
+          toriiFailCountRef.current = 0;
           if (offset === 0) {
             setGames(rows);
           } else {
@@ -678,7 +680,11 @@ export default function Lobby() {
       } catch (error) {
         console.error("Failed to load games via SQL:", error);
         if (active.current) {
-          toast("SYSTEM_ERROR: Data feed interrupted.", "error");
+          const prev = toriiFailCountRef.current;
+          toriiFailCountRef.current = prev + 1;
+          if (prev === 0) {
+            toast("SYSTEM_ERROR: Data feed interrupted.", "error");
+          }
         }
       } finally {
         if (active.current) {
@@ -1409,6 +1415,38 @@ export default function Lobby() {
           </PixelPanel>
         </div>
       </div>
+
+      <footer className="flex justify-between border-t-[3px] border-white pt-5 mt-2 text-xs md:text-sm">
+        <span>
+          <a
+            href="https://www.cartridge.gg"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:underline"
+          >
+            CARTRIDGE
+          </a>{" "}
+          //{" "}
+          <a
+            href="https://www.dojoengine.org"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:underline"
+          >
+            DOJO
+          </a>{" "}
+          //{" "}
+          <a
+            href="https://www.starknet.io"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:underline"
+          >
+            STARKNET
+          </a>
+        </span>
+        <span className="hidden md:inline">VERSION: 0.1.3</span>
+      </footer>
 
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-blueprint-dark/70 backdrop-blur-sm flex items-center justify-center p-4">
