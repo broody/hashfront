@@ -1330,7 +1330,8 @@ class PolicyValueNet(nn.Module):
             dim=-1,
         )
         logits = self.policy_head(joint).squeeze(-1)
-        return logits + self.logit_prior_scale * heuristic_prior
+        logits = logits + self.logit_prior_scale * heuristic_prior
+        return logits.clamp(-30.0, 30.0)
 
     def predict_value(self, state_embedding: torch.Tensor) -> torch.Tensor:
         if state_embedding.dim() == 1:
@@ -2283,6 +2284,10 @@ def update_rollout(
     # Cast back to fp32 for stable loss computation
     flat_logits = flat_logits.float()
     values = values.float()
+
+    # Skip if model produced NaN (weights diverged)
+    if torch.isnan(flat_logits).any() or torch.isnan(values).any():
+        return
 
     # Split logits per transition and build distributions
     logit_splits = flat_logits.split(candidate_counts)
