@@ -1,0 +1,123 @@
+commit	win_rate	self_play	status	description
+5879406	0.9688	0.8333	keep	baseline
+9ede58e	0.9474	0.5000	discard	increase entropy 0.05 reduce imitation 0.20
+d85d489	0.9608	0.3333	keep	baseline with terrain cache
+7249f70	0.9756	0.3333	keep	cosine LR schedule 6e-4 to ~0
+97f2272	0.9062	0.3333	discard	wider network 128ch 256hidden
+3edb9ba	1.0000	0.5000	keep	4th residual block
+0a64e73	0.9487	0.6667	discard	GAMMA 0.99 (self_play up but heuristic down)
+n/a	0.9688	0.5000	discard	self-play-ratio 0.5 (CLI only no code change)
+7f7a6ce	0.9091	0.5000	discard	rollout fragment steps 64 (fewer updates)
+879c64a	0.9688	0.3333	discard	rollout fragment steps 16
+e87c53b	0.9211	0.3333	discard	LR 1e-3 too aggressive
+94c35f0	0.9062	0.8333	discard	grad clip 0.5 (self_play up but heuristic down)
+2cab68d	0.9697	0.8333	keep	dropout 0.1 in policy/value heads
+acded8d	0.9038	0.5000	discard	dropout + grad clip 0.5 (combination hurts)
+b0bca45	0.9375	0.3333	discard	weight decay 5e-4
+e187f2c	1.0000	0.3333	discard	5th residual block (heuristic perfect but self-play down)
+8e1a945	0.9333	0.5000	discard	MAX_TRAINING_TURNS 30 (more games but worse quality)
+b32fe66	0.9444	0.3333	discard	VALUE_WEIGHT 0.8
+8a27842	0.9062	0.5000	discard	LayerNorm in state_proj
+n/a	0.9706	0.6667	discard	self-play-ratio 0.65 (CLI only)
+n/a	0.9688	0.5000	discard	self-play-ratio 0.8 (CLI only)
+2e20f8c	0.9643	0.1667	discard	logit_prior_scale init 1.0 (too independent)
+52bf200	0.9211	0.5000	discard	logit_prior_scale 5.0
+42f83ac	0.9643	0.3333	discard	GELU instead of ReLU in MLPs
+1a27a18	0.9630	0.6667	discard	LR warmup 10% then cosine
+20fe5c6	0.9375	0.3333	discard	building ownership features
+b0d2fb7	0.9667	0.3333	discard	stronger win rewards 30/18
+n/a	1.0000	0.5000	discard	24 sim workers (CLI only)
+n/a	0.9722	0.6667	discard	16 sim workers (CLI only)
+77b6f1f	0.9333	0.1667	discard	SE attention blocks (too complex)
+n/a	0.8621	0.0000	discard	validation-interval 300 (CLI no checkpoint)
+8433748	0.9583	0.5000	discard	IMITATION_WEIGHT 0.15
+f079d2b	0.9143	0.0000	discard	dropout 0.2 (too much)
+abc8ab1	0.9167	0.5000	discard	dropout in candidate_proj
+a2b5e84	0.9091	0.6250	keep	more robust validation (8 games 2 seeds)
+c665f13	0.9459	0.2500	discard	GAMMA 0.98
+a1bfc0d	0.9348	0.2500	discard	LAMBDA 0.95
+0fafb01	0.9653	0.5000	keep	AdaptiveAvgPool2d(2) spatial info (avg 2 runs)
+f9f0a53	0.8974	0.5000	discard	LR 8e-4
+c1ac478	0.8235	0.3750	discard	deeper policy head 3 layers
+bda613f	0.9497	0.6875	keep	dual avg+max pooling (avg 2 runs)
+d5958f0	0.9459	0.5000	discard	ENTROPY_WEIGHT 0.04
+04f4f57	0.8378	0.2500	discard	96 conv channels (too many params)
+92db523	0.9623	0.3125	discard	3 res blocks with dual pool (self-play bad)
+4cc9402	0.9024	0.5000	discard	Adam beta1=0.85
+179fabf	0.9118	0.6250	discard	higher training temperature 3x
+0ccc360	0.9167	0.6250	discard	5x5 first conv kernel
+49b0a7d	0.9695	0.4375	keep	2-epoch PPO (avg 2 runs)
+cb70981	0.9211	0.5000	discard	LR 4e-4 with 2-epoch PPO
+bda613f	0.9497	0.6875	keep	reverted 2-epoch PPO (back to dual pool baseline)
+e495156	0.9721	0.5625	keep	self-play curriculum 30-100% (avg 2 runs)
+dc614ba	0.9231	0.6250	discard	steeper curriculum 10-100%
+354ffe9	0.9091	0.3750	discard	moderate curriculum 50-100%
+6d05a7a	0.9609	0.5000	discard	curriculum + 2-epoch PPO (slower)
+23f33f8	0.9091	0.5000	discard	FINAL_EVAL_BUDGET 15s
+febd79b	0.9688	0.5625	discard	separate value head LR 3x
+b68c5ba	0.9444	0.3750	discard	torch.compile (compilation overhead too high)
+dc1b46c	0.9304	0.3125	discard	logit_prior_scale 2.0 (avg 2 runs)
+5f465a1	0.9444	0.6250	discard	asymmetric residual 3x3+1x1
+a8438f8	0.9394	0.3750	discard	reward scaling 0.1x
+b110637	1.0000	0.2500	keep	extra board channels round+units (perfect heuristic, avg 2 runs)
+73deed1	0.9408	0.5625	discard	single extra channel (round only)
+327a8ca	0.9333	0.6250	discard	optimized encode_board but still slow
+87fec33	1.0000	0.4375	keep	MAX_TILE_CANDIDATES 12 (perfect heuristic both seeds)
+b13dd0f	0.9543	0.5625	discard	curriculum 50-100% (heuristic dropped)
+n/a	0.9528	0.5000	discard	validation-interval 100s (CLI only)
+ab38ae6	0.9715	0.3750	discard	MAX_TILE_CANDIDATES 16 (diminishing returns)
+1eaa0fb	0.9730	0.5000	discard	LR 5e-4 (heuristic dropped on one seed)
+86a8765	0.9278	0.5000	discard	dropout 0.15 (avg 3 seeds)
+60bfefe	0.9471	0.2083	discard	constant imitation weight (avg 3 seeds)
+e925d8e	0.9513	0.6250	keep	SiLU activation in res blocks (avg 3 seeds)
+ba70021	0.9699	0.3333	discard	SiLU in first conv too (self-play dropped)
+2299be4	0.9703	0.3333	discard	ENTROPY_WEIGHT 0.015 (self-play dropped)
+a75f777	0.9488	0.4167	discard	SiLU in all MLPs (self-play dropped)
+2978b58	0.9402	0.2917	discard	VALUE_WEIGHT 0.6
+952a498	0.9383	0.5417	discard	cosine imitation decay
+8999244	0.9682	0.5417	keep	5th residual block with SiLU (avg 3 seeds)
+8078be5	0.9415	0.5833	keep	bulk turn batching 2.3x throughput (avg 3 seeds)
+418bd36	0.9526	0.5000	discard	LR 3e-4 with bulk batching (avg 3)
+d00dcea	0.9518	0.5833	keep	LR 4e-4 for bulk batching (avg 3 seeds)
+d2f8ac0	0.9767	0.3333	keep	attack target validation (avg 3 seeds)
+3f27b02	0.9743	0.5000	discard	curriculum 40-100% (self-play up but still low)
+d2fd031	0.9744	0.5417	keep	curriculum 50-100% (avg 3 seeds)
+8fd7e49	0.9394	0.5417	keep	400s budget + 100 turn limit baseline (avg 3)
+aa1fce9	0.9652	0.5417	keep	rollout fragment 32 with 400s (avg 3 seeds)
+3c9ebb7	0.9651	0.5000	discard	GAMMA 0.98 with 400s
+f9cfeab	0.9751	0.3333	discard	IMITATION_WEIGHT 0.5 (self-play dropped)
+n/a	0.9645	0.5833	keep	28 workers with bulk batching avg_batch=152 (avg 3)
+d038cf9	0.9498	0.3750	discard	28 workers + LR 6e-4 (too aggressive)
+dad4b23	0.9726	0.5833	keep	Rust training helpers + 28 workers (avg 3 seeds)
+c746ed1	0.9671	0.5417	discard	pretraining 15s/1000 games (redundant with imitation)
+aebef97	0.9561	0.4167	discard	no curriculum full self-play (fewer games)
+39c271d	0.9672	0.7500	keep	600s + LR floor 10% (avg 2 seeds, best self-play)
+b20fe6d	0.9211	0.3750	discard	LR floor 15% (too high)
+290ce53	0.9449	0.5000	discard	validation 45s (too frequent fewer games)
+72cbc47	0.9296	0.5625	discard	linear LR decay to 20%
+2441f3e	0.9243	0.6250	discard	MAX_SNAPSHOT_POOL 12 (heuristic dropped)
+3558001	0.9766	0.3750	discard	6th res block (heuristic up self-play down)
+98d5a9b	0.9749	0.5000	discard	dropout 0.05 (self-play dropped)
+ced0a83	0.9701	0.4375	discard	Mish activation (noisy self-play)
+fd72b2b	0.9590	0.6250	discard	faster imitation decay 2x
+77bd810	0.9622	0.6250	discard	wider MLPs 256-dim
+5fef595	0.9830	0.3125	discard	deeper state_proj 3 layers (self-play bad)
+02e7950	0.9818	0.3750	discard	4 res blocks (self-play still bad)
+13aecb9	0.9537	0.5000	discard	ENTROPY_WEIGHT 0.035
+4eb897d	0.9821	0.4375	discard	more robust self-play eval 3 snapshots 4 maps
+6dbc76b	0.9735	0.4375	discard	aggressive curriculum 0->100% (self-play low)
+44367f8	0.9706	0.6250	discard	higher training temp floor 0.40
+dc15118	0.9551	0.5000	discard	RAdam optimizer
+79fbf67	0.9162	0.4375	discard	capture progress reward (heuristic dropped)
+3f449cb	0.9108	0.6250	discard	12 validation games (too much eval overhead)
+fa55001	0.9702	0.1875	discard	constant LR (self-play terrible)
+09c187c	0.9514	0.3750	discard	weight decay 3e-4
+3174d08	0.9557	0.5000	discard	LR 3e-4 for 600s
+52aa821	0.9377	0.6250	discard	LR 5e-4
+3d4d7e1	0.9815	0.4375	discard	IMITATION_WEIGHT 0.25 (self-play down)
+ec032fe	0.9783	0.5000	discard	SiLU in candidate_proj
+015f17e	0.9539	0.5625	discard	LAMBDA 0.85
+c918f66	0.9659	0.5000	discard	15-min training (no improvement over 10-min)
+1374aca	0.9428	0.3125	discard	no heuristic prior (best_self_play=1.0 but unstable)
+ca6bb41	0.9684	0.5625	discard	ExIt 20s (policy already matches lookahead)
+n/a	0.9464	0.3750	discard	heuristic lookahead opponents (wrong signal)
