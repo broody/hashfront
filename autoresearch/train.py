@@ -2722,13 +2722,13 @@ def evaluate_snapshot_pool(
 
         if len(game_args) <= 1:
             wins = sum(
-                _run_eval_game_snapshot(policy, max_width, max_height, sp, m, s, p1)
+                _run_eval_game_snapshot(policy, sp, max_width, max_height, m, s, p1)
                 for sp, m, s, p1 in game_args
             )
         else:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(game_args)) as pool:
                 futures = [
-                    pool.submit(_run_eval_game_snapshot, policy, max_width, max_height, sp, m, s, p1)
+                    pool.submit(_run_eval_game_snapshot, policy, sp, max_width, max_height, m, s, p1)
                     for sp, m, s, p1 in game_args
                 ]
                 wins = sum(f.result() for f in futures)
