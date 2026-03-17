@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import copy
 import json
 import multiprocessing as mp
@@ -109,7 +110,7 @@ try:
     # Rust-accelerated training helpers
     def encode_board_rust(state, player, focus_uid, max_width, max_height):
         flat = _hs.encode_board_py(state, player, focus_uid, max_width, max_height)
-        return torch.tensor(flat, dtype=torch.float32, device=device).reshape(16, max_height, max_width)
+        return torch.tensor(flat, dtype=torch.float32, device=device).reshape(BOARD_CHANNELS, max_height, max_width)
 
     def build_danger_maps_rust(state, player):
         return _hs.build_danger_maps_py(state, player)
@@ -258,7 +259,7 @@ IMITATION_WEIGHT = 0.35
 LEARNING_RATE = 4e-4
 WEIGHT_DECAY = 1e-4
 MAX_TILE_CANDIDATES = 12
-BOARD_CHANNELS = 16
+BOARD_CHANNELS = 18
 DEFAULT_ROLLOUT_FRAGMENT_STEPS = 32
 DEFAULT_PARALLEL_ENVS_CPU = 4
 DEFAULT_PARALLEL_ENVS_CUDA = 8
@@ -2646,6 +2647,24 @@ def run_parallel_training_remote(
     return worker_pool, games_played, wins, decisions, batches, updates
 
 
+def _run_eval_game_snapshot(policy, snapshot_policy, max_width, max_height, map_name, seed, learner_is_p1):
+    temperature = evaluation_temperature(map_name)
+    learner = PolicyStrategy(
+        policy=policy, max_width=max_width, max_height=max_height,
+        training=False, temperature=temperature,
+    )
+    opponent = PolicyStrategy(
+        policy=snapshot_policy, max_width=max_width, max_height=max_height,
+        training=False, temperature=temperature,
+    )
+    if learner_is_p1:
+        result = run_game(learner, opponent, map_name, seed, verbose=False, replay=False)
+        return 1 if result.winner == 1 else 0
+    else:
+        result = run_game(opponent, learner, map_name, seed, verbose=False, replay=False)
+        return 1 if result.winner == 2 else 0
+
+
 def evaluate_snapshot_pool(
     policy,
     max_width: int,
@@ -2660,78 +2679,48 @@ def evaluate_snapshot_pool(
 
     was_training = policy.training
     policy.eval()
-    wins = 0
-    games = 0
 
     try:
         eval_snapshots = snapshots[-SNAPSHOT_EVAL_COUNT:]
         eval_maps = map_names[:SNAPSHOT_EVAL_MAPS] or map_names
 
+        game_args = []
         for snapshot in eval_snapshots:
-            if max_games is not None and games >= max_games:
-                break
             for map_name in eval_maps:
-                if max_games is not None and games >= max_games:
-                    break
-                temperature = evaluation_temperature(map_name)
                 for seed in seeds:
-                    if max_games is not None and games >= max_games:
-                        break
-                    learner_first = PolicyStrategy(
-                        policy=policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                        training=False,
-                        temperature=temperature,
-                    )
-                    snapshot_second = PolicyStrategy(
-                        policy=snapshot.policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                        training=False,
-                        temperature=temperature,
-                    )
-                    result = run_game(
-                        learner_first,
-                        snapshot_second,
-                        map_name,
-                        seed,
-                        verbose=False,
-                        replay=False,
-                    )
-                    wins += 1 if result.winner == 1 else 0
-                    games += 1
-                    if max_games is not None and games >= max_games:
-                        break
+                    game_args.append((snapshot.policy, map_name, seed, True))
+                    game_args.append((snapshot.policy, map_name, seed + 50_000, False))
+        if max_games is not None:
+            game_args = game_args[:max_games]
 
-                    snapshot_first = PolicyStrategy(
-                        policy=snapshot.policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                        training=False,
-                        temperature=temperature,
-                    )
-                    learner_second = PolicyStrategy(
-                        policy=policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                        training=False,
-                        temperature=temperature,
-                    )
-                    swapped_result = run_game(
-                        snapshot_first,
-                        learner_second,
-                        map_name,
-                        seed + 50_000,
-                        verbose=False,
-                        replay=False,
-                    )
-                    wins += 1 if swapped_result.winner == 2 else 0
-                    games += 1
+        if len(game_args) <= 1:
+            wins = sum(
+                _run_eval_game_snapshot(policy, sp, max_width, max_height, m, s, p1)
+                for sp, m, s, p1 in game_args
+            )
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(game_args)) as pool:
+                futures = [
+                    pool.submit(_run_eval_game_snapshot, policy, sp, max_width, max_height, m, s, p1)
+                    for sp, m, s, p1 in game_args
+                ]
+                wins = sum(f.result() for f in futures)
     finally:
         policy.train(was_training)
 
-    return wins / max(1, games)
+    return wins / max(1, len(game_args))
+
+
+def _run_eval_game_fixed(policy, max_width, max_height, map_name, seed, use_lookahead):
+    if use_lookahead:
+        strategy = LookaheadStrategy(policy=policy, max_width=max_width, max_height=max_height)
+    else:
+        strategy = PolicyStrategy(
+            policy=policy, max_width=max_width, max_height=max_height,
+            training=False, temperature=evaluation_temperature(map_name),
+        )
+    result = run_game(strategy, make_ensemble_opponent(map_name, seed), map_name, seed, verbose=False, replay=False)
+    return 1 if result.winner == 1 else 0
 
 
 def evaluate_fixed(
@@ -2744,46 +2733,30 @@ def evaluate_fixed(
     use_lookahead: bool = False,
 ) -> float:
     seed_everything(1337)
-    wins = 0
-    games = 0
     was_training = policy.training
     policy.eval()
 
     try:
+        game_args = []
         for map_name in map_names:
-            if max_games is not None and games >= max_games:
-                break
             for seed in seeds:
-                if max_games is not None and games >= max_games:
-                    break
-                if use_lookahead:
-                    strategy = LookaheadStrategy(
-                        policy=policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                    )
-                else:
-                    strategy = PolicyStrategy(
-                        policy=policy,
-                        max_width=max_width,
-                        max_height=max_height,
-                        training=False,
-                        temperature=evaluation_temperature(map_name),
-                    )
-                result = run_game(
-                    strategy,
-                    make_ensemble_opponent(map_name, seed),
-                    map_name,
-                    seed,
-                    verbose=False,
-                    replay=False,
-                )
-                wins += 1 if result.winner == 1 else 0
-                games += 1
+                game_args.append((map_name, seed))
+        if max_games is not None:
+            game_args = game_args[:max_games]
+
+        if len(game_args) <= 1:
+            wins = sum(_run_eval_game_fixed(policy, max_width, max_height, m, s, use_lookahead) for m, s in game_args)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(game_args)) as pool:
+                futures = [
+                    pool.submit(_run_eval_game_fixed, policy, max_width, max_height, m, s, use_lookahead)
+                    for m, s in game_args
+                ]
+                wins = sum(f.result() for f in futures)
     finally:
         policy.train(was_training)
 
-    return wins / max(1, games)
+    return wins / max(1, len(game_args))
 
 
 def evaluate_until_deadline(policy, max_width: int, max_height: int, map_names: list[str], deadline: float, use_lookahead: bool = False) -> float:
@@ -2794,37 +2767,27 @@ def evaluate_until_deadline(policy, max_width: int, max_height: int, map_names: 
     map_index = 0
     was_training = policy.training
     policy.eval()
+    parallel = max(2, min(8, len(map_names)))
 
     remaining = deadline - time.perf_counter()
     try:
-        while time.perf_counter() + (2.0 if use_lookahead else 0.6) < deadline:
-            map_name = map_names[map_index % len(map_names)]
-            if use_lookahead:
-                strategy = LookaheadStrategy(
-                    policy=policy,
-                    max_width=max_width,
-                    max_height=max_height,
-                )
-            else:
-                strategy = PolicyStrategy(
-                    policy=policy,
-                    max_width=max_width,
-                    max_height=max_height,
-                    training=False,
-                    temperature=evaluation_temperature(map_name),
-                )
-            result = run_game(
-                strategy,
-                make_ensemble_opponent(map_name, seed),
-                map_name,
-                seed,
-                verbose=False,
-                replay=False,
-            )
-            wins += 1 if result.winner == 1 else 0
-            games += 1
-            seed += 1
-            map_index += 1
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel) as pool:
+            futures = {}
+            while True:
+                # Submit new games while we have time budget
+                while len(futures) < parallel and time.perf_counter() + (2.0 if use_lookahead else 0.6) < deadline:
+                    map_name = map_names[map_index % len(map_names)]
+                    f = pool.submit(_run_eval_game_fixed, policy, max_width, max_height, map_name, seed, use_lookahead)
+                    futures[f] = True
+                    seed += 1
+                    map_index += 1
+                if not futures:
+                    break
+                done, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                for f in done:
+                    wins += f.result()
+                    games += 1
+                    del futures[f]
     finally:
         policy.train(was_training)
 

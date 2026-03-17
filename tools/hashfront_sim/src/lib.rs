@@ -1828,7 +1828,7 @@ fn play_heuristic_turn(state: &mut GameState, player: i32, strategy_name: &str, 
 // ============================================================================
 
 const MAX_TILE_CANDIDATES: usize = 12;
-const BOARD_CHANNELS: usize = 16;
+const BOARD_CHANNELS: usize = 18;
 
 const ACTION_TYPES: [&str; 6] = [
     "wait",
@@ -2006,6 +2006,42 @@ fn encode_board_internal(
 
         if u.uid == focus_uid {
             board[idx(15, uy, ux)] = 1.0;
+        }
+    }
+
+
+    // Threat Maps (Channels 16 & 17)
+    // 16: Friendly Threat (tiles reachable/attackable by player)
+    // 17: Enemy Threat (tiles reachable/attackable by other player)
+    let other = if player == 1 { 2 } else { 1 };
+
+    for (p, chan) in [(player, 16), (other, 17)] {
+        for (ui, u) in units.iter().enumerate() {
+            if !u.alive() || u.player != p { continue; }
+
+            let mut reached = if u.unit_type != UnitType::Artillery {
+                reachable_tiles_internal(terrain, width, height, units, ui, &[])
+            } else {
+                HashMap::new()
+            };
+            reached.insert((u.x, u.y), 0);
+
+            for (&(rx, ry), _) in reached.iter() {
+                if rx >= 0 && rx < width && ry >= 0 && ry < height {
+                    board[idx(chan, ry as usize, rx as usize)] = 1.0;
+                }
+
+                let mn = u.unit_type.min_range();
+                let mx = u.unit_type.max_range();
+                for tx in (rx - mx).max(0)..=(rx + mx).min(width - 1) {
+                    for ty in (ry - mx).max(0)..=(ry + mx).min(height - 1) {
+                        let d = (rx - tx).abs() + (ry - ty).abs();
+                        if mn <= d && d <= mx {
+                            board[idx(chan, ty as usize, tx as usize)] = 1.0;
+                        }
+                    }
+                }
+            }
         }
     }
 
